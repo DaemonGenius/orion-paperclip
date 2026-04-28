@@ -7,6 +7,7 @@ import type {
   OrionWorkflow,
   OrionWorkflowDefinition,
   ObsidianIndexResult,
+  NotionKnowledgeSyncResult,
   CompanyKnowledgeStructure,
   ExternalObjectRef,
   KnowledgeProposal,
@@ -29,6 +30,17 @@ export const orionApi = {
     api.post<OrionTaskWorkflowBinding>(`/orion/tasks/${taskId}/workflow-binding`, data),
   indexObsidianVault: (companyId: string, data?: { maxFiles?: number; includePatterns?: string[] }) =>
     api.post<ObsidianIndexResult>(`/orion/companies/${companyId}/knowledge/obsidian/index`, data ?? {}),
+  syncNotionKnowledge: (companyId: string, data?: {
+    maxObjects?: number;
+    mirrorToObsidian?: boolean;
+    exportDatabaseRows?: boolean;
+    maxDatabaseRows?: number;
+    maxPageBlocks?: number;
+    maxBlockDepth?: number;
+  }) =>
+    api.post<NotionKnowledgeSyncResult>(`/orion/companies/${companyId}/knowledge/notion/sync`, data ?? {}),
+  clearKnowledgeRefs: (companyId: string) =>
+    api.delete<{ clearedRefs: number; removedMirrorFiles: number }>(`/orion/companies/${companyId}/knowledge/refs`),
   knowledgeRefs: (companyId: string, provider?: "notion" | "obsidian") =>
     api.get<ExternalObjectRef[]>(`/orion/companies/${companyId}/knowledge/refs${provider ? `?provider=${provider}` : ""}`),
   knowledgeProposals: (companyId: string) =>

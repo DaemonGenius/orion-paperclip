@@ -352,6 +352,7 @@ export type {
   SyncConflict,
   KnowledgeProposal,
   ObsidianIndexResult,
+  NotionKnowledgeSyncResult,
   CompanyKnowledgeSectionKey,
   CompanyKnowledgeSection,
   CompanyKnowledgeStructure,

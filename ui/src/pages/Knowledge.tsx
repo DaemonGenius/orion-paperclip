@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, BookOpenText, Database, FileText, RefreshCw } from "lucide-react";
+import { AlertTriangle, BookOpenText, Database, FileText, RefreshCw, Trash2 } from "lucide-react";
 import type { ExternalObjectRef, SyncConflict } from "@paperclipai/shared";
 import { Button } from "@/components/ui/button";
 import { orionApi } from "../api/orion";
@@ -279,6 +279,25 @@ export function Knowledge() {
       queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeRefs(selectedCompanyId, "obsidian") });
     },
   });
+  const syncNotionMutation = useMutation({
+    mutationFn: () => orionApi.syncNotionKnowledge(selectedCompanyId!, { maxObjects: 100, mirrorToObsidian: true }),
+    onSuccess: () => {
+      if (!selectedCompanyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeRefs(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeRefs(selectedCompanyId, "notion") });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeRefs(selectedCompanyId, "obsidian") });
+    },
+  });
+  const clearRefsMutation = useMutation({
+    mutationFn: () => orionApi.clearKnowledgeRefs(selectedCompanyId!),
+    onSuccess: () => {
+      if (!selectedCompanyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeRefs(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeRefs(selectedCompanyId, "notion") });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeRefs(selectedCompanyId, "obsidian") });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeProposals(selectedCompanyId) });
+    },
+  });
   const ensureProjectStructuresMutation = useMutation({
     mutationFn: async () => {
       const projects = projectsQuery.data ?? [];
@@ -320,6 +339,14 @@ export function Knowledge() {
           <p className="mt-1 text-sm text-muted-foreground">External refs, indexed vault docs, proposals, and sync conflicts.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            onClick={() => syncNotionMutation.mutate()}
+            disabled={!selectedCompanyId || syncNotionMutation.isPending}
+          >
+            <RefreshCw className="h-4 w-4" />
+            Sync Notion
+          </Button>
           <Button size="sm" onClick={() => indexMutation.mutate()} disabled={!selectedCompanyId || indexMutation.isPending}>
             <RefreshCw className="h-4 w-4" />
             Index Obsidian
@@ -340,8 +367,26 @@ export function Knowledge() {
           >
             Register Project Structure
           </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => {
+              if (window.confirm("Clear all knowledge refs for this company and remove Orion-created Notion mirror files from Obsidian?")) {
+                clearRefsMutation.mutate();
+              }
+            }}
+            disabled={!selectedCompanyId || clearRefsMutation.isPending || refs.length === 0}
+          >
+            <Trash2 className="h-4 w-4" />
+            Clear All
+          </Button>
         </div>
       </div>
+      {clearRefsMutation.error ? (
+        <div className="border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {clearRefsMutation.error instanceof Error ? clearRefsMutation.error.message : "Failed to clear knowledge refs."}
+        </div>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-4">
         <SummaryTile icon={Database} label="Refs" value={counts.refs} />

@@ -15,6 +15,7 @@ import {
   orionBootstrapNotionSchema,
   orionSyncNotionSchema,
   recordOrionPrSchema,
+  syncNotionKnowledgeSchema,
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import { knowledgeService } from "../services/knowledge.js";
@@ -144,6 +145,13 @@ export function orionRoutes(db: Db) {
     res.json(await knowledge.listRefs(companyId, provider));
   });
 
+  router.delete("/orion/companies/:companyId/knowledge/refs", async (req, res) => {
+    assertBoard(req);
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    res.json(await knowledge.clearKnowledgeRefs(companyId));
+  });
+
   router.post(
     "/orion/companies/:companyId/knowledge/obsidian/index",
     validate(indexObsidianVaultSchema),
@@ -152,6 +160,17 @@ export function orionRoutes(db: Db) {
       const companyId = req.params.companyId as string;
       assertCompanyAccess(req, companyId);
       res.json(await knowledge.indexObsidianVault(companyId, req.body));
+    },
+  );
+
+  router.post(
+    "/orion/companies/:companyId/knowledge/notion/sync",
+    validate(syncNotionKnowledgeSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      res.json(await knowledge.syncNotionKnowledge(companyId, req.body));
     },
   );
 

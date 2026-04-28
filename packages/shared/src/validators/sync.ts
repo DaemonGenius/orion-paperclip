@@ -9,6 +9,15 @@ export const indexObsidianVaultSchema = z.object({
   maxFiles: z.number().int().positive().max(5000).optional().default(1000),
 });
 
+export const syncNotionKnowledgeSchema = z.object({
+  maxObjects: z.number().int().positive().max(500).optional().default(100),
+  mirrorToObsidian: z.boolean().optional().default(true),
+  exportDatabaseRows: z.boolean().optional().default(true),
+  maxDatabaseRows: z.number().int().positive().max(1000).optional().default(100),
+  maxPageBlocks: z.number().int().positive().max(5000).optional().default(500),
+  maxBlockDepth: z.number().int().positive().max(12).optional().default(6),
+});
+
 export const createKnowledgeProposalSchema = z.object({
   provider: syncProviderSchema.default("obsidian"),
   sourceObjectRefId: z.string().uuid().optional().nullable(),
@@ -35,6 +44,7 @@ export type SyncProviderInput = z.infer<typeof syncProviderSchema>;
 export type SyncOwnerClassInput = z.infer<typeof syncOwnerClassSchema>;
 export type SyncStatusInput = z.infer<typeof syncStatusSchema>;
 export type IndexObsidianVault = z.infer<typeof indexObsidianVaultSchema>;
+export type SyncNotionKnowledge = z.infer<typeof syncNotionKnowledgeSchema>;
 export type CreateKnowledgeProposal = z.infer<typeof createKnowledgeProposalSchema>;
 export type EnsureCompanyKnowledgeStructure = z.infer<typeof ensureCompanyKnowledgeStructureSchema>;
 export type EnsureProjectWorkspaceStructure = z.infer<typeof ensureProjectWorkspaceStructureSchema>;

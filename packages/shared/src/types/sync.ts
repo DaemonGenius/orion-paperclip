@@ -76,6 +76,19 @@ export interface ObsidianIndexResult {
   refs: ExternalObjectRef[];
 }
 
+export interface NotionKnowledgeSyncResult {
+  provider: "notion";
+  syncedAt: string;
+  rootPageId: string;
+  discoveredObjects: number;
+  syncedRefs: number;
+  mirroredFiles: number;
+  exportedDatabaseRows: number;
+  importedTasks: number;
+  refs: ExternalObjectRef[];
+  obsidianRefs: ExternalObjectRef[];
+}
+
 export interface NotionTaskSyncRef {
   provider: "notion";
   notionPageId: string;
