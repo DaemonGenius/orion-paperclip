@@ -1,5 +1,22 @@
 export type { Company } from "./company.js";
 export type {
+  OrionAutonomyMode,
+  OrionAutonomyEnvelope,
+  OrionWorkflowPresetId,
+  OrionWorkflowNodeType,
+  OrionWorkflowEdgeType,
+  OrionWorkflowDefinition,
+  OrionWorkflow,
+  OrionWorkflowNode,
+  OrionWorkflowEdge,
+  OrionTaskWorkflowBinding,
+  OrionNotionBinding,
+  OrionNotionSyncState,
+  OrionReqLedger,
+  OrionReqLedgerEvent,
+  OrionPrReceipt,
+} from "./orion.js";
+export type {
   Environment,
   EnvironmentLease,
   EnvironmentProbeResult,

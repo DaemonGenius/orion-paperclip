@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { AdapterEnvironmentTestResult } from "@paperclipai/shared";
+import type { AdapterEnvironmentTestResult, OrionWorkflowPresetId } from "@paperclipai/shared";
 import { useLocation, useNavigate, useParams } from "@/lib/router";
 import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
@@ -10,6 +10,7 @@ import { agentsApi } from "../api/agents";
 import { approvalsApi } from "../api/approvals";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
+import { orionApi } from "../api/orion";
 import { queryKeys } from "../lib/queryKeys";
 import { Dialog, DialogPortal } from "@/components/ui/dialog";
 import {
@@ -61,11 +62,32 @@ import {
 type Step = 1 | 2 | 3 | 4;
 type AdapterType = string;
 
-const DEFAULT_TASK_DESCRIPTION = `You are the CEO. You set the direction for the company.
+const ORION_DEFAULT_TASK_TITLE = "Implement the first controlled Codex task";
+const ORION_DEFAULT_TASK_DESCRIPTION = `You are an implementation worker in Orion Control Plane.
+
+- inspect the assigned task
+- make a small, reviewable change
+- run the relevant checks
+- leave clear evidence and next steps`;
+
+const PAPERCLIP_DEFAULT_TASK_TITLE = "Hire your first engineer and create a hiring plan";
+const PAPERCLIP_DEFAULT_TASK_DESCRIPTION = `You are the CEO. You set the direction for the company.
 
 - hire a founding engineer
 - write a hiring plan
 - break the roadmap into concrete tasks and start delegating work`;
+
+function defaultAgentNameForPreset(presetId: OrionWorkflowPresetId) {
+  return presetId === "paperclip_company" ? "CEO" : "Codex Engineer 01";
+}
+
+function defaultTaskTitleForPreset(presetId: OrionWorkflowPresetId) {
+  return presetId === "paperclip_company" ? PAPERCLIP_DEFAULT_TASK_TITLE : ORION_DEFAULT_TASK_TITLE;
+}
+
+function defaultTaskDescriptionForPreset(presetId: OrionWorkflowPresetId) {
+  return presetId === "paperclip_company" ? PAPERCLIP_DEFAULT_TASK_DESCRIPTION : ORION_DEFAULT_TASK_DESCRIPTION;
+}
 
 export function OnboardingWizard() {
   const { onboardingOpen, onboardingOptions, closeOnboarding } = useDialog();
@@ -105,9 +127,11 @@ export function OnboardingWizard() {
   // Step 1
   const [companyName, setCompanyName] = useState("");
   const [companyGoal, setCompanyGoal] = useState("");
+  const [workflowPresetId, setWorkflowPresetId] =
+    useState<OrionWorkflowPresetId>("orion_operator_auto_to_pr");
 
   // Step 2
-  const [agentName, setAgentName] = useState("CEO");
+  const [agentName, setAgentName] = useState(defaultAgentNameForPreset("orion_operator_auto_to_pr"));
   const [adapterType, setAdapterType] = useState<AdapterType>("claude_local");
   const [model, setModel] = useState("");
   const [command, setCommand] = useState("");
@@ -124,10 +148,10 @@ export function OnboardingWizard() {
 
   // Step 3
   const [taskTitle, setTaskTitle] = useState(
-    "Hire your first engineer and create a hiring plan"
+    defaultTaskTitleForPreset("orion_operator_auto_to_pr")
   );
   const [taskDescription, setTaskDescription] = useState(
-    DEFAULT_TASK_DESCRIPTION
+    defaultTaskDescriptionForPreset("orion_operator_auto_to_pr")
   );
 
   // Auto-grow textarea for task description
@@ -138,6 +162,21 @@ export function OnboardingWizard() {
     el.style.height = "auto";
     el.style.height = el.scrollHeight + "px";
   }, []);
+
+  useEffect(() => {
+    setAgentName((current) => {
+      if (
+        current === defaultAgentNameForPreset("paperclip_company") ||
+        current === defaultAgentNameForPreset("orion_operator_auto_to_pr") ||
+        !current.trim()
+      ) {
+        return defaultAgentNameForPreset(workflowPresetId);
+      }
+      return current;
+    });
+    setTaskTitle(defaultTaskTitleForPreset(workflowPresetId));
+    setTaskDescription(defaultTaskDescriptionForPreset(workflowPresetId));
+  }, [workflowPresetId]);
 
   // Created entity IDs — pre-populate from existing company when skipping step 1
   const [createdCompanyId, setCreatedCompanyId] = useState<string | null>(
@@ -152,6 +191,7 @@ export function OnboardingWizard() {
   const [createdAgentId, setCreatedAgentId] = useState<string | null>(null);
   const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
   const [createdIssueRef, setCreatedIssueRef] = useState<string | null>(null);
+  const [createdWorkflowId, setCreatedWorkflowId] = useState<string | null>(null);
 
   useEffect(() => {
     setRouteDismissed(false);
@@ -287,7 +327,8 @@ export function OnboardingWizard() {
     setError(null);
     setCompanyName("");
     setCompanyGoal("");
-    setAgentName("CEO");
+    setWorkflowPresetId("orion_operator_auto_to_pr");
+    setAgentName(defaultAgentNameForPreset("orion_operator_auto_to_pr"));
     setAdapterType("claude_local");
     setModel("");
     setCommand("");
@@ -298,14 +339,15 @@ export function OnboardingWizard() {
     setAdapterEnvLoading(false);
     setForceUnsetAnthropicApiKey(false);
     setUnsetAnthropicLoading(false);
-    setTaskTitle("Hire your first engineer and create a hiring plan");
-    setTaskDescription(DEFAULT_TASK_DESCRIPTION);
+    setTaskTitle(defaultTaskTitleForPreset("orion_operator_auto_to_pr"));
+    setTaskDescription(defaultTaskDescriptionForPreset("orion_operator_auto_to_pr"));
     setCreatedCompanyId(null);
     setCreatedCompanyPrefix(null);
     setCreatedCompanyGoalId(null);
     setCreatedAgentId(null);
     setCreatedProjectId(null);
     setCreatedIssueRef(null);
+    setCreatedWorkflowId(null);
   }
 
   function handleClose() {
@@ -389,7 +431,6 @@ export function OnboardingWizard() {
       setCreatedCompanyPrefix(company.issuePrefix);
       setSelectedCompanyId(company.id);
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
-
       if (companyGoal.trim()) {
         const parsedGoal = parseOnboardingGoalInput(companyGoal);
         const goal = await goalsApi.create(company.id, {
@@ -461,7 +502,11 @@ export function OnboardingWizard() {
 
       const hire = await agentsApi.hire(createdCompanyId, {
         name: agentName.trim(),
-        role: "ceo",
+        role: workflowPresetId === "paperclip_company" ? "ceo" : "implementation_worker",
+        title: workflowPresetId === "paperclip_company" ? "CEO" : "Implementation Worker",
+        permissions: {
+          canCreateAgents: workflowPresetId === "paperclip_company"
+        },
         adapterType,
         adapterConfig: buildAdapterConfig(),
         runtimeConfig: buildNewAgentRuntimeConfig()
@@ -477,8 +522,19 @@ export function OnboardingWizard() {
       }
       const agent = hire.agent;
       setCreatedAgentId(agent.id);
+      const workflow = await orionApi.createWorkflowFromPreset(createdCompanyId, {
+        presetId: workflowPresetId,
+        makeDefault: true,
+        agentBindings: {
+          [workflowPresetId === "paperclip_company" ? "ceo" : "codex_worker"]: agent.id
+        }
+      });
+      setCreatedWorkflowId(workflow.id);
       queryClient.invalidateQueries({
         queryKey: queryKeys.agents.list(createdCompanyId)
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.orion.workflows(createdCompanyId)
       });
       setStep(3);
     } catch (err) {
@@ -582,6 +638,12 @@ export function OnboardingWizard() {
         );
         issueRef = issue.identifier ?? issue.id;
         setCreatedIssueRef(issueRef);
+        if (createdWorkflowId) {
+          await orionApi.bindTaskWorkflow(issue.id, {
+            workflowId: createdWorkflowId,
+            currentNodeKey: workflowPresetId === "paperclip_company" ? "board" : "notion_task"
+          });
+        }
         queryClient.invalidateQueries({
           queryKey: queryKeys.issues.list(createdCompanyId)
         });
@@ -725,6 +787,40 @@ export function OnboardingWizard() {
                       onChange={(e) => setCompanyGoal(e.target.value)}
                     />
                   </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-2 block">
+                      Workflow
+                    </label>
+                    <div className="grid gap-2">
+                      {[
+                        {
+                          id: "orion_operator_auto_to_pr" as OrionWorkflowPresetId,
+                          title: "Orion operator-led",
+                          description: "Independent Codex worker, verification, PR, then human review."
+                        },
+                        {
+                          id: "paperclip_company" as OrionWorkflowPresetId,
+                          title: "Original Paperclip company",
+                          description: "Board, CEO, CTO, and engineer hierarchy."
+                        }
+                      ].map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          className={cn(
+                            "rounded-md border px-3 py-2 text-left transition-colors",
+                            workflowPresetId === preset.id
+                              ? "border-foreground bg-accent"
+                              : "border-border hover:bg-accent/50"
+                          )}
+                          onClick={() => setWorkflowPresetId(preset.id)}
+                        >
+                          <div className="text-sm font-medium">{preset.title}</div>
+                          <div className="text-xs text-muted-foreground">{preset.description}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -747,7 +843,7 @@ export function OnboardingWizard() {
                     </label>
                     <input
                       className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                      placeholder="CEO"
+                      placeholder={defaultAgentNameForPreset(workflowPresetId)}
                       value={agentName}
                       onChange={(e) => setAgentName(e.target.value)}
                       autoFocus
@@ -1002,7 +1098,7 @@ export function OnboardingWizard() {
                           <p className="text-[11px] text-amber-900/90 leading-relaxed">
                             Claude failed while{" "}
                             <span className="font-mono">ANTHROPIC_API_KEY</span>{" "}
-                            is set. You can clear it in this CEO adapter config
+                            is set. You can clear it in this agent adapter config
                             and retry the probe.
                           </p>
                           <Button

@@ -4,6 +4,11 @@ export const queryKeys = {
     detail: (id: string) => ["companies", id] as const,
     stats: ["companies", "stats"] as const,
   },
+  orion: {
+    workflowPresets: ["orion", "workflow-presets"] as const,
+    workflows: (companyId: string) => ["orion", "workflows", companyId] as const,
+    workflow: (workflowId: string) => ["orion", "workflow", workflowId] as const,
+  },
   companySkills: {
     list: (companyId: string) => ["company-skills", companyId] as const,
     detail: (companyId: string, skillId: string) => ["company-skills", companyId, skillId] as const,

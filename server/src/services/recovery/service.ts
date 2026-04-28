@@ -12,6 +12,9 @@ import {
   issueRelations,
   issueThreadInteractions,
   issues,
+  orionTaskWorkflowBindings,
+  orionWorkflowEdges,
+  orionWorkflowNodes,
 } from "@paperclipai/db";
 import { parseObject, asBoolean, asNumber } from "../../adapters/utils.js";
 import { runningProcesses } from "../../adapters/index.js";
@@ -281,6 +284,38 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
 
   async function getAgent(agentId: string) {
     return db.select().from(agents).where(eq(agents.id, agentId)).then((rows) => rows[0] ?? null);
+  }
+
+  async function resolveWorkflowFallbackAgentId(issueId: string) {
+    const binding = await db
+      .select()
+      .from(orionTaskWorkflowBindings)
+      .where(eq(orionTaskWorkflowBindings.issueId, issueId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    if (!binding?.currentNodeKey) return null;
+    const fallbackEdge = await db
+      .select()
+      .from(orionWorkflowEdges)
+      .where(and(
+        eq(orionWorkflowEdges.workflowId, binding.workflowId),
+        eq(orionWorkflowEdges.fromNodeKey, binding.currentNodeKey),
+        eq(orionWorkflowEdges.type, "fallback_to"),
+      ))
+      .orderBy(orionWorkflowEdges.position)
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    if (!fallbackEdge) return null;
+    const fallbackNode = await db
+      .select()
+      .from(orionWorkflowNodes)
+      .where(and(
+        eq(orionWorkflowNodes.workflowId, binding.workflowId),
+        eq(orionWorkflowNodes.nodeKey, fallbackEdge.toNodeKey),
+      ))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    return fallbackNode?.agentId ?? null;
   }
 
   async function getLatestIssueRun(companyId: string, issueId: string): Promise<LatestIssueRun> {
@@ -639,6 +674,10 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
     sourceIssue: typeof issues.$inferSelect | null;
   }) {
     const candidateIds: string[] = [];
+    if (input.sourceIssue?.id) {
+      const workflowFallbackAgentId = await resolveWorkflowFallbackAgentId(input.sourceIssue.id);
+      if (workflowFallbackAgentId) candidateIds.push(workflowFallbackAgentId);
+    }
     if (input.sourceIssue?.assigneeAgentId) {
       const sourceAssignee = await getAgent(input.sourceIssue.assigneeAgentId);
       if (sourceAssignee?.reportsTo) candidateIds.push(sourceAssignee.reportsTo);
@@ -1174,6 +1213,8 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
 
   async function resolveStrandedIssueRecoveryOwnerAgentId(issue: typeof issues.$inferSelect) {
     const candidateIds: string[] = [];
+    const workflowFallbackAgentId = await resolveWorkflowFallbackAgentId(issue.id);
+    if (workflowFallbackAgentId) candidateIds.push(workflowFallbackAgentId);
     if (issue.assigneeAgentId) {
       const assignee = await getAgent(issue.assigneeAgentId);
       if (assignee?.reportsTo) candidateIds.push(assignee.reportsTo);
