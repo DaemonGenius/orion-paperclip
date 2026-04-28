@@ -64,30 +64,35 @@ import {
 type Step = 1 | 2 | 3 | 4 | 5;
 type AdapterType = string;
 
-const ORION_DEFAULT_TASK_TITLE = "Set up the company operating structure";
-const ORION_DEFAULT_TASK_DESCRIPTION = `Prepare this company for Orion-managed work.
+const ORION_DEFAULT_TASK_TITLE = "Review the Orion onboarding setup";
+const ORION_DEFAULT_TASK_DESCRIPTION = `Review the company setup that the operator completed during onboarding.
 
-Required setup:
+Expected preflight already done by Orion:
 
-- verify the Notion integration token is configured
-- verify the Notion parent/root page is accessible
-- verify the Obsidian vault path is configured
-- verify Orion can read and write to the vault
-- create/register Shared Company Knowledge:
+- Notion integration token saved and tested
+- Notion parent/root page access tested
+- Obsidian company vault path saved and tested
+- Shared Company Knowledge refs registered:
   - Wiki
   - Decisions
   - Standards
   - Operating Context
-- create/register the initial project workspace structure:
+- initial Onboarding project workspace refs registered:
   - Goals & Roadmap
   - Tasks
   - Wiki
   - Implementation Plans
   - Decision Log
   - Review Checklist
-- leave a short setup report with what is ready, what is missing, and next recommended tasks
 
-Do not start implementation work until the company structure and external app health checks are complete.`;
+Your task:
+
+- read the issue/project context
+- verify the Orion knowledge refs endpoint shows the expected structures
+- write a short readiness report
+- propose the next concrete implementation task
+
+If the expected refs are missing, report exactly which refs are missing and stop.`;
 
 const PAPERCLIP_DEFAULT_TASK_TITLE = "Hire your first engineer and create a hiring plan";
 const PAPERCLIP_DEFAULT_TASK_DESCRIPTION = `You are the CEO. You set the direction for the company.
@@ -753,6 +758,16 @@ export function OnboardingWizard() {
         setCreatedProjectId(projectId);
         queryClient.invalidateQueries({
           queryKey: queryKeys.projects.list(createdCompanyId)
+        });
+      }
+
+      if (workflowPresetId !== "paperclip_company") {
+        await orionApi.ensureCompanyKnowledgeStructure(createdCompanyId, {
+          rootPageId: notionRootPageId.trim() || null,
+        });
+        await orionApi.ensureProjectWorkspaceStructure(createdCompanyId, projectId, {});
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.orion.knowledgeRefs(createdCompanyId),
         });
       }
 
