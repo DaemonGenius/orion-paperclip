@@ -131,6 +131,9 @@ export const queryKeys = {
     list: (companyId: string) => ["secrets", companyId] as const,
     providers: (companyId: string) => ["secret-providers", companyId] as const,
   },
+  externalApps: {
+    list: (companyId: string) => ["external-apps", companyId] as const,
+  },
   dashboard: (companyId: string) => ["dashboard", companyId] as const,
   userProfile: (companyId: string, userSlug: string) =>
     ["user-profile", companyId, userSlug] as const,

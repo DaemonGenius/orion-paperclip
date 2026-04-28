@@ -337,3 +337,9 @@ export type {
   PluginDatabaseNamespaceMode,
   PluginDatabaseNamespaceStatus,
 } from "./plugin.js";
+export type {
+  ExternalAppProvider,
+  ExternalAppStatus,
+  CompanyExternalAppBinding,
+  ExternalAppHealthCheckResult,
+} from "./external-apps.js";

@@ -1,0 +1,4 @@
+services:
+  paperclip:
+    volumes:
+      - "${OBSIDIAN_LOCAL_DEV_VAULT_DIR:-E:/Cloud/Personal/110_Local Dev}:/vaults/local-dev"

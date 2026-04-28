@@ -512,6 +512,13 @@
       "when": 1777293098500,
       "tag": "0072_orion_workflow_graphs",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1777293098501,
+      "tag": "0073_company_external_app_bindings",
+      "breakpoints": true
     }
   ]
 }

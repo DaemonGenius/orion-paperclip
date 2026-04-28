@@ -417,3 +417,17 @@ export {
   type SetPluginState,
   type ListPluginState,
 } from "./plugin.js";
+export {
+  externalAppProviderSchema,
+  externalAppStatusSchema,
+  notionExternalAppConfigSchema,
+  obsidianExternalAppConfigSchema,
+  createExternalAppBindingSchema,
+  updateExternalAppBindingSchema,
+  type ExternalAppProviderInput,
+  type ExternalAppStatusInput,
+  type NotionExternalAppConfig,
+  type ObsidianExternalAppConfig,
+  type CreateExternalAppBinding,
+  type UpdateExternalAppBinding,
+} from "./external-apps.js";

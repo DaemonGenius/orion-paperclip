@@ -60,6 +60,8 @@ describe("CompanySettingsNav", () => {
     expect(getCompanySettingsTab("/PAP/company/settings")).toBe("general");
     expect(getCompanySettingsTab("/company/settings/access")).toBe("access");
     expect(getCompanySettingsTab("/PAP/company/settings/access")).toBe("access");
+    expect(getCompanySettingsTab("/company/settings/third-party-apps")).toBe("third-party-apps");
+    expect(getCompanySettingsTab("/PAP/company/settings/third-party-apps")).toBe("third-party-apps");
     expect(getCompanySettingsTab("/company/settings/invites")).toBe("invites");
   });
 
@@ -77,6 +79,7 @@ describe("CompanySettingsNav", () => {
         value: "access",
         items: [
           { value: "general", label: "General" },
+          { value: "third-party-apps", label: "Third Party Apps" },
           { value: "access", label: "Access" },
           { value: "invites", label: "Invites" },
         ],
