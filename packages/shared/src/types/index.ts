@@ -343,3 +343,19 @@ export type {
   CompanyExternalAppBinding,
   ExternalAppHealthCheckResult,
 } from "./external-apps.js";
+export type {
+  SyncProvider,
+  SyncOwnerClass,
+  SyncStatus,
+  ExternalObjectRef,
+  SyncCursor,
+  SyncConflict,
+  KnowledgeProposal,
+  ObsidianIndexResult,
+  CompanyKnowledgeSectionKey,
+  CompanyKnowledgeSection,
+  CompanyKnowledgeStructure,
+  ProjectWorkspaceSectionKey,
+  ProjectWorkspaceSection,
+  ProjectWorkspaceStructure,
+} from "./sync.js";

@@ -431,3 +431,19 @@ export {
   type CreateExternalAppBinding,
   type UpdateExternalAppBinding,
 } from "./external-apps.js";
+export {
+  syncProviderSchema,
+  syncOwnerClassSchema,
+  syncStatusSchema,
+  indexObsidianVaultSchema,
+  createKnowledgeProposalSchema,
+  ensureCompanyKnowledgeStructureSchema,
+  ensureProjectWorkspaceStructureSchema,
+  type SyncProviderInput,
+  type SyncOwnerClassInput,
+  type SyncStatusInput,
+  type IndexObsidianVault,
+  type CreateKnowledgeProposal,
+  type EnsureCompanyKnowledgeStructure,
+  type EnsureProjectWorkspaceStructure,
+} from "./sync.js";

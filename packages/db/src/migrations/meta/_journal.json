@@ -519,6 +519,13 @@
       "when": 1777293098501,
       "tag": "0073_company_external_app_bindings",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1777293098502,
+      "tag": "0074_external_sync_registry",
+      "breakpoints": true
     }
   ]
 }

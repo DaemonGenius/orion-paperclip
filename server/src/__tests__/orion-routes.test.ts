@@ -2,12 +2,14 @@ import { randomUUID } from "node:crypto";
 import express from "express";
 import request from "supertest";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   agents,
   companies,
   createDb,
+  externalObjectRefs,
   getEmbeddedPostgresTestSupport,
+  issues,
   startEmbeddedPostgresTestDatabase,
 } from "@paperclipai/db";
 import { errorHandler } from "../middleware/index.js";
@@ -124,6 +126,16 @@ describeEmbeddedPostgres("Orion routes", () => {
     expect(sync.status, JSON.stringify(sync.body)).toBe(200);
     const issueId = sync.body.results[0].issueId;
     expect(sync.body.results[0].status).toBe("created");
+    expect(sync.body.results[0].refId).toBeTruthy();
+
+    const refs = await request(app).get(`/api/orion/companies/${companyId}/knowledge/refs?provider=notion`);
+    expect(refs.status, JSON.stringify(refs.body)).toBe(200);
+    expect(refs.body.some((ref: { localObjectType: string; externalObjectId: string }) =>
+      ref.localObjectType === "company_workspace" && ref.externalObjectId === "notion-root-genesis",
+    )).toBe(true);
+    expect(refs.body.some((ref: { localObjectType: string; localObjectId: string; syncStatus: string }) =>
+      ref.localObjectType === "task" && ref.localObjectId === issueId && ref.syncStatus === "synced",
+    )).toBe(true);
 
     const missingEnvelope = await request(app)
       .post(`/api/orion/tasks/${issueId}/runs`)
@@ -218,5 +230,57 @@ describeEmbeddedPostgres("Orion routes", () => {
         type: "hands_off_to",
       });
     expect(edge.status, JSON.stringify(edge.body)).toBe(201);
+  });
+
+  it("records Notion task conflicts in the shared sync registry", async () => {
+    await seedCompanyAndAgent();
+
+    const firstSync = await request(app)
+      .post(`/api/orion/companies/${companyId}/notion/sync`)
+      .send({
+        tasks: [
+          {
+            notionPageId: "notion-task-conflict",
+            notionLastEditedAt: "2026-04-28T10:00:00.000Z",
+            title: "Original operator title",
+          },
+        ],
+      });
+    expect(firstSync.status, JSON.stringify(firstSync.body)).toBe(200);
+    const issueId = firstSync.body.results[0].issueId as string;
+
+    const orionEditAt = new Date(Date.now() + 60_000);
+    await db
+      .update(issues)
+      .set({ title: "Changed inside Orion", updatedAt: orionEditAt })
+      .where(eq(issues.id, issueId));
+
+    const conflictSync = await request(app)
+      .post(`/api/orion/companies/${companyId}/notion/sync`)
+      .send({
+        tasks: [
+          {
+            notionPageId: "notion-task-conflict",
+            notionLastEditedAt: "2026-04-28T10:06:00.000Z",
+            title: "Changed inside Notion",
+          },
+        ],
+      });
+    expect(conflictSync.status, JSON.stringify(conflictSync.body)).toBe(200);
+    expect(conflictSync.body.results[0].status).toBe("conflict");
+    expect(conflictSync.body.results[0].decisionId).toBeTruthy();
+
+    const conflicts = await request(app).get(`/api/orion/companies/${companyId}/sync/conflicts`);
+    expect(conflicts.status, JSON.stringify(conflicts.body)).toBe(200);
+    expect(conflicts.body[0].provider).toBe("notion");
+    expect(conflicts.body[0].localObjectId).toBe(issueId);
+    expect(conflicts.body[0].externalObjectId).toBe("notion-task-conflict");
+
+    const [ref] = await db
+      .select()
+      .from(externalObjectRefs)
+      .where(eq(externalObjectRefs.localObjectId, issueId))
+      .limit(1);
+    expect(ref?.syncStatus).toBe("conflict");
   });
 });

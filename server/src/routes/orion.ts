@@ -4,21 +4,27 @@ import { heartbeatRuns, issues, orionReqLedgers, type Db } from "@paperclipai/db
 import {
   bindOrionTaskWorkflowSchema,
   cancelOrionRunSchema,
+  createKnowledgeProposalSchema,
+  ensureCompanyKnowledgeStructureSchema,
+  ensureProjectWorkspaceStructureSchema,
   createOrionWorkflowEdgeSchema,
   createOrionWorkflowFromPresetSchema,
   createOrionWorkflowNodeSchema,
   createOrionRunSchema,
+  indexObsidianVaultSchema,
   orionBootstrapNotionSchema,
   orionSyncNotionSchema,
   recordOrionPrSchema,
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
+import { knowledgeService } from "../services/knowledge.js";
 import { orionService } from "../services/orion.js";
 import { assertBoard, assertCompanyAccess } from "./authz.js";
 
 export function orionRoutes(db: Db) {
   const router = Router();
   const svc = orionService(db);
+  const knowledge = knowledgeService(db);
 
   router.get("/orion/workflow-presets", async (_req, res) => {
     res.json(svc.workflowPresets());
@@ -28,6 +34,12 @@ export function orionRoutes(db: Db) {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
     res.json(await svc.listWorkflows(companyId));
+  });
+
+  router.get("/orion/companies/:companyId/sync/conflicts", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    res.json(await svc.listSyncConflicts(companyId));
   });
 
   router.post(
@@ -124,6 +136,67 @@ export function orionRoutes(db: Db) {
     const receipt = await svc.recordPr(req.params.runId as string, req.body);
     res.status(201).json(receipt);
   });
+
+  router.get("/orion/companies/:companyId/knowledge/refs", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const provider = typeof req.query.provider === "string" ? req.query.provider : null;
+    res.json(await knowledge.listRefs(companyId, provider));
+  });
+
+  router.post(
+    "/orion/companies/:companyId/knowledge/obsidian/index",
+    validate(indexObsidianVaultSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      res.json(await knowledge.indexObsidianVault(companyId, req.body));
+    },
+  );
+
+  router.post(
+    "/orion/companies/:companyId/knowledge/workspace-structure",
+    validate(ensureCompanyKnowledgeStructureSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      res.status(201).json(await knowledge.ensureCompanyKnowledgeStructure(companyId, req.body));
+    },
+  );
+
+  router.post(
+    "/orion/companies/:companyId/projects/:projectId/workspace-structure",
+    validate(ensureProjectWorkspaceStructureSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      res.status(201).json(await knowledge.ensureProjectWorkspaceStructure(
+        companyId,
+        req.params.projectId as string,
+        req.body,
+      ));
+    },
+  );
+
+  router.get("/orion/companies/:companyId/knowledge/proposals", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    res.json(await knowledge.listProposals(companyId));
+  });
+
+  router.post(
+    "/orion/companies/:companyId/knowledge/proposals",
+    validate(createKnowledgeProposalSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      res.status(201).json(await knowledge.createProposal(companyId, req.body));
+    },
+  );
 
   return router;
 }

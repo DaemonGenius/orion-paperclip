@@ -29,6 +29,7 @@ export { approvalService } from "./approvals.js";
 export { budgetService } from "./budgets.js";
 export { secretService } from "./secrets.js";
 export { externalAppService } from "./external-apps.js";
+export { knowledgeService } from "./knowledge.js";
 export { routineService } from "./routines.js";
 export { costService } from "./costs.js";
 export { financeService } from "./finance.js";

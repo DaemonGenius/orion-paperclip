@@ -13,6 +13,7 @@ export const notionExternalAppConfigSchema = z.object({
 export const obsidianExternalAppConfigSchema = z.object({
   mode: z.literal("local_vault_path").optional().default("local_vault_path"),
   vaultPath: z.string().trim().min(1),
+  createIfMissing: z.boolean().optional().default(false),
 });
 
 export const createExternalAppBindingSchema = z.object({

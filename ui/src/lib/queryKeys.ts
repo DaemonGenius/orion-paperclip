@@ -8,6 +8,9 @@ export const queryKeys = {
     workflowPresets: ["orion", "workflow-presets"] as const,
     workflows: (companyId: string) => ["orion", "workflows", companyId] as const,
     workflow: (workflowId: string) => ["orion", "workflow", workflowId] as const,
+    knowledgeRefs: (companyId: string, provider?: string) => ["orion", "knowledge-refs", companyId, provider ?? "all"] as const,
+    knowledgeProposals: (companyId: string) => ["orion", "knowledge-proposals", companyId] as const,
+    syncConflicts: (companyId: string) => ["orion", "sync-conflicts", companyId] as const,
   },
   companySkills: {
     list: (companyId: string) => ["company-skills", companyId] as const,

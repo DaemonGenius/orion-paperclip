@@ -11,6 +11,7 @@ import { approvalsApi } from "../api/approvals";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
 import { orionApi } from "../api/orion";
+import { externalAppsApi } from "../api/externalApps";
 import { queryKeys } from "../lib/queryKeys";
 import { Dialog, DialogPortal } from "@/components/ui/dialog";
 import {
@@ -50,6 +51,7 @@ import {
   Bot,
   ListTodo,
   Rocket,
+  Plug,
   ArrowLeft,
   ArrowRight,
   Check,
@@ -59,16 +61,33 @@ import {
 } from "lucide-react";
 
 
-type Step = 1 | 2 | 3 | 4;
+type Step = 1 | 2 | 3 | 4 | 5;
 type AdapterType = string;
 
-const ORION_DEFAULT_TASK_TITLE = "Implement the first controlled Codex task";
-const ORION_DEFAULT_TASK_DESCRIPTION = `You are an implementation worker in Orion Control Plane.
+const ORION_DEFAULT_TASK_TITLE = "Set up the company operating structure";
+const ORION_DEFAULT_TASK_DESCRIPTION = `Prepare this company for Orion-managed work.
 
-- inspect the assigned task
-- make a small, reviewable change
-- run the relevant checks
-- leave clear evidence and next steps`;
+Required setup:
+
+- verify the Notion integration token is configured
+- verify the Notion parent/root page is accessible
+- verify the Obsidian vault path is configured
+- verify Orion can read and write to the vault
+- create/register Shared Company Knowledge:
+  - Wiki
+  - Decisions
+  - Standards
+  - Operating Context
+- create/register the initial project workspace structure:
+  - Goals & Roadmap
+  - Tasks
+  - Wiki
+  - Implementation Plans
+  - Decision Log
+  - Review Checklist
+- leave a short setup report with what is ready, what is missing, and next recommended tasks
+
+Do not start implementation work until the company structure and external app health checks are complete.`;
 
 const PAPERCLIP_DEFAULT_TASK_TITLE = "Hire your first engineer and create a hiring plan";
 const PAPERCLIP_DEFAULT_TASK_DESCRIPTION = `You are the CEO. You set the direction for the company.
@@ -87,6 +106,21 @@ function defaultTaskTitleForPreset(presetId: OrionWorkflowPresetId) {
 
 function defaultTaskDescriptionForPreset(presetId: OrionWorkflowPresetId) {
   return presetId === "paperclip_company" ? PAPERCLIP_DEFAULT_TASK_DESCRIPTION : ORION_DEFAULT_TASK_DESCRIPTION;
+}
+
+function slugCompanyVaultName(value: string) {
+  const cleaned = value
+    .trim()
+    .replace(/[<>:"\\|?*\x00-\x1F]/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return cleaned || "company";
+}
+
+function joinVaultPath(rootPath: string, companyName: string) {
+  const root = rootPath.trim().replace(/\\/g, "/").replace(/\/+$/g, "");
+  return `${root || "/vaults/local-dev"}/${slugCompanyVaultName(companyName)}`;
 }
 
 export function OnboardingWizard() {
@@ -131,6 +165,16 @@ export function OnboardingWizard() {
     useState<OrionWorkflowPresetId>("orion_operator_auto_to_pr");
 
   // Step 2
+  const [notionToken, setNotionToken] = useState("");
+  const [notionRootPageId, setNotionRootPageId] = useState("");
+  const [notionWorkspaceName, setNotionWorkspaceName] = useState("");
+  const [obsidianVaultPath, setObsidianVaultPath] = useState("/vaults/local-dev");
+  const [thirdPartyStatus, setThirdPartyStatus] = useState<{
+    notion?: "healthy" | "error";
+    obsidian?: "healthy" | "error";
+  }>({});
+
+  // Step 3
   const [agentName, setAgentName] = useState(defaultAgentNameForPreset("orion_operator_auto_to_pr"));
   const [adapterType, setAdapterType] = useState<AdapterType>("claude_local");
   const [model, setModel] = useState("");
@@ -146,7 +190,7 @@ export function OnboardingWizard() {
   const [unsetAnthropicLoading, setUnsetAnthropicLoading] = useState(false);
   const [showMoreAdapters, setShowMoreAdapters] = useState(false);
 
-  // Step 3
+  // Step 4
   const [taskTitle, setTaskTitle] = useState(
     defaultTaskTitleForPreset("orion_operator_auto_to_pr")
   );
@@ -223,9 +267,9 @@ export function OnboardingWizard() {
     if (company) setCreatedCompanyPrefix(company.issuePrefix);
   }, [effectiveOnboardingOpen, createdCompanyId, createdCompanyPrefix, companies]);
 
-  // Resize textarea when step 3 is shown or description changes
+  // Resize textarea when task step is shown or description changes
   useEffect(() => {
-    if (step === 3) autoResizeTextarea();
+    if (step === 4) autoResizeTextarea();
   }, [step, taskDescription, autoResizeTextarea]);
 
   const {
@@ -238,7 +282,7 @@ export function OnboardingWizard() {
       ? queryKeys.agents.adapterModels(createdCompanyId, adapterType)
       : ["agents", "none", "adapter-models", adapterType],
     queryFn: () => agentsApi.adapterModels(createdCompanyId!, adapterType),
-    enabled: Boolean(createdCompanyId) && effectiveOnboardingOpen && step === 2
+    enabled: Boolean(createdCompanyId) && effectiveOnboardingOpen && step === 3
   });
   const getCapabilities = useAdapterCapabilities();
   const adapterCaps = getCapabilities(adapterType);
@@ -270,12 +314,16 @@ export function OnboardingWizard() {
     (COMMAND_PLACEHOLDERS[adapterType] ?? adapterType.replace(/_local$/, ""));
 
   useEffect(() => {
-    if (step !== 2) return;
+    if (step !== 3) return;
     setAdapterEnvResult(null);
     setAdapterEnvError(null);
   }, [step, adapterType, model, command, args, url]);
 
   const selectedModel = (adapterModels ?? []).find((m) => m.id === model);
+  const derivedCompanyVaultPath = useMemo(
+    () => joinVaultPath(obsidianVaultPath, companyName),
+    [companyName, obsidianVaultPath],
+  );
   const hasAnthropicApiKeyOverrideCheck =
     adapterEnvResult?.checks.some(
       (check) =>
@@ -328,6 +376,11 @@ export function OnboardingWizard() {
     setCompanyName("");
     setCompanyGoal("");
     setWorkflowPresetId("orion_operator_auto_to_pr");
+    setNotionToken("");
+    setNotionRootPageId("");
+    setNotionWorkspaceName("");
+    setObsidianVaultPath("/vaults/local-dev");
+    setThirdPartyStatus({});
     setAgentName(defaultAgentNameForPreset("orion_operator_auto_to_pr"));
     setAdapterType("claude_local");
     setModel("");
@@ -449,7 +502,7 @@ export function OnboardingWizard() {
         setCreatedCompanyGoalId(null);
       }
 
-      setStep(2);
+      setStep(workflowPresetId === "paperclip_company" ? 3 : 2);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create company");
     } finally {
@@ -458,6 +511,85 @@ export function OnboardingWizard() {
   }
 
   async function handleStep2Next() {
+    if (!createdCompanyId) return;
+    if (workflowPresetId === "paperclip_company") {
+      setStep(3);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setThirdPartyStatus({});
+    try {
+      const notionRoot = notionRootPageId.trim();
+      const vaultRootPath = obsidianVaultPath.trim();
+      const vaultPath = joinVaultPath(vaultRootPath, companyName);
+      const token = notionToken.trim();
+      if (!token) {
+        setError("Notion integration token is required for Orion operator-led setup.");
+        return;
+      }
+      if (!notionRoot) {
+        setError("Notion parent/root page ID is required for Orion operator-led setup.");
+        return;
+      }
+      if (!vaultRootPath) {
+        setError("Obsidian vault root path is required for Orion operator-led setup.");
+        return;
+      }
+
+      const existingBindings = await externalAppsApi.list(createdCompanyId);
+      const existingNotion = existingBindings.find((binding) => binding.provider === "notion");
+      const notionPayload = {
+        token,
+        config: {
+          rootPageId: notionRoot,
+          workspaceName: notionWorkspaceName.trim() || undefined,
+        },
+      };
+      const notion = existingNotion
+        ? await externalAppsApi.update(existingNotion.id, notionPayload)
+        : await externalAppsApi.create(createdCompanyId, "notion", notionPayload);
+      const notionTest = await externalAppsApi.test(notion.id);
+      setThirdPartyStatus((current) => ({
+        ...current,
+        notion: notionTest.result.status === "healthy" ? "healthy" : "error",
+      }));
+      if (notionTest.result.status !== "healthy") {
+        setError(notionTest.result.message);
+        return;
+      }
+
+      const existingObsidian = existingBindings.find((binding) => binding.provider === "obsidian");
+      const obsidianPayload = {
+        config: {
+          mode: "local_vault_path",
+          vaultPath,
+          createIfMissing: true,
+        },
+      };
+      const obsidian = existingObsidian
+        ? await externalAppsApi.update(existingObsidian.id, obsidianPayload)
+        : await externalAppsApi.create(createdCompanyId, "obsidian", obsidianPayload);
+      const obsidianTest = await externalAppsApi.test(obsidian.id);
+      setThirdPartyStatus((current) => ({
+        ...current,
+        obsidian: obsidianTest.result.status === "healthy" ? "healthy" : "error",
+      }));
+      if (obsidianTest.result.status !== "healthy") {
+        setError(obsidianTest.result.message);
+        return;
+      }
+
+      queryClient.invalidateQueries({ queryKey: queryKeys.externalApps.list(createdCompanyId) });
+      setStep(3);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to configure third party auth");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleStep3Next() {
     if (!createdCompanyId) return;
     setLoading(true);
     setError(null);
@@ -536,7 +668,7 @@ export function OnboardingWizard() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.orion.workflows(createdCompanyId)
       });
-      setStep(3);
+      setStep(4);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create agent");
     } finally {
@@ -593,10 +725,10 @@ export function OnboardingWizard() {
     }
   }
 
-  async function handleStep3Next() {
+  async function handleStep4Next() {
     if (!createdCompanyId || !createdAgentId) return;
     setError(null);
-    setStep(4);
+    setStep(5);
   }
 
   async function handleLaunch() {
@@ -668,9 +800,10 @@ export function OnboardingWizard() {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       if (step === 1 && companyName.trim()) handleStep1Next();
-      else if (step === 2 && agentName.trim()) handleStep2Next();
-      else if (step === 3 && taskTitle.trim()) handleStep3Next();
-      else if (step === 4) handleLaunch();
+      else if (step === 2) handleStep2Next();
+      else if (step === 3 && agentName.trim()) handleStep3Next();
+      else if (step === 4 && taskTitle.trim()) handleStep4Next();
+      else if (step === 5) handleLaunch();
     }
   }
 
@@ -714,9 +847,10 @@ export function OnboardingWizard() {
                 {(
                   [
                     { step: 1 as Step, label: "Company", icon: Building2 },
-                    { step: 2 as Step, label: "Agent", icon: Bot },
-                    { step: 3 as Step, label: "Task", icon: ListTodo },
-                    { step: 4 as Step, label: "Launch", icon: Rocket }
+                    { step: 2 as Step, label: "Third Party Auth", icon: Plug },
+                    { step: 3 as Step, label: "Agent", icon: Bot },
+                    { step: 4 as Step, label: "Task", icon: ListTodo },
+                    { step: 5 as Step, label: "Launch", icon: Rocket }
                   ] as const
                 ).map(({ step: s, label, icon: Icon }) => (
                   <button
@@ -825,6 +959,109 @@ export function OnboardingWizard() {
               )}
 
               {step === 2 && (
+                <div className="space-y-5">
+                  <div className="flex items-center gap-3 mb-1">
+                    <div className="bg-muted/50 p-2">
+                      <Plug className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium">Third Party Auth</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Connect this company to its Notion cockpit and Obsidian vault.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 rounded-md border border-border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium">Notion</p>
+                        <p className="text-xs text-muted-foreground">
+                          Orion will use this parent page to create the company structure.
+                        </p>
+                      </div>
+                      {thirdPartyStatus.notion && (
+                        <span className={cn(
+                          "text-xs",
+                          thirdPartyStatus.notion === "healthy" ? "text-green-500" : "text-destructive",
+                        )}>
+                          {thirdPartyStatus.notion}
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">
+                        Integration token
+                      </label>
+                      <input
+                        className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                        placeholder="secret_xxx"
+                        value={notionToken}
+                        onChange={(e) => setNotionToken(e.target.value)}
+                        type="password"
+                        autoFocus
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">
+                        Parent/root page ID
+                      </label>
+                      <input
+                        className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                        placeholder="3509dd99b4308003b112e5e3585c41d1"
+                        value={notionRootPageId}
+                        onChange={(e) => setNotionRootPageId(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">
+                        Workspace name (optional)
+                      </label>
+                      <input
+                        className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                        placeholder="SteinmannLab"
+                        value={notionWorkspaceName}
+                        onChange={(e) => setNotionWorkspaceName(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 rounded-md border border-border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium">Obsidian</p>
+                        <p className="text-xs text-muted-foreground">
+                          Enter the mounted vault root. Orion creates a company folder inside it.
+                        </p>
+                      </div>
+                      {thirdPartyStatus.obsidian && (
+                        <span className={cn(
+                          "text-xs",
+                          thirdPartyStatus.obsidian === "healthy" ? "text-green-500" : "text-destructive",
+                        )}>
+                          {thirdPartyStatus.obsidian}
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">
+                        Vault root path
+                      </label>
+                      <input
+                        className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                        placeholder="/vaults/local-dev"
+                        value={obsidianVaultPath}
+                        onChange={(e) => setObsidianVaultPath(e.target.value)}
+                      />
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        Company vault: <span className="font-mono">{derivedCompanyVaultPath}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {step === 3 && (
                 <div className="space-y-5">
                   <div className="flex items-center gap-3 mb-1">
                     <div className="bg-muted/50 p-2">
@@ -1195,7 +1432,7 @@ export function OnboardingWizard() {
                 </div>
               )}
 
-              {step === 3 && (
+              {step === 4 && (
                 <div className="space-y-5">
                   <div className="flex items-center gap-3 mb-1">
                     <div className="bg-muted/50 p-2">
@@ -1236,7 +1473,7 @@ export function OnboardingWizard() {
                 </div>
               )}
 
-              {step === 4 && (
+              {step === 5 && (
                 <div className="space-y-5">
                   <div className="flex items-center gap-3 mb-1">
                     <div className="bg-muted/50 p-2">
@@ -1328,7 +1565,9 @@ export function OnboardingWizard() {
                     <Button
                       size="sm"
                       disabled={
-                        !agentName.trim() || loading || adapterEnvLoading
+                        loading ||
+                        (workflowPresetId !== "paperclip_company" &&
+                          (!notionToken.trim() || !notionRootPageId.trim() || !obsidianVaultPath.trim()))
                       }
                       onClick={handleStep2Next}
                     >
@@ -1337,13 +1576,15 @@ export function OnboardingWizard() {
                       ) : (
                         <ArrowRight className="h-3.5 w-3.5 mr-1" />
                       )}
-                      {loading ? "Creating..." : "Next"}
+                      {loading ? "Testing..." : "Next"}
                     </Button>
                   )}
                   {step === 3 && (
                     <Button
                       size="sm"
-                      disabled={!taskTitle.trim() || loading}
+                      disabled={
+                        !agentName.trim() || loading || adapterEnvLoading
+                      }
                       onClick={handleStep3Next}
                     >
                       {loading ? (
@@ -1355,6 +1596,20 @@ export function OnboardingWizard() {
                     </Button>
                   )}
                   {step === 4 && (
+                    <Button
+                      size="sm"
+                      disabled={!taskTitle.trim() || loading}
+                      onClick={handleStep4Next}
+                    >
+                      {loading ? (
+                        <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                      ) : (
+                        <ArrowRight className="h-3.5 w-3.5 mr-1" />
+                      )}
+                      {loading ? "Creating..." : "Next"}
+                    </Button>
+                  )}
+                  {step === 5 && (
                     <Button size="sm" disabled={loading} onClick={handleLaunch}>
                       {loading ? (
                         <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />

@@ -6,6 +6,12 @@ import type {
   OrionTaskWorkflowBinding,
   OrionWorkflow,
   OrionWorkflowDefinition,
+  ObsidianIndexResult,
+  CompanyKnowledgeStructure,
+  ExternalObjectRef,
+  KnowledgeProposal,
+  ProjectWorkspaceStructure,
+  SyncConflict,
 } from "@paperclipai/shared";
 import { api } from "./client";
 
@@ -21,4 +27,28 @@ export const orionApi = {
     api.post(`/orion/workflows/${workflowId}/edges`, data),
   bindTaskWorkflow: (taskId: string, data: BindOrionTaskWorkflow) =>
     api.post<OrionTaskWorkflowBinding>(`/orion/tasks/${taskId}/workflow-binding`, data),
+  indexObsidianVault: (companyId: string, data?: { maxFiles?: number; includePatterns?: string[] }) =>
+    api.post<ObsidianIndexResult>(`/orion/companies/${companyId}/knowledge/obsidian/index`, data ?? {}),
+  knowledgeRefs: (companyId: string, provider?: "notion" | "obsidian") =>
+    api.get<ExternalObjectRef[]>(`/orion/companies/${companyId}/knowledge/refs${provider ? `?provider=${provider}` : ""}`),
+  knowledgeProposals: (companyId: string) =>
+    api.get<KnowledgeProposal[]>(`/orion/companies/${companyId}/knowledge/proposals`),
+  syncConflicts: (companyId: string) =>
+    api.get<SyncConflict[]>(`/orion/companies/${companyId}/sync/conflicts`),
+  ensureCompanyKnowledgeStructure: (companyId: string, data?: {
+    rootPageId?: string | null;
+    sectionPageIds?: Record<string, string>;
+  }) =>
+    api.post<CompanyKnowledgeStructure>(
+      `/orion/companies/${companyId}/knowledge/workspace-structure`,
+      data ?? {},
+    ),
+  ensureProjectWorkspaceStructure: (companyId: string, projectId: string, data?: {
+    projectRootPageId?: string | null;
+    sectionPageIds?: Record<string, string>;
+  }) =>
+    api.post<ProjectWorkspaceStructure>(
+      `/orion/companies/${companyId}/projects/${projectId}/workspace-structure`,
+      data ?? {},
+    ),
 };

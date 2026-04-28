@@ -12,6 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { externalAppsApi } from "@/api/externalApps";
+import { orionApi } from "@/api/orion";
 import { ApiError } from "@/api/client";
 import { useCompany } from "@/context/CompanyContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
@@ -166,6 +167,27 @@ export function ThirdPartyApps() {
     },
   });
 
+  const indexObsidianMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedCompanyId) throw new Error("Select a company first");
+      return orionApi.indexObsidianVault(selectedCompanyId, { maxFiles: 1000 });
+    },
+    onSuccess: (result) => {
+      pushToast({
+        title: "Vault indexed",
+        body: `${result.indexedFiles} Markdown files indexed.`,
+        tone: "success",
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Could not index vault",
+        body: error instanceof ApiError || error instanceof Error ? error.message : "Unknown error",
+        tone: "error",
+      });
+    },
+  });
+
   const renderStatus = (binding: CompanyExternalAppBinding | undefined) => (
     <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${statusTone(binding)}`}>
       {statusIcon(binding)}
@@ -269,6 +291,13 @@ export function ThirdPartyApps() {
               <Button variant="outline" onClick={() => obsidian && testMutation.mutate(obsidian)} disabled={!obsidian || testMutation.isPending}>
                 <RefreshCw className="h-4 w-4" />
                 Test
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => indexObsidianMutation.mutate()}
+                disabled={!obsidian || obsidian.status !== "healthy" || indexObsidianMutation.isPending}
+              >
+                Index
               </Button>
               <Button variant="ghost" onClick={() => obsidian && removeMutation.mutate(obsidian)} disabled={!obsidian || removeMutation.isPending}>
                 <Trash2 className="h-4 w-4" />

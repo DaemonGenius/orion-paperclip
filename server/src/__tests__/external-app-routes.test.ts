@@ -157,6 +157,24 @@ describeEmbeddedPostgres("external app routes", () => {
     expect(health.body.binding.status).toBe("error");
   });
 
+  it("creates a missing Obsidian vault path when explicitly requested", async () => {
+    await seedCompany();
+    const vaultPath = path.join(tmpdir(), `orion-created-${Date.now()}`);
+    try {
+      const create = await request(app)
+        .post(`/api/companies/${companyId}/external-apps/obsidian`)
+        .send({ config: { vaultPath, createIfMissing: true } });
+      expect(create.status, JSON.stringify(create.body)).toBe(201);
+
+      const health = await request(app).post(`/api/external-apps/${create.body.id}/test`).send({});
+      expect(health.status, JSON.stringify(health.body)).toBe(200);
+      expect(health.body.result.status).toBe("healthy");
+      expect(health.body.result.details.createIfMissing).toBe(true);
+    } finally {
+      await rm(vaultPath, { recursive: true, force: true });
+    }
+  });
+
   it("deletes a binding without deleting its underlying secret", async () => {
     await seedCompany();
     const create = await request(app)

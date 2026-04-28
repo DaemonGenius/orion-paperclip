@@ -153,6 +153,9 @@ export function externalAppService(db: Db) {
     }
 
     try {
+      if (config.createIfMissing) {
+        await mkdir(vaultPath, { recursive: true });
+      }
       await access(vaultPath, fsConstants.R_OK);
       await readdir(vaultPath);
       const healthcheckDir = path.join(vaultPath, ".orion", "healthcheck");
@@ -165,7 +168,7 @@ export function externalAppService(db: Db) {
         status: "healthy",
         checkedAt,
         message: "Obsidian vault path is readable and writable.",
-        details: { vaultPath, mode: config.mode, readable: true, writable: true },
+        details: { vaultPath, mode: config.mode, createIfMissing: config.createIfMissing, readable: true, writable: true },
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown filesystem error";
@@ -174,7 +177,7 @@ export function externalAppService(db: Db) {
         status: "error",
         checkedAt,
         message: `Obsidian vault check failed: ${message}`,
-        details: { vaultPath, mode: config.mode, readable: false, writable: false },
+        details: { vaultPath, mode: config.mode, createIfMissing: config.createIfMissing, readable: false, writable: false },
       };
     }
   }

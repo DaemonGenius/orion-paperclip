@@ -4,6 +4,7 @@ import type { Db } from "@paperclipai/db";
 import {
   agents,
   companyNotionBindings,
+  externalObjectRefs,
   heartbeatRuns,
   issueWorkProducts,
   issues,
@@ -18,6 +19,8 @@ import {
   orionWorkflowNodes,
   orionWorkflowRuns,
   orionWorkflows,
+  syncConflicts,
+  syncCursors,
 } from "@paperclipai/db";
 import type {
   BindOrionTaskWorkflow,
@@ -94,6 +97,10 @@ function stableJson(value: unknown): string {
 
 function notionTaskChecksum(task: OrionSyncNotion["tasks"][number]) {
   return sha256(stableJson(Object.fromEntries(ORION_OPERATOR_FIELDS.map((key) => [key, (task as Record<string, unknown>)[key] ?? null]))));
+}
+
+function notionPageUrl(pageId: string) {
+  return `https://www.notion.so/${pageId.replace(/-/g, "")}`;
 }
 
 function normalizePathForPolicy(path: string) {
@@ -276,6 +283,13 @@ export function orionService(db: Db) {
     validateChangedPathsAgainstEnvelope,
     workflowPresets: () => Object.values(ORION_WORKFLOW_PRESETS),
 
+    listSyncConflicts: (companyId: string) =>
+      db
+        .select()
+        .from(syncConflicts)
+        .where(eq(syncConflicts.companyId, companyId))
+        .orderBy(desc(syncConflicts.createdAt)),
+
     listWorkflows: async (companyId: string) => {
       const workflows = await db
         .select()
@@ -451,6 +465,45 @@ export function orionService(db: Db) {
         })
         .returning();
 
+      await db
+        .insert(externalObjectRefs)
+        .values({
+          companyId,
+          provider: "notion",
+          localObjectType: "company_workspace",
+          localObjectId: companyId,
+          externalObjectId: input.rootPageId,
+          externalUrl: notionPageUrl(input.rootPageId),
+          ownerClass: "operator_owned",
+          checksum: sha256(stableJson({ rootPageId: input.rootPageId, dataSourceIds: defaultDataSourceIds })),
+          metadata: {
+            kind: "company_root_page",
+            dataSourceIds: defaultDataSourceIds,
+          },
+          lastExternalEditedAt: null,
+          lastOrionEditedAt: now,
+          syncStatus: "synced",
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [externalObjectRefs.companyId, externalObjectRefs.provider, externalObjectRefs.localObjectType, externalObjectRefs.localObjectId],
+          set: {
+            localObjectType: "company_workspace",
+            localObjectId: companyId,
+            externalObjectId: input.rootPageId,
+            externalUrl: notionPageUrl(input.rootPageId),
+            ownerClass: "operator_owned",
+            checksum: sha256(stableJson({ rootPageId: input.rootPageId, dataSourceIds: defaultDataSourceIds })),
+            metadata: {
+              kind: "company_root_page",
+              dataSourceIds: defaultDataSourceIds,
+            },
+            lastOrionEditedAt: now,
+            syncStatus: "synced",
+            updatedAt: now,
+          },
+        });
+
       return binding!;
     },
 
@@ -512,6 +565,69 @@ export function orionService(db: Db) {
               updatedAt: now,
             })
             .where(eq(notionSyncState.id, existingState!.id));
+
+          await db
+            .insert(syncConflicts)
+            .values({
+              companyId,
+              provider: "notion",
+              localObjectType: "task",
+              localObjectId: existingIssue.id,
+              externalObjectId: task.notionPageId,
+              status: "open",
+              conflictJson: {
+                ownerClass: "operator_owned",
+                operatorFields: ORION_OPERATOR_FIELDS,
+                incomingChecksum: checksum,
+                previousChecksum: existingState!.checksum,
+                notionLastEditedAt,
+                orionUpdatedAt: existingIssue.updatedAt,
+              },
+              decisionId: decision!.id,
+              updatedAt: now,
+            });
+
+          await db
+            .insert(externalObjectRefs)
+            .values({
+              companyId,
+              provider: "notion",
+              localObjectType: "task",
+              localObjectId: existingIssue.id,
+              externalObjectId: task.notionPageId,
+              externalUrl: notionPageUrl(task.notionPageId),
+              ownerClass: "operator_owned",
+              checksum,
+              metadata: {
+                kind: "task",
+                title: task.title,
+                priority: task.priority,
+                requestedMode: task.requestedMode ?? null,
+              },
+              lastExternalEditedAt: notionLastEditedAt,
+              lastOrionEditedAt: existingIssue.updatedAt,
+              syncStatus: "conflict",
+              updatedAt: now,
+            })
+            .onConflictDoUpdate({
+              target: [externalObjectRefs.companyId, externalObjectRefs.provider, externalObjectRefs.localObjectType, externalObjectRefs.localObjectId],
+              set: {
+                externalObjectId: task.notionPageId,
+                externalUrl: notionPageUrl(task.notionPageId),
+                ownerClass: "operator_owned",
+                checksum,
+                metadata: {
+                  kind: "task",
+                  title: task.title,
+                  priority: task.priority,
+                  requestedMode: task.requestedMode ?? null,
+                },
+                lastExternalEditedAt: notionLastEditedAt,
+                lastOrionEditedAt: existingIssue.updatedAt,
+                syncStatus: "conflict",
+                updatedAt: now,
+              },
+            });
 
           results.push({
             notionPageId: task.notionPageId,
@@ -598,12 +714,80 @@ export function orionService(db: Db) {
             },
           });
 
+        const [ref] = await db
+          .insert(externalObjectRefs)
+          .values({
+            companyId,
+            provider: "notion",
+            localObjectType: "task",
+            localObjectId: issue.id,
+            externalObjectId: task.notionPageId,
+            externalUrl: notionPageUrl(task.notionPageId),
+            ownerClass: "operator_owned",
+            checksum,
+            metadata: {
+              kind: "task",
+              title: task.title,
+              priority: task.priority,
+              requestedMode: task.requestedMode ?? null,
+              projectId: task.projectId ?? null,
+            },
+            lastExternalEditedAt: notionLastEditedAt,
+            lastOrionEditedAt: issue.updatedAt,
+            syncStatus: "synced",
+            updatedAt: now,
+          })
+          .onConflictDoUpdate({
+            target: [externalObjectRefs.companyId, externalObjectRefs.provider, externalObjectRefs.localObjectType, externalObjectRefs.localObjectId],
+            set: {
+              externalObjectId: task.notionPageId,
+              externalUrl: notionPageUrl(task.notionPageId),
+              ownerClass: "operator_owned",
+              checksum,
+              metadata: {
+                kind: "task",
+                title: task.title,
+                priority: task.priority,
+                requestedMode: task.requestedMode ?? null,
+                projectId: task.projectId ?? null,
+              },
+              lastExternalEditedAt: notionLastEditedAt,
+              lastOrionEditedAt: issue.updatedAt,
+              syncStatus: "synced",
+              updatedAt: now,
+            },
+          })
+          .returning();
+
         results.push({
           notionPageId: task.notionPageId,
           status: existingIssue ? "updated" : "created",
           issueId: issue.id,
+          refId: ref!.id,
         });
       }
+
+      await db
+        .insert(syncCursors)
+        .values({
+          companyId,
+          provider: "notion",
+          scope: "task_sync",
+          cursorJson: { taskCount: input.tasks.length },
+          status: "idle",
+          lastSyncedAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [syncCursors.companyId, syncCursors.provider, syncCursors.scope],
+          set: {
+            cursorJson: { taskCount: input.tasks.length },
+            status: "idle",
+            lastSyncedAt: now,
+            lastError: null,
+            updatedAt: now,
+          },
+        });
 
       await db
         .update(companyNotionBindings)
