@@ -62,9 +62,10 @@ async function assertAgentCanManageRuntimeServicesForWorkspace(
 
   const actorAgent = await db
     .select({
-      id: agents.id,
-      companyId: agents.companyId,
-      role: agents.role,
+    id: agents.id,
+    companyId: agents.companyId,
+    role: agents.role,
+    permissions: agents.permissions,
     })
     .from(agents)
     .where(eq(agents.id, req.actor.agentId))
@@ -74,7 +75,7 @@ async function assertAgentCanManageRuntimeServicesForWorkspace(
     throw forbidden("Agent key cannot access another company");
   }
 
-  if (actorAgent.role === "ceo") {
+  if (Boolean((actorAgent.permissions as Record<string, unknown> | null | undefined)?.canCreateAgents)) {
     return;
   }
 

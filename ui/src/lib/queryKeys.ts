@@ -4,6 +4,15 @@ export const queryKeys = {
     detail: (id: string) => ["companies", id] as const,
     stats: ["companies", "stats"] as const,
   },
+  orion: {
+    workflowPresets: ["orion", "workflow-presets"] as const,
+    workflows: (companyId: string) => ["orion", "workflows", companyId] as const,
+    workflow: (workflowId: string) => ["orion", "workflow", workflowId] as const,
+    knowledgeRefs: (companyId: string, provider?: string) => ["orion", "knowledge-refs", companyId, provider ?? "all"] as const,
+    notionKnowledgeSyncStatus: (companyId: string) => ["orion", "knowledge", "notion-sync-status", companyId] as const,
+    knowledgeProposals: (companyId: string) => ["orion", "knowledge-proposals", companyId] as const,
+    syncConflicts: (companyId: string) => ["orion", "sync-conflicts", companyId] as const,
+  },
   companySkills: {
     list: (companyId: string) => ["company-skills", companyId] as const,
     detail: (companyId: string, skillId: string) => ["company-skills", companyId, skillId] as const,
@@ -125,6 +134,9 @@ export const queryKeys = {
   secrets: {
     list: (companyId: string) => ["secrets", companyId] as const,
     providers: (companyId: string) => ["secret-providers", companyId] as const,
+  },
+  externalApps: {
+    list: (companyId: string) => ["external-apps", companyId] as const,
   },
   dashboard: (companyId: string) => ["dashboard", companyId] as const,
   userProfile: (companyId: string, userSlug: string) =>

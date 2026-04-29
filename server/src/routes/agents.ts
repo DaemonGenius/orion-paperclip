@@ -187,15 +187,6 @@ export function agentRoutes(
       : [];
     const hasExplicitTaskAssignGrant = grants.some((grant) => grant.permissionKey === "tasks:assign");
 
-    if (agent.role === "ceo") {
-      return {
-        canAssignTasks: true,
-        taskAssignSource: "ceo_role" as const,
-        membership,
-        grants,
-      };
-    }
-
     if (canCreateAgents(agent)) {
       return {
         canAssignTasks: true,
@@ -397,7 +388,6 @@ export function agentRoutes(
     }
 
     if (actorAgent.id === targetAgent.id) return;
-    if (actorAgent.role === "ceo") return;
     const allowedByGrant = await access.hasPermission(
       targetAgent.companyId,
       "agent",
@@ -405,7 +395,7 @@ export function agentRoutes(
       "agents:create",
     );
     if (allowedByGrant || canCreateAgents(actorAgent)) return;
-    throw forbidden("Only CEO or agent creators can modify other agents");
+    throw forbidden("Only agent creators can modify other agents");
   }
 
   async function assertCanReadAgent(req: Request, targetAgent: { companyId: string }) {
@@ -1757,8 +1747,8 @@ export function agentRoutes(
         res.status(403).json({ error: "Forbidden" });
         return;
       }
-      if (actorAgent.role !== "ceo") {
-        res.status(403).json({ error: "Only CEO can manage permissions" });
+      if (!canCreateAgents(actorAgent)) {
+        res.status(403).json({ error: "Only agent creators can manage permissions" });
         return;
       }
     } else {
@@ -1772,7 +1762,7 @@ export function agentRoutes(
     }
 
     const effectiveCanAssignTasks =
-      agent.role === "ceo" || Boolean(agent.permissions?.canCreateAgents) || req.body.canAssignTasks;
+      Boolean(agent.permissions?.canCreateAgents) || req.body.canAssignTasks;
     await access.ensureMembership(agent.companyId, "agent", agent.id, "member", "active");
     await access.setPrincipalPermission(
       agent.companyId,

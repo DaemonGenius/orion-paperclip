@@ -1,5 +1,22 @@
 export type { Company } from "./company.js";
 export type {
+  OrionAutonomyMode,
+  OrionAutonomyEnvelope,
+  OrionWorkflowPresetId,
+  OrionWorkflowNodeType,
+  OrionWorkflowEdgeType,
+  OrionWorkflowDefinition,
+  OrionWorkflow,
+  OrionWorkflowNode,
+  OrionWorkflowEdge,
+  OrionTaskWorkflowBinding,
+  OrionNotionBinding,
+  OrionNotionSyncState,
+  OrionReqLedger,
+  OrionReqLedgerEvent,
+  OrionPrReceipt,
+} from "./orion.js";
+export type {
   Environment,
   EnvironmentLease,
   EnvironmentProbeResult,
@@ -320,3 +337,29 @@ export type {
   PluginDatabaseNamespaceMode,
   PluginDatabaseNamespaceStatus,
 } from "./plugin.js";
+export type {
+  ExternalAppProvider,
+  ExternalAppStatus,
+  CompanyExternalAppBinding,
+  ExternalAppHealthCheckResult,
+} from "./external-apps.js";
+export type {
+  SyncProvider,
+  SyncOwnerClass,
+  SyncStatus,
+  ExternalObjectRef,
+  SyncCursor,
+  SyncConflict,
+  KnowledgeProposal,
+  ObsidianIndexResult,
+  NotionKnowledgeSyncResult,
+  NotionKnowledgeSyncJobStatus,
+  StartNotionKnowledgeSyncResult,
+  KnowledgeClearResult,
+  CompanyKnowledgeSectionKey,
+  CompanyKnowledgeSection,
+  CompanyKnowledgeStructure,
+  ProjectWorkspaceSectionKey,
+  ProjectWorkspaceSection,
+  ProjectWorkspaceStructure,
+} from "./sync.js";

@@ -61,6 +61,13 @@ export { approvalComments } from "./approval_comments.js";
 export { activityLog } from "./activity_log.js";
 export { companySecrets } from "./company_secrets.js";
 export { companySecretVersions } from "./company_secret_versions.js";
+export { companyExternalAppBindings } from "./company_external_app_bindings.js";
+export {
+  externalObjectRefs,
+  syncCursors,
+  syncConflicts,
+  knowledgeProposals,
+} from "./external_sync.js";
 export { companySkills } from "./company_skills.js";
 export { plugins } from "./plugins.js";
 export { pluginConfig } from "./plugin_config.js";
@@ -71,3 +78,18 @@ export { pluginDatabaseNamespaces, pluginMigrations } from "./plugin_database.js
 export { pluginJobs, pluginJobRuns } from "./plugin_jobs.js";
 export { pluginWebhookDeliveries } from "./plugin_webhooks.js";
 export { pluginLogs } from "./plugin_logs.js";
+export {
+  companyNotionBindings,
+  notionSyncState,
+  orionTaskPolicies,
+  orionReqLedgers,
+  orionReqLedgerEvents,
+  orionReqLedgerArtifacts,
+  orionDecisions,
+  orionPrReceipts,
+  orionWorkflows,
+  orionWorkflowNodes,
+  orionWorkflowEdges,
+  orionTaskWorkflowBindings,
+  orionWorkflowRuns,
+} from "./orion.js";
