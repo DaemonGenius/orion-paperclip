@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, BookOpenText, Database, FileText, RefreshCw, Trash2 } from "lucide-react";
-import type { ExternalObjectRef, SyncConflict } from "@paperclipai/shared";
+import type { ExternalObjectRef, KnowledgeClearResult, NotionKnowledgeSyncJobStatus, SyncConflict } from "@paperclipai/shared";
 import { Button } from "@/components/ui/button";
 import { orionApi } from "../api/orion";
 import { projectsApi } from "../api/projects";
@@ -61,6 +61,76 @@ function SummaryTile({ icon: Icon, label, value }: { icon: typeof Database; labe
         {label}
       </div>
       <div className="mt-3 text-2xl font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function ClearResultSummary({ result }: { result: KnowledgeClearResult }) {
+  const cleared = [
+    `${result.clearedRefs} refs`,
+    `${result.removedMirrorFiles} generated mirror files`,
+    `${result.deletedImportedIssues} imported tasks`,
+    `${result.deletedImportedProjects} imported projects`,
+    `${result.deletedKnowledgeProposals} proposals`,
+    `${result.deletedSyncConflicts} conflicts`,
+    `${result.clearedSyncCursors} cursors`,
+  ].join(", ");
+
+  return (
+    <div className="space-y-2 border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
+      <div>Orion sync state reset: {cleared}.</div>
+      {result.skippedProjects.length > 0 ? (
+        <div className="text-yellow-300">
+          Skipped {result.skippedProjects.length} project{result.skippedProjects.length === 1 ? "" : "s"} with remaining dependencies.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function NotionSyncProgress({ status }: { status: NotionKnowledgeSyncJobStatus }) {
+  if (status.status === "idle" && !status.lastSyncedAt && !status.error) return null;
+  const total = status.progress.total;
+  const current = status.progress.current;
+  const percent = total && total > 0 ? Math.min(100, Math.round((current / total) * 100)) : null;
+  const running = status.status === "running" || status.status === "queued";
+  const tone = status.status === "error"
+    ? "border-red-500/30 bg-red-500/10 text-red-300"
+    : running
+      ? "border-blue-500/30 bg-blue-500/10 text-blue-200"
+      : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+
+  return (
+    <div className={`space-y-2 border px-3 py-3 text-sm ${tone}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="font-medium">
+            Notion sync {status.status}
+            {status.stage ? <span className="ml-2 text-xs opacity-80">{status.stage}</span> : null}
+          </div>
+          <div className="mt-1 text-xs opacity-90">{status.message ?? "No sync message yet."}</div>
+        </div>
+        <div className="text-xs opacity-80">
+          {running && total ? `${current}/${total}` : status.lastSyncedAt ? `Last synced ${formatDate(status.lastSyncedAt)}` : null}
+        </div>
+      </div>
+      {running ? (
+        <div className="h-2 overflow-hidden rounded-sm bg-background/50">
+          <div
+            className={`h-full bg-current transition-all ${percent === null ? "w-1/3 animate-pulse" : ""}`}
+            style={percent === null ? undefined : { width: `${percent}%` }}
+          />
+        </div>
+      ) : null}
+      {status.result ? (
+        <div className="grid gap-2 text-xs opacity-90 sm:grid-cols-4">
+          <div>{status.result.discoveredObjects} objects</div>
+          <div>{status.result.exportedDatabaseRows} rows</div>
+          <div>{status.result.importedTasks} tasks</div>
+          <div>{status.result.importedProjects} projects</div>
+        </div>
+      ) : null}
+      {status.error ? <div className="text-xs">{status.error}</div> : null}
     </div>
   );
 }
@@ -245,6 +315,7 @@ export function Knowledge() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
   const [provider, setProvider] = useState<ProviderFilter>("all");
+  const [lastAppliedSyncUpdatedAt, setLastAppliedSyncUpdatedAt] = useState<string | null>(null);
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Knowledge" }]);
@@ -270,6 +341,15 @@ export function Knowledge() {
     queryFn: () => projectsApi.list(selectedCompanyId!),
     enabled: Boolean(selectedCompanyId),
   });
+  const notionSyncStatusQuery = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.orion.notionKnowledgeSyncStatus(selectedCompanyId) : ["orion", "knowledge", "notion-sync-status", "none"],
+    queryFn: () => orionApi.notionKnowledgeSyncStatus(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "running" || status === "queued" ? 2000 : false;
+    },
+  });
 
   const indexMutation = useMutation({
     mutationFn: () => orionApi.indexObsidianVault(selectedCompanyId!, { maxFiles: 1000 }),
@@ -280,12 +360,10 @@ export function Knowledge() {
     },
   });
   const syncNotionMutation = useMutation({
-    mutationFn: () => orionApi.syncNotionKnowledge(selectedCompanyId!, { maxObjects: 100, mirrorToObsidian: true }),
+    mutationFn: () => orionApi.startNotionKnowledgeSync(selectedCompanyId!, { maxObjects: 100, mirrorToObsidian: true }),
     onSuccess: () => {
       if (!selectedCompanyId) return;
-      queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeRefs(selectedCompanyId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeRefs(selectedCompanyId, "notion") });
-      queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeRefs(selectedCompanyId, "obsidian") });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orion.notionKnowledgeSyncStatus(selectedCompanyId) });
     },
   });
   const clearRefsMutation = useMutation({
@@ -295,7 +373,14 @@ export function Knowledge() {
       queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeRefs(selectedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeRefs(selectedCompanyId, "notion") });
       queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeRefs(selectedCompanyId, "obsidian") });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orion.notionKnowledgeSyncStatus(selectedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeProposals(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orion.syncConflicts(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects.list(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activity(selectedCompanyId) });
     },
   });
   const ensureProjectStructuresMutation = useMutation({
@@ -324,6 +409,21 @@ export function Knowledge() {
   const refs = refsQuery.data ?? [];
   const conflicts = conflictsQuery.data ?? [];
   const proposals = proposalsQuery.data ?? [];
+  const notionSyncStatus = notionSyncStatusQuery.data ?? null;
+  const notionSyncRunning = notionSyncStatus?.status === "running" || notionSyncStatus?.status === "queued";
+
+  useEffect(() => {
+    if (!selectedCompanyId || !notionSyncStatus?.updatedAt || notionSyncStatus.status !== "completed") return;
+    if (lastAppliedSyncUpdatedAt === notionSyncStatus.updatedAt) return;
+    setLastAppliedSyncUpdatedAt(notionSyncStatus.updatedAt);
+    queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeRefs(selectedCompanyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeRefs(selectedCompanyId, "notion") });
+    queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeRefs(selectedCompanyId, "obsidian") });
+    queryClient.invalidateQueries({ queryKey: queryKeys.projects.list(selectedCompanyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(selectedCompanyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(selectedCompanyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(selectedCompanyId) });
+  }, [lastAppliedSyncUpdatedAt, notionSyncStatus, queryClient, selectedCompanyId]);
   const counts = useMemo(() => ({
     refs: refs.length,
     obsidian: refs.filter((ref) => ref.provider === "obsidian").length,
@@ -342,10 +442,10 @@ export function Knowledge() {
           <Button
             size="sm"
             onClick={() => syncNotionMutation.mutate()}
-            disabled={!selectedCompanyId || syncNotionMutation.isPending}
+            disabled={!selectedCompanyId || syncNotionMutation.isPending || notionSyncRunning}
           >
-            <RefreshCw className="h-4 w-4" />
-            Sync Notion
+            <RefreshCw className={`h-4 w-4 ${notionSyncRunning ? "animate-spin" : ""}`} />
+            {notionSyncRunning ? "Syncing Notion" : "Sync Notion"}
           </Button>
           <Button size="sm" onClick={() => indexMutation.mutate()} disabled={!selectedCompanyId || indexMutation.isPending}>
             <RefreshCw className="h-4 w-4" />
@@ -371,11 +471,13 @@ export function Knowledge() {
             size="sm"
             variant="destructive"
             onClick={() => {
-              if (window.confirm("Clear all knowledge refs for this company and remove Orion-created Notion mirror files from Obsidian?")) {
+              if (window.confirm(
+                "Reset Orion sync state for this company?\n\nThis deletes Orion-imported Notion projects/tasks/knowledge refs and generated Obsidian mirror files. It does not delete Notion pages, Third Party App credentials, or user-authored Obsidian files.",
+              )) {
                 clearRefsMutation.mutate();
               }
             }}
-            disabled={!selectedCompanyId || clearRefsMutation.isPending || refs.length === 0}
+            disabled={!selectedCompanyId || clearRefsMutation.isPending}
           >
             <Trash2 className="h-4 w-4" />
             Clear All
@@ -387,6 +489,13 @@ export function Knowledge() {
           {clearRefsMutation.error instanceof Error ? clearRefsMutation.error.message : "Failed to clear knowledge refs."}
         </div>
       ) : null}
+      {clearRefsMutation.data ? <ClearResultSummary result={clearRefsMutation.data} /> : null}
+      {syncNotionMutation.error ? (
+        <div className="border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {syncNotionMutation.error instanceof Error ? syncNotionMutation.error.message : "Failed to start Notion sync."}
+        </div>
+      ) : null}
+      {notionSyncStatus ? <NotionSyncProgress status={notionSyncStatus} /> : null}
 
       <div className="grid gap-4 md:grid-cols-4">
         <SummaryTile icon={Database} label="Refs" value={counts.refs} />

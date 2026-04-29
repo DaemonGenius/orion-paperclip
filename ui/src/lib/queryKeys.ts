@@ -9,6 +9,7 @@ export const queryKeys = {
     workflows: (companyId: string) => ["orion", "workflows", companyId] as const,
     workflow: (workflowId: string) => ["orion", "workflow", workflowId] as const,
     knowledgeRefs: (companyId: string, provider?: string) => ["orion", "knowledge-refs", companyId, provider ?? "all"] as const,
+    notionKnowledgeSyncStatus: (companyId: string) => ["orion", "knowledge", "notion-sync-status", companyId] as const,
     knowledgeProposals: (companyId: string) => ["orion", "knowledge-proposals", companyId] as const,
     syncConflicts: (companyId: string) => ["orion", "sync-conflicts", companyId] as const,
   },

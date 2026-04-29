@@ -229,6 +229,11 @@ function appendAcceptanceCriteriaToDescription(description: string | null | unde
   return base ? `${base}\n\n${criteriaMarkdown}` : criteriaMarkdown;
 }
 
+function normalizeIssuePrefix(value: string | null | undefined) {
+  const normalized = value?.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) ?? "";
+  return normalized || null;
+}
+
 function createIssueDependencyReadiness(issueId: string): IssueDependencyReadiness {
   return {
     issueId,
@@ -2594,24 +2599,48 @@ export function issueService(db: Db) {
         if (executionWorkspaceId) {
           await assertValidExecutionWorkspace(companyId, issueData.projectId, executionWorkspaceId, tx);
         }
-        // Self-correcting counter: use MAX(issue_number) + 1 if the counter
-        // has drifted below the actual max, preventing identifier collisions.
-        const [maxRow] = await tx
-          .select({ maxNum: sql<number>`coalesce(max(${issues.issueNumber}), 0)` })
-          .from(issues)
-          .where(eq(issues.companyId, companyId));
-        const currentMax = maxRow?.maxNum ?? 0;
+        const projectPrefix = issueData.projectId
+          ? await tx
+            .select({ issuePrefix: projects.issuePrefix })
+            .from(projects)
+            .where(and(eq(projects.companyId, companyId), eq(projects.id, issueData.projectId)))
+            .limit(1)
+            .then((rows) => normalizeIssuePrefix(rows[0]?.issuePrefix))
+          : null;
 
-        const [company] = await tx
-          .update(companies)
-          .set({
-            issueCounter: sql`greatest(${companies.issueCounter}, ${currentMax}) + 1`,
-          })
-          .where(eq(companies.id, companyId))
-          .returning({ issueCounter: companies.issueCounter, issuePrefix: companies.issuePrefix });
+        let issueNumber: number;
+        let identifier: string;
+        if (projectPrefix && issueData.projectId) {
+          // Project-scoped imports can use stable project tags like SHO-1 or ORN-1.
+          // The identifier remains globally unique, but the counter belongs to the
+          // project so unrelated projects do not consume each other's numbers.
+          const [projectCounter] = await tx
+            .update(projects)
+            .set({ issueCounter: sql`${projects.issueCounter} + 1`, updatedAt: new Date() })
+            .where(and(eq(projects.companyId, companyId), eq(projects.id, issueData.projectId)))
+            .returning({ issueCounter: projects.issueCounter });
+          issueNumber = projectCounter.issueCounter;
+          identifier = `${projectPrefix}-${issueNumber}`;
+        } else {
+          // Self-correcting counter: use MAX(issue_number) + 1 if the counter
+          // has drifted below the actual max, preventing identifier collisions.
+          const [maxRow] = await tx
+            .select({ maxNum: sql<number>`coalesce(max(${issues.issueNumber}), 0)` })
+            .from(issues)
+            .where(eq(issues.companyId, companyId));
+          const currentMax = maxRow?.maxNum ?? 0;
 
-        const issueNumber = company.issueCounter;
-        const identifier = `${company.issuePrefix}-${issueNumber}`;
+          const [company] = await tx
+            .update(companies)
+            .set({
+              issueCounter: sql`greatest(${companies.issueCounter}, ${currentMax}) + 1`,
+            })
+            .where(eq(companies.id, companyId))
+            .returning({ issueCounter: companies.issueCounter, issuePrefix: companies.issuePrefix });
+
+          issueNumber = company.issueCounter;
+          identifier = `${company.issuePrefix}-${issueNumber}`;
+        }
 
         const values = {
           ...issueData,

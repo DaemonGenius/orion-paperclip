@@ -8,9 +8,12 @@ import type {
   OrionWorkflowDefinition,
   ObsidianIndexResult,
   NotionKnowledgeSyncResult,
+  NotionKnowledgeSyncJobStatus,
+  StartNotionKnowledgeSyncResult,
   CompanyKnowledgeStructure,
   ExternalObjectRef,
   KnowledgeProposal,
+  KnowledgeClearResult,
   ProjectWorkspaceStructure,
   SyncConflict,
 } from "@paperclipai/shared";
@@ -39,8 +42,19 @@ export const orionApi = {
     maxBlockDepth?: number;
   }) =>
     api.post<NotionKnowledgeSyncResult>(`/orion/companies/${companyId}/knowledge/notion/sync`, data ?? {}),
+  startNotionKnowledgeSync: (companyId: string, data?: {
+    maxObjects?: number;
+    mirrorToObsidian?: boolean;
+    exportDatabaseRows?: boolean;
+    maxDatabaseRows?: number;
+    maxPageBlocks?: number;
+    maxBlockDepth?: number;
+  }) =>
+    api.post<StartNotionKnowledgeSyncResult>(`/orion/companies/${companyId}/knowledge/notion/sync/start`, data ?? {}),
+  notionKnowledgeSyncStatus: (companyId: string) =>
+    api.get<NotionKnowledgeSyncJobStatus>(`/orion/companies/${companyId}/knowledge/notion/sync/status`),
   clearKnowledgeRefs: (companyId: string) =>
-    api.delete<{ clearedRefs: number; removedMirrorFiles: number }>(`/orion/companies/${companyId}/knowledge/refs`),
+    api.delete<KnowledgeClearResult>(`/orion/companies/${companyId}/knowledge/refs`),
   knowledgeRefs: (companyId: string, provider?: "notion" | "obsidian") =>
     api.get<ExternalObjectRef[]>(`/orion/companies/${companyId}/knowledge/refs${provider ? `?provider=${provider}` : ""}`),
   knowledgeProposals: (companyId: string) =>

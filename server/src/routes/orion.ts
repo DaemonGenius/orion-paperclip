@@ -175,6 +175,23 @@ export function orionRoutes(db: Db) {
   );
 
   router.post(
+    "/orion/companies/:companyId/knowledge/notion/sync/start",
+    validate(syncNotionKnowledgeSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      res.status(202).json(await knowledge.startNotionKnowledgeSync(companyId, req.body));
+    },
+  );
+
+  router.get("/orion/companies/:companyId/knowledge/notion/sync/status", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    res.json(await knowledge.getNotionKnowledgeSyncStatus(companyId));
+  });
+
+  router.post(
     "/orion/companies/:companyId/knowledge/workspace-structure",
     validate(ensureCompanyKnowledgeStructureSchema),
     async (req, res) => {

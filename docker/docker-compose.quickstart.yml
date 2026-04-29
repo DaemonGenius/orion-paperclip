@@ -16,3 +16,4 @@ services:
       BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set}"
     volumes:
       - "${PAPERCLIP_DATA_DIR:-../data/docker-paperclip}:/paperclip"
+      - "${OBSIDIAN_LOCAL_DEV_VAULT_DIR:-E:/Cloud/Personal/110_Local Dev}:/vaults/local-dev"

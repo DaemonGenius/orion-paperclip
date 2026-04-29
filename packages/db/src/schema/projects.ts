@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, date, index, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, date, index, jsonb, integer } from "drizzle-orm/pg-core";
 import type { AgentEnvConfig } from "@paperclipai/shared";
 import { companies } from "./companies.js";
 import { goals } from "./goals.js";
@@ -13,6 +13,8 @@ export const projects = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     status: text("status").notNull().default("backlog"),
+    issuePrefix: text("issue_prefix"),
+    issueCounter: integer("issue_counter").notNull().default(0),
     leadAgentId: uuid("lead_agent_id").references(() => agents.id),
     targetDate: date("target_date"),
     color: text("color"),

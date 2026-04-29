@@ -1,17 +1,21 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import express from "express";
 import request from "supertest";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   companies,
+  companyExternalAppBindings,
   createDb,
   externalObjectRefs,
   getEmbeddedPostgresTestSupport,
+  issues,
   knowledgeProposals,
   projects,
+  syncConflicts,
+  syncCursors,
   startEmbeddedPostgresTestDatabase,
 } from "@paperclipai/db";
 import { errorHandler } from "../middleware/index.js";
@@ -191,5 +195,134 @@ describeEmbeddedPostgres("knowledge routes", () => {
       "company_standards",
       "company_wiki",
     ]);
+  });
+
+  it("clears Orion-imported knowledge, tasks, projects, and generated mirror files only", async () => {
+    await seedCompany();
+    const vaultPath = await mkdtemp(path.join(tmpdir(), "orion-knowledge-clear-"));
+    try {
+      await writeFile(path.join(vaultPath, "generated.md"), "# Generated\n", "utf8");
+      await writeFile(path.join(vaultPath, "manual.md"), "# Manual\n", "utf8");
+
+      const binding = await request(app)
+        .post(`/api/companies/${companyId}/external-apps/obsidian`)
+        .send({ config: { vaultPath } });
+      expect(binding.status, JSON.stringify(binding.body)).toBe(201);
+
+      const [importedProject, mixedProject] = await db
+        .insert(projects)
+        .values([
+          { companyId, name: "Imported Project", description: "Created from Notion project workspace sync." },
+          { companyId, name: "Mixed Project", description: "Created from Notion project workspace sync." },
+        ])
+        .returning();
+
+      const [importedIssue, manualIssue] = await db
+        .insert(issues)
+        .values([
+          {
+            companyId,
+            projectId: importedProject!.id,
+            title: "Imported task",
+            originKind: "notion_task",
+            originId: "notion-task-1",
+          },
+          {
+            companyId,
+            projectId: mixedProject!.id,
+            title: "Manual task",
+            originKind: "manual",
+          },
+        ])
+        .returning();
+
+      await db.insert(externalObjectRefs).values([
+        {
+          companyId,
+          provider: "notion",
+          localObjectType: "project_workspace",
+          localObjectId: importedProject!.id,
+          externalObjectId: "notion-imported-project",
+          ownerClass: "operator_owned",
+          checksum: "a",
+          metadata: { kind: "project_workspace_root", projectId: importedProject!.id },
+        },
+        {
+          companyId,
+          provider: "notion",
+          localObjectType: "project_workspace",
+          localObjectId: mixedProject!.id,
+          externalObjectId: "notion-mixed-project",
+          ownerClass: "operator_owned",
+          checksum: "b",
+          metadata: { kind: "project_workspace_root", projectId: mixedProject!.id },
+        },
+        {
+          companyId,
+          provider: "obsidian",
+          localObjectType: "notion_mirror",
+          localObjectId: "generated",
+          externalObjectId: "generated.md",
+          ownerClass: "knowledge_owned",
+          checksum: "c",
+          metadata: { sourceProvider: "notion", path: "generated.md" },
+        },
+        {
+          companyId,
+          provider: "obsidian",
+          localObjectType: "vault_doc",
+          localObjectId: "manual",
+          externalObjectId: "manual.md",
+          ownerClass: "knowledge_owned",
+          checksum: "d",
+          metadata: { path: "manual.md" },
+        },
+      ]);
+      await db.insert(syncCursors).values({ companyId, provider: "notion", scope: "knowledge", cursorJson: {} });
+      await db.insert(syncConflicts).values({
+        companyId,
+        provider: "notion",
+        localObjectType: "project_workspace",
+        localObjectId: importedProject!.id,
+        conflictJson: {},
+      });
+      await db.insert(knowledgeProposals).values({
+        companyId,
+        provider: "notion",
+        targetPath: "generated.md",
+        title: "Generated proposal",
+      });
+
+      const response = await request(app)
+        .delete(`/api/orion/companies/${companyId}/knowledge/refs`)
+        .send();
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      expect(response.body).toMatchObject({
+        clearedRefs: 4,
+        removedMirrorFiles: 1,
+        deletedImportedIssues: 1,
+        deletedImportedProjects: 1,
+        deletedKnowledgeProposals: 1,
+        deletedSyncConflicts: 1,
+        clearedSyncCursors: 1,
+      });
+      expect(response.body.skippedProjects).toHaveLength(1);
+      expect(response.body.skippedProjects[0].projectId).toBe(mixedProject!.id);
+
+      await expect(stat(path.join(vaultPath, "generated.md"))).rejects.toThrow();
+      await expect(stat(path.join(vaultPath, "manual.md"))).resolves.toBeTruthy();
+
+      expect(await db.select().from(externalObjectRefs)).toHaveLength(0);
+      expect(await db.select().from(syncCursors)).toHaveLength(0);
+      expect(await db.select().from(syncConflicts)).toHaveLength(0);
+      expect(await db.select().from(knowledgeProposals)).toHaveLength(0);
+      expect(await db.select().from(companyExternalAppBindings)).toHaveLength(1);
+      expect(await db.select().from(issues).where(eq(issues.id, importedIssue!.id))).toHaveLength(0);
+      expect(await db.select().from(issues).where(eq(issues.id, manualIssue!.id))).toHaveLength(1);
+      expect(await db.select().from(projects).where(eq(projects.id, importedProject!.id))).toHaveLength(0);
+      expect(await db.select().from(projects).where(eq(projects.id, mixedProject!.id))).toHaveLength(1);
+    } finally {
+      await rm(vaultPath, { recursive: true, force: true });
+    }
   });
 });

@@ -1,14 +1,17 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import {
   companies,
   companyExternalAppBindings,
   externalObjectRefs,
   issues,
+  issueInboxArchives,
+  issueReadStates,
   knowledgeProposals,
   projects,
+  syncConflicts,
   syncCursors,
   type Db,
 } from "@paperclipai/db";
@@ -20,9 +23,12 @@ import type {
   EnsureCompanyKnowledgeStructure,
   EnsureProjectWorkspaceStructure,
   IndexObsidianVault,
+  KnowledgeClearResult,
   ObsidianIndexResult,
+  NotionKnowledgeSyncJobStatus,
   ProjectWorkspaceSectionKey,
   ProjectWorkspaceStructure,
+  StartNotionKnowledgeSyncResult,
   SyncNotionKnowledge,
   NotionKnowledgeSyncResult,
   SyncOwnerClass,
@@ -36,6 +42,14 @@ function sha256(value: string | Buffer) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+type NotionKnowledgeProgressPatch = {
+  jobId: string;
+  stage: string;
+  message: string;
+  current?: number;
+  total?: number | null;
+};
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -45,6 +59,68 @@ function readVaultPath(config: Record<string, unknown>) {
   if (!vaultPath) throw unprocessable("Obsidian vault path is not configured");
   if (!path.isAbsolute(vaultPath)) throw unprocessable("Obsidian vault path must be absolute");
   return path.resolve(vaultPath);
+}
+
+function isTransientFileWriteError(error: unknown) {
+  const code = typeof error === "object" && error && "code" in error
+    ? String((error as { code?: unknown }).code ?? "")
+    : "";
+  return code === "EIO" || code === "EBUSY" || code === "EPERM";
+}
+
+function fileWriteErrorCode(error: unknown) {
+  return typeof error === "object" && error && "code" in error
+    ? String((error as { code?: unknown }).code ?? "UNKNOWN")
+    : "UNKNOWN";
+}
+
+function fileWriteErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withTransientFileWriteRetry(action: () => Promise<void>) {
+  const delays = [100, 250, 500];
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    try {
+      await action();
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!isTransientFileWriteError(error) || attempt === delays.length) break;
+      await delay(delays[attempt]);
+    }
+  }
+  throw lastError;
+}
+
+async function ensureObsidianVaultReady(vaultPath: string) {
+  const rootStat = await stat(vaultPath).catch(() => null);
+  if (!rootStat?.isDirectory()) {
+    throw unprocessable(
+      `Obsidian vault path is not mounted or does not exist: ${vaultPath}`,
+      { vaultPath },
+    );
+  }
+
+  const healthcheckDir = path.join(vaultPath, ".orion", "healthcheck");
+  const probePath = path.join(healthcheckDir, `sync-probe-${Date.now()}.txt`);
+  try {
+    await mkdir(healthcheckDir, { recursive: true });
+    await writeFile(probePath, "orion knowledge sync probe\n", "utf8");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw unprocessable(
+      `Obsidian vault path is not writable: ${vaultPath}`,
+      { vaultPath, error: message },
+    );
+  } finally {
+    await rm(probePath, { force: true }).catch(() => undefined);
+  }
 }
 
 function normalizeRelativePath(value: string) {
@@ -182,6 +258,59 @@ function normalizeTitle(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
+function normalizeProjectName(value: string) {
+  return value
+    .trim()
+    .replace(/\s+Command\s+Center$/i, "")
+    .replace(/\s+Project$/i, "")
+    .trim();
+}
+
+function normalizeProjectIssuePrefix(value: string | null | undefined) {
+  const normalized = value?.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) ?? "";
+  return normalized || null;
+}
+
+function deriveProjectIssuePrefix(projectName: string) {
+  const normalized = normalizeTitle(projectName);
+  const explicit: Record<string, string> = {
+    homelab: "HOME",
+    shootersunion: "SHO",
+    orion: "ORN",
+  };
+  const compact = normalized.replace(/\s+/g, "");
+  if (explicit[compact]) return explicit[compact];
+  return normalizeProjectIssuePrefix(projectName.replace(/[^A-Za-z0-9]/g, "").slice(0, 4)) ?? "PROJ";
+}
+
+function isNotionProjectContainerTitle(value: string) {
+  const normalized = normalizeTitle(value);
+  return normalized === "projects"
+    || normalized === "internal projects"
+    || normalized === "personal projects ventures"
+    || normalized === "personal projects and ventures"
+    || normalized === "client projects";
+}
+
+function isSharedCompanyKnowledgeTitle(value: string) {
+  return normalizeTitle(value) === "shared company knowledge";
+}
+
+function isLikelyNotionProjectRoot(title: string, ancestors: string[]) {
+  const normalized = normalizeTitle(title);
+  if (isNotionProjectContainerTitle(title) || isSharedCompanyKnowledgeTitle(title)) return false;
+  const insideProjectContainer = ancestors.some(isNotionProjectContainerTitle);
+  return insideProjectContainer && (normalized.endsWith(" project") || normalized.includes(" command center"));
+}
+
+type NotionClassification = {
+  localObjectType: string;
+  localObjectId: string;
+  kind: string;
+  sectionKey: string | null;
+  ownerClass: SyncOwnerClass;
+};
+
 function plainText(richText: unknown): string {
   if (!Array.isArray(richText)) return "";
   return richText
@@ -274,33 +403,42 @@ function renderBlockMarkdown(block: Record<string, unknown>, childMarkdown = "",
   }
 }
 
-function classifyNotionObject(title: string, objectId: string, projectsByName: Map<string, string>, companyId: string) {
+function classifyNotionObject(
+  title: string,
+  objectId: string,
+  projectsByName: Map<string, string>,
+  companyId: string,
+  preferredProjectId?: string | null,
+): NotionClassification {
   const normalized = normalizeTitle(title);
-  const projectEntry = Array.from(projectsByName.entries()).find(([name]) => normalized.includes(normalizeTitle(name)));
+  const projectEntry = preferredProjectId
+    ? null
+    : Array.from(projectsByName.entries()).find(([name]) => normalized.includes(normalizeTitle(name)));
   const projectId = projectEntry?.[1] ?? null;
+  const effectiveProjectId = preferredProjectId ?? projectId;
 
   if (normalized.includes("goals") || normalized.includes("roadmap")) {
-    return projectId ? { localObjectType: "project_goals_roadmap", localObjectId: `${projectId}:goals_roadmap`, kind: "project_workspace_section", sectionKey: "goals_roadmap", ownerClass: "operator_owned" as SyncOwnerClass }
+    return effectiveProjectId ? { localObjectType: "project_goals_roadmap", localObjectId: `${effectiveProjectId}:goals_roadmap`, kind: "project_workspace_section", sectionKey: "goals_roadmap", ownerClass: "operator_owned" as SyncOwnerClass }
       : { localObjectType: "company_goals_roadmap", localObjectId: `${companyId}:goals_roadmap`, kind: "company_workspace_section", sectionKey: "goals_roadmap", ownerClass: "operator_owned" as SyncOwnerClass };
   }
   if (normalized.includes("task")) {
-    return projectId ? { localObjectType: "project_tasks", localObjectId: `${projectId}:tasks`, kind: "project_workspace_section", sectionKey: "tasks", ownerClass: "operator_owned" as SyncOwnerClass }
+    return effectiveProjectId ? { localObjectType: "project_tasks", localObjectId: `${effectiveProjectId}:tasks`, kind: "project_workspace_section", sectionKey: "tasks", ownerClass: "operator_owned" as SyncOwnerClass }
       : { localObjectType: "company_tasks", localObjectId: `${companyId}:tasks`, kind: "company_workspace_section", sectionKey: "tasks", ownerClass: "operator_owned" as SyncOwnerClass };
   }
   if (normalized.includes("implementation") || normalized.includes("plan")) {
-    return projectId ? { localObjectType: "project_implementation_plans", localObjectId: `${projectId}:implementation_plans`, kind: "project_workspace_section", sectionKey: "implementation_plans", ownerClass: "knowledge_owned" as SyncOwnerClass }
+    return effectiveProjectId ? { localObjectType: "project_implementation_plans", localObjectId: `${effectiveProjectId}:implementation_plans`, kind: "project_workspace_section", sectionKey: "implementation_plans", ownerClass: "knowledge_owned" as SyncOwnerClass }
       : { localObjectType: "company_implementation_plans", localObjectId: `${companyId}:implementation_plans`, kind: "company_workspace_section", sectionKey: "implementation_plans", ownerClass: "knowledge_owned" as SyncOwnerClass };
   }
   if (normalized.includes("decision")) {
-    return projectId ? { localObjectType: "project_decision_log", localObjectId: `${projectId}:decision_log`, kind: "project_workspace_section", sectionKey: "decision_log", ownerClass: "knowledge_owned" as SyncOwnerClass }
+    return effectiveProjectId ? { localObjectType: "project_decision_log", localObjectId: `${effectiveProjectId}:decision_log`, kind: "project_workspace_section", sectionKey: "decision_log", ownerClass: "knowledge_owned" as SyncOwnerClass }
       : { localObjectType: "company_decisions", localObjectId: `${companyId}:decisions`, kind: "company_knowledge_section", sectionKey: "decisions", ownerClass: "knowledge_owned" as SyncOwnerClass };
   }
   if (normalized.includes("review") || normalized.includes("checklist")) {
-    return projectId ? { localObjectType: "project_review_checklist", localObjectId: `${projectId}:review_checklist`, kind: "project_workspace_section", sectionKey: "review_checklist", ownerClass: "knowledge_owned" as SyncOwnerClass }
+    return effectiveProjectId ? { localObjectType: "project_review_checklist", localObjectId: `${effectiveProjectId}:review_checklist`, kind: "project_workspace_section", sectionKey: "review_checklist", ownerClass: "knowledge_owned" as SyncOwnerClass }
       : { localObjectType: "company_review_checklist", localObjectId: `${companyId}:review_checklist`, kind: "company_workspace_section", sectionKey: "review_checklist", ownerClass: "knowledge_owned" as SyncOwnerClass };
   }
   if (normalized.includes("wiki")) {
-    return projectId ? { localObjectType: "project_wiki", localObjectId: `${projectId}:wiki`, kind: "project_workspace_section", sectionKey: "wiki", ownerClass: "knowledge_owned" as SyncOwnerClass }
+    return effectiveProjectId ? { localObjectType: "project_wiki", localObjectId: `${effectiveProjectId}:wiki`, kind: "project_workspace_section", sectionKey: "wiki", ownerClass: "knowledge_owned" as SyncOwnerClass }
       : { localObjectType: "company_wiki", localObjectId: `${companyId}:wiki`, kind: "company_knowledge_section", sectionKey: "wiki", ownerClass: "knowledge_owned" as SyncOwnerClass };
   }
   if (normalized.includes("standard")) {
@@ -392,7 +530,17 @@ function taskProjectNameFromProperties(properties: unknown) {
   ]);
 }
 
-function isTasksClassification(classification: ReturnType<typeof classifyNotionObject>) {
+function taskProjectTagFromProperties(properties: unknown) {
+  return normalizeProjectIssuePrefix(propertyTextByNames(properties, [
+    "project tag",
+    "project tag name",
+    "project key",
+    "project prefix",
+    "issue prefix",
+  ]));
+}
+
+function isTasksClassification(classification: NotionClassification) {
   return classification.sectionKey === "tasks" || classification.localObjectType.includes("tasks");
 }
 
@@ -442,11 +590,14 @@ function encodeMarkdownHref(relativePath: string) {
     .join("/");
 }
 
-function notionMirrorRelativePath(classification: ReturnType<typeof classifyNotionObject>, title: string) {
+function notionMirrorRelativePath(classification: NotionClassification, title: string, projectName?: string | null) {
   const filename = `${safeFilename(title)}.md`;
+  if (classification.kind === "project_workspace_root") {
+    return normalizeRelativePath(path.join("Projects", safeFilename(projectName ?? title), filename));
+  }
   if (classification.kind === "project_workspace_section") {
     const projectId = String(classification.localObjectId).split(":")[0] ?? "unknown-project";
-    return normalizeRelativePath(path.join("Projects", projectId, filename));
+    return normalizeRelativePath(path.join("Projects", safeFilename(projectName ?? projectId), filename));
   }
   if (classification.kind === "company_knowledge_section") {
     return normalizeRelativePath(path.join("Shared Company Knowledge", filename));
@@ -740,21 +891,51 @@ export function knowledgeService(db: Db) {
     lastEditedAt: Date | null;
     metadata: Record<string, unknown>;
   }) {
-    const fullPath = path.join(input.vaultPath, input.relativePath);
-    await mkdir(path.dirname(fullPath), { recursive: true });
-    await writeFile(fullPath, input.markdown, "utf8");
+    const vaultRoot = path.resolve(input.vaultPath);
+    const relativePath = normalizeRelativePath(input.relativePath);
+    if (!relativePath || relativePath.includes("..")) {
+      throw unprocessable("Unsafe Obsidian mirror path", { relativePath: input.relativePath });
+    }
+    const fullPath = path.resolve(vaultRoot, relativePath);
+    const vaultPrefix = `${vaultRoot}${path.sep}`;
+    if (fullPath !== vaultRoot && !fullPath.startsWith(vaultPrefix)) {
+      throw unprocessable("Obsidian mirror path escapes the configured vault", {
+        vaultPath: vaultRoot,
+        relativePath: input.relativePath,
+      });
+    }
+    try {
+      await withTransientFileWriteRetry(async () => {
+        await mkdir(path.dirname(fullPath), { recursive: true });
+        await writeFile(fullPath, input.markdown, "utf8");
+      });
+    } catch (error) {
+      const code = fileWriteErrorCode(error);
+      const message = fileWriteErrorMessage(error);
+      throw unprocessable(
+        `Failed to write Obsidian mirror file ${relativePath}: ${code}: ${message}`,
+        {
+          vaultPath: vaultRoot,
+          relativePath,
+          fullPath,
+          title: input.title,
+          sourceNotionObjectId: input.objectId,
+          code,
+        },
+      );
+    }
     return upsertExternalRefByExternal({
       companyId: input.companyId,
       provider: "obsidian",
       localObjectType: "notion_mirror",
       localObjectId: `notion:${input.objectId}`,
-      externalObjectId: input.relativePath,
+      externalObjectId: relativePath,
       externalUrl: null,
       ownerClass: input.ownerClass,
       checksum: sha256(input.markdown),
       metadata: {
         title: input.title,
-        path: input.relativePath,
+        path: relativePath,
         sourceProvider: "notion",
         sourceNotionObjectId: input.objectId,
         ...input.metadata,
@@ -772,22 +953,63 @@ export function knowledgeService(db: Db) {
     fallbackProjectId: string | null;
     projectsByName: Map<string, string>;
     projectNamesById: Map<string, string>;
+    projectPrefixesById: Map<string, string | null>;
+    projectsByPrefix: Map<string, string>;
+    projectArchivedAtById?: Map<string, Date | null>;
   }) {
+    const notionProjectTag = taskProjectTagFromProperties(input.properties);
+    if (notionProjectTag) {
+      const existingByTag = input.projectsByPrefix.get(notionProjectTag);
+      if (existingByTag) {
+        if (input.projectArchivedAtById?.get(existingByTag)) {
+          const updated = await projectsSvc.update(existingByTag, { archivedAt: null });
+          if (updated) input.projectArchivedAtById.set(existingByTag, updated.archivedAt);
+        }
+        return existingByTag;
+      }
+    }
+
     const notionProjectName = taskProjectNameFromProperties(input.properties);
     if (!notionProjectName) return input.fallbackProjectId;
 
     const normalized = normalizeTitle(notionProjectName);
     const existing = Array.from(input.projectsByName.entries())
       .find(([name]) => normalizeTitle(name) === normalized);
-    if (existing) return existing[1];
+    if (existing) {
+      const existingId = existing[1];
+      const patch: Partial<typeof projects.$inferInsert> = {};
+      if (input.projectArchivedAtById?.get(existingId)) {
+        patch.archivedAt = null;
+      }
+      if (notionProjectTag && !input.projectPrefixesById.get(existingId)) {
+        patch.issuePrefix = notionProjectTag;
+      }
+      if (Object.keys(patch).length > 0) {
+        const updated = await projectsSvc.update(existingId, patch);
+        if (updated) {
+          input.projectsByName.set(updated.name, updated.id);
+          input.projectNamesById.set(updated.id, updated.name);
+          input.projectArchivedAtById?.set(updated.id, updated.archivedAt);
+          const normalizedPrefix = normalizeProjectIssuePrefix(updated.issuePrefix);
+          input.projectPrefixesById.set(updated.id, normalizedPrefix);
+          if (normalizedPrefix) input.projectsByPrefix.set(normalizedPrefix, updated.id);
+        }
+      }
+      return existingId;
+    }
 
+    const issuePrefix = notionProjectTag ?? deriveProjectIssuePrefix(notionProjectName);
     const project = await projectsSvc.create(input.companyId, {
       name: notionProjectName,
       description: "Created from Notion task sync.",
       status: "in_progress",
+      issuePrefix,
     });
     input.projectsByName.set(project.name, project.id);
     input.projectNamesById.set(project.id, project.name);
+    input.projectPrefixesById.set(project.id, normalizeProjectIssuePrefix(project.issuePrefix));
+    input.projectArchivedAtById?.set(project.id, project.archivedAt);
+    if (project.issuePrefix) input.projectsByPrefix.set(project.issuePrefix, project.id);
     return project.id;
   }
 
@@ -912,7 +1134,158 @@ export function knowledgeService(db: Db) {
     return ref! as ExternalObjectRef;
   }
 
+  function toNotionKnowledgeSyncJobStatus(row: typeof syncCursors.$inferSelect | null): NotionKnowledgeSyncJobStatus {
+    const cursor = asRecord(row?.cursorJson);
+    const progress = asRecord(cursor.progress);
+    const result = asRecord(cursor.result);
+    const hasResult = Object.keys(result).length > 0;
+    const status = row?.status === "running" || row?.status === "queued" || row?.status === "error" || row?.status === "completed"
+      ? row.status
+      : "idle";
+
+    return {
+      provider: "notion",
+      scope: "knowledge_root",
+      status,
+      jobId: typeof cursor.jobId === "string" ? cursor.jobId : null,
+      stage: typeof cursor.stage === "string" ? cursor.stage : null,
+      message: typeof cursor.message === "string" ? cursor.message : null,
+      progress: {
+        current: typeof progress.current === "number" ? progress.current : 0,
+        total: typeof progress.total === "number" ? progress.total : null,
+      },
+      result: hasResult ? result as NotionKnowledgeSyncJobStatus["result"] : null,
+      error: row?.lastError ?? null,
+      startedAt: typeof cursor.startedAt === "string" ? cursor.startedAt : null,
+      updatedAt: row?.updatedAt?.toISOString() ?? null,
+      lastSyncedAt: row?.lastSyncedAt?.toISOString() ?? null,
+    };
+  }
+
+  async function getNotionKnowledgeSyncCursor(companyId: string) {
+    return db
+      .select()
+      .from(syncCursors)
+      .where(and(
+        eq(syncCursors.companyId, companyId),
+        eq(syncCursors.provider, "notion"),
+        eq(syncCursors.scope, "knowledge_root"),
+      ))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+  }
+
+  async function updateNotionKnowledgeSyncProgress(companyId: string, patch: NotionKnowledgeProgressPatch) {
+    const now = new Date();
+    const existing = await getNotionKnowledgeSyncCursor(companyId);
+    const existingCursor = asRecord(existing?.cursorJson);
+    const startedAt = typeof existingCursor.startedAt === "string" ? existingCursor.startedAt : now.toISOString();
+    const currentProgress = asRecord(existingCursor.progress);
+    const cursorJson = {
+      ...existingCursor,
+      jobId: patch.jobId,
+      startedAt,
+      stage: patch.stage,
+      message: patch.message,
+      progress: {
+        current: patch.current ?? (typeof currentProgress.current === "number" ? currentProgress.current : 0),
+        total: patch.total !== undefined ? patch.total : (typeof currentProgress.total === "number" ? currentProgress.total : null),
+      },
+    };
+
+    await db
+      .insert(syncCursors)
+      .values({
+        companyId,
+        provider: "notion",
+        scope: "knowledge_root",
+        cursorJson,
+        status: "running",
+        lastError: null,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [syncCursors.companyId, syncCursors.provider, syncCursors.scope],
+        set: {
+          cursorJson,
+          status: "running",
+          lastError: null,
+          updatedAt: now,
+        },
+      });
+  }
+
   return {
+    getNotionKnowledgeSyncStatus: async (companyId: string): Promise<NotionKnowledgeSyncJobStatus> => {
+      const cursor = await getNotionKnowledgeSyncCursor(companyId);
+      return toNotionKnowledgeSyncJobStatus(cursor);
+    },
+
+    startNotionKnowledgeSync: async (companyId: string, input: SyncNotionKnowledge): Promise<StartNotionKnowledgeSyncResult> => {
+      const existing = await getNotionKnowledgeSyncCursor(companyId);
+      if (existing?.status === "running" || existing?.status === "queued") {
+        return { started: false, status: toNotionKnowledgeSyncJobStatus(existing) };
+      }
+
+      const jobId = randomUUID();
+      const now = new Date();
+      await db
+        .insert(syncCursors)
+        .values({
+          companyId,
+          provider: "notion",
+          scope: "knowledge_root",
+          cursorJson: {
+            jobId,
+            startedAt: now.toISOString(),
+            stage: "queued",
+            message: "Notion sync queued.",
+            progress: { current: 0, total: null },
+          },
+          status: "queued",
+          lastError: null,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [syncCursors.companyId, syncCursors.provider, syncCursors.scope],
+          set: {
+            cursorJson: {
+              jobId,
+              startedAt: now.toISOString(),
+              stage: "queued",
+              message: "Notion sync queued.",
+              progress: { current: 0, total: null },
+            },
+            status: "queued",
+            lastError: null,
+            updatedAt: now,
+          },
+        });
+
+      setImmediate(() => {
+        void (async () => {
+          try {
+            await updateNotionKnowledgeSyncProgress(companyId, {
+              jobId,
+              stage: "starting",
+              message: "Preparing Notion and Obsidian connections.",
+              current: 0,
+              total: null,
+            });
+            await knowledgeService(db).syncNotionKnowledge(companyId, input, {
+              jobId,
+              onProgress: (patch) => updateNotionKnowledgeSyncProgress(companyId, { ...patch, jobId }),
+            });
+          } catch {
+            // syncNotionKnowledge records the error state in sync_cursors.
+          }
+        })();
+      });
+
+      const cursor = await getNotionKnowledgeSyncCursor(companyId);
+      return { started: true, status: toNotionKnowledgeSyncJobStatus(cursor) };
+    },
+
     listRefs: (companyId: string, provider?: string | null) =>
       db
         .select()
@@ -922,12 +1295,29 @@ export function knowledgeService(db: Db) {
           : eq(externalObjectRefs.companyId, companyId))
         .orderBy(desc(externalObjectRefs.updatedAt)),
 
-    clearKnowledgeRefs: async (companyId: string) => {
+    clearKnowledgeRefs: async (companyId: string): Promise<KnowledgeClearResult> => {
       const refs = await db
         .select()
         .from(externalObjectRefs)
         .where(eq(externalObjectRefs.companyId, companyId));
       let removedMirrorFiles = 0;
+      const skippedProjects: KnowledgeClearResult["skippedProjects"] = [];
+      const importedProjectIds = new Set<string>();
+
+      for (const ref of refs) {
+        if (ref.provider !== "notion") continue;
+        const metadata = asRecord(ref.metadata);
+        const projectId = typeof metadata.projectId === "string" ? metadata.projectId : null;
+        const kind = typeof metadata.kind === "string" ? metadata.kind : null;
+        const source = typeof metadata.source === "string" ? metadata.source : null;
+        if (
+          ref.localObjectType === "project_workspace"
+          && projectId
+          && (kind === "project_workspace_root" || source === "notion_project_root")
+        ) {
+          importedProjectIds.add(projectId);
+        }
+      }
 
       const obsidianBinding = await db
         .select()
@@ -958,12 +1348,95 @@ export function knowledgeService(db: Db) {
         }
       }
 
+      const importedIssues = await db
+        .select({ id: issues.id })
+        .from(issues)
+        .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "notion_task")));
+      let deletedImportedIssues = 0;
+      const importedIssueIds = importedIssues.map((issue) => issue.id);
+      if (importedIssueIds.length > 0) {
+        await db
+          .delete(issueReadStates)
+          .where(and(
+            eq(issueReadStates.companyId, companyId),
+            inArray(issueReadStates.issueId, importedIssueIds),
+          ));
+        await db
+          .delete(issueInboxArchives)
+          .where(and(
+            eq(issueInboxArchives.companyId, companyId),
+            inArray(issueInboxArchives.issueId, importedIssueIds),
+          ));
+      }
+      for (const issue of importedIssues) {
+        const removed = await issuesSvc.remove(issue.id);
+        if (removed) deletedImportedIssues += 1;
+      }
+
+      let deletedImportedProjects = 0;
+      for (const projectId of importedProjectIds) {
+        const project = await db
+          .select({ id: projects.id, name: projects.name })
+          .from(projects)
+          .where(and(eq(projects.companyId, companyId), eq(projects.id, projectId)))
+          .limit(1)
+          .then((rows) => rows[0] ?? null);
+        if (!project) continue;
+
+        const remainingNonNotionIssue = await db
+          .select({ id: issues.id })
+          .from(issues)
+          .where(and(eq(issues.companyId, companyId), eq(issues.projectId, projectId), ne(issues.originKind, "notion_task")))
+          .limit(1)
+          .then((rows) => rows[0] ?? null);
+        if (remainingNonNotionIssue) {
+          skippedProjects.push({
+            projectId,
+            projectName: project.name,
+            reason: "Project still has non-Notion issues.",
+          });
+          continue;
+        }
+
+        try {
+          const removed = await projectsSvc.remove(projectId);
+          if (removed) deletedImportedProjects += 1;
+        } catch (err) {
+          skippedProjects.push({
+            projectId,
+            projectName: project.name,
+            reason: err instanceof Error ? err.message : "Project has dependencies that prevented deletion.",
+          });
+        }
+      }
+
+      const deletedKnowledgeProposals = await db
+        .delete(knowledgeProposals)
+        .where(eq(knowledgeProposals.companyId, companyId))
+        .returning({ id: knowledgeProposals.id })
+        .then((rows) => rows.length);
+      const deletedSyncConflicts = await db
+        .delete(syncConflicts)
+        .where(eq(syncConflicts.companyId, companyId))
+        .returning({ id: syncConflicts.id })
+        .then((rows) => rows.length);
+      const clearedSyncCursors = await db
+        .delete(syncCursors)
+        .where(eq(syncCursors.companyId, companyId))
+        .returning({ id: syncCursors.id })
+        .then((rows) => rows.length);
+
       await db.delete(externalObjectRefs).where(eq(externalObjectRefs.companyId, companyId));
-      await db.delete(syncCursors).where(eq(syncCursors.companyId, companyId));
 
       return {
         clearedRefs: refs.length,
         removedMirrorFiles,
+        deletedImportedIssues,
+        deletedImportedProjects,
+        deletedKnowledgeProposals,
+        deletedSyncConflicts,
+        clearedSyncCursors,
+        skippedProjects,
       };
     },
 
@@ -1334,7 +1807,20 @@ export function knowledgeService(db: Db) {
       };
     },
 
-    syncNotionKnowledge: async (companyId: string, input: SyncNotionKnowledge): Promise<NotionKnowledgeSyncResult> => {
+    syncNotionKnowledge: async (
+      companyId: string,
+      input: SyncNotionKnowledge,
+      progress?: {
+        jobId: string;
+        onProgress: (patch: Omit<NotionKnowledgeProgressPatch, "jobId">) => Promise<void>;
+      },
+    ): Promise<NotionKnowledgeSyncResult> => {
+      await progress?.onProgress({
+        stage: "initializing",
+        message: "Loading company and Notion binding.",
+        current: 0,
+        total: null,
+      });
       const company = await db
         .select()
         .from(companies)
@@ -1351,24 +1837,169 @@ export function knowledgeService(db: Db) {
 
       let obsidianVaultPath: string | null = null;
       if (input.mirrorToObsidian) {
+        await progress?.onProgress({
+          stage: "checking_obsidian",
+          message: "Checking Obsidian vault mount.",
+          current: 0,
+          total: null,
+        });
         const obsidianBinding = await getObsidianBinding(companyId);
         obsidianVaultPath = readVaultPath(asRecord(obsidianBinding.configJson));
+        await ensureObsidianVaultReady(obsidianVaultPath);
       }
 
       const companyProjects = await db
-        .select({ id: projects.id, name: projects.name })
+        .select({ id: projects.id, name: projects.name, issuePrefix: projects.issuePrefix, archivedAt: projects.archivedAt })
         .from(projects)
         .where(eq(projects.companyId, companyId));
       const projectsByName = new Map(companyProjects.map((project) => [project.name, project.id]));
       const projectNamesById = new Map(companyProjects.map((project) => [project.id, project.name]));
+      const projectPrefixesById = new Map(companyProjects.map((project) => [project.id, normalizeProjectIssuePrefix(project.issuePrefix)]));
+      const projectArchivedAtById = new Map(companyProjects.map((project) => [project.id, project.archivedAt]));
+      const projectsByPrefix = new Map(
+        companyProjects
+          .map((project) => [normalizeProjectIssuePrefix(project.issuePrefix), project.id] as const)
+          .filter((entry): entry is [string, string] => Boolean(entry[0])),
+      );
 
       const syncedAt = new Date();
       const refs: ExternalObjectRef[] = [];
       const obsidianRefs: ExternalObjectRef[] = [];
       let exportedDatabaseRows = 0;
       let importedTasks = 0;
+      let importedProjects = 0;
+
+      function findProjectIdByName(name: string) {
+        const normalized = normalizeTitle(name);
+        return Array.from(projectsByName.entries())
+          .find(([projectName]) => normalizeTitle(projectName) === normalized)?.[1] ?? null;
+      }
+
+      async function reviveNotionProjectIfNeeded(projectId: string, issuePrefix: string) {
+        const patch: Partial<typeof projects.$inferInsert> = {};
+        if (projectArchivedAtById.get(projectId)) {
+          patch.archivedAt = null;
+        }
+        if (issuePrefix && !projectPrefixesById.get(projectId)) {
+          patch.issuePrefix = issuePrefix;
+        }
+        if (Object.keys(patch).length === 0) return;
+
+        const updated = await projectsSvc.update(projectId, patch);
+        if (!updated) return;
+        projectsByName.set(updated.name, updated.id);
+        projectNamesById.set(updated.id, updated.name);
+        projectArchivedAtById.set(updated.id, updated.archivedAt);
+        const normalizedPrefix = normalizeProjectIssuePrefix(updated.issuePrefix);
+        projectPrefixesById.set(updated.id, normalizedPrefix);
+        if (normalizedPrefix) projectsByPrefix.set(normalizedPrefix, updated.id);
+      }
+
+      async function ensureProjectFromNotionRoot(title: string) {
+        const projectName = normalizeProjectName(title);
+        const existingId = findProjectIdByName(projectName);
+        const issuePrefix = deriveProjectIssuePrefix(projectName);
+        if (existingId) {
+          await reviveNotionProjectIfNeeded(existingId, issuePrefix);
+          return { id: existingId, name: projectNamesById.get(existingId) ?? projectName, created: false };
+        }
+
+        const project = await projectsSvc.create(companyId, {
+          name: projectName,
+          description: "Created from Notion project workspace sync.",
+          status: "in_progress",
+          issuePrefix,
+        });
+        projectsByName.set(project.name, project.id);
+        projectNamesById.set(project.id, project.name);
+        projectPrefixesById.set(project.id, normalizeProjectIssuePrefix(project.issuePrefix));
+        projectArchivedAtById.set(project.id, project.archivedAt);
+        if (project.issuePrefix) projectsByPrefix.set(project.issuePrefix, project.id);
+        importedProjects += 1;
+        return { id: project.id, name: project.name, created: true };
+      }
+
+      type NotionDiscoveredObject = {
+        blockType: "child_page" | "child_database";
+        objectId: string;
+        fallbackTitle: string;
+        projectId: string | null;
+        projectName: string | null;
+        source: string;
+        isProjectRoot: boolean;
+      };
+
+      async function discoverNotionObjects(rootBlockId: string) {
+        const discovered: NotionDiscoveredObject[] = [];
+        const maxDepth = Math.max(2, Math.min(input.maxBlockDepth, 8));
+
+        async function walk(
+          blockId: string,
+          ancestors: string[],
+          projectContext: { id: string; name: string } | null,
+          depth: number,
+        ) {
+          if (discovered.length >= input.maxObjects || depth > maxDepth) return;
+          const children = await fetchNotionBlockChildren(token, blockId, input.maxObjects);
+          for (const block of children) {
+            if (discovered.length >= input.maxObjects) break;
+            const blockType = String(block.type ?? "");
+            if (blockType !== "child_page" && blockType !== "child_database") continue;
+
+            const objectId = notionObjectId(block);
+            if (!objectId) continue;
+            const fallbackTitle = titleFromBlock(block);
+
+            if (blockType === "child_database") {
+              discovered.push({
+                blockType,
+                objectId,
+                fallbackTitle,
+                projectId: projectContext?.id ?? null,
+                projectName: projectContext?.name ?? null,
+                source: projectContext ? "notion_project_child_database" : "notion_root_child_database",
+                isProjectRoot: false,
+              });
+              continue;
+            }
+
+            const isContainer = isNotionProjectContainerTitle(fallbackTitle) || isSharedCompanyKnowledgeTitle(fallbackTitle);
+            const isProjectRoot = !projectContext && isLikelyNotionProjectRoot(fallbackTitle, ancestors);
+            const nextProject = isProjectRoot
+              ? await ensureProjectFromNotionRoot(fallbackTitle)
+              : projectContext;
+
+            if (!isContainer) {
+              discovered.push({
+                blockType,
+                objectId,
+                fallbackTitle,
+                projectId: nextProject?.id ?? null,
+                projectName: nextProject?.name ?? null,
+                source: isProjectRoot
+                  ? "notion_project_root"
+                  : nextProject
+                    ? "notion_project_child_page"
+                    : "notion_root_child_page",
+                isProjectRoot,
+              });
+            }
+
+            await walk(objectId, [...ancestors, fallbackTitle], nextProject, depth + 1);
+          }
+        }
+
+        await walk(rootBlockId, [], null, 0);
+        return discovered;
+      }
 
       try {
+        await progress?.onProgress({
+          stage: "reading_root",
+          message: "Reading Notion root page.",
+          current: 0,
+          total: null,
+        });
         const root = await notionFetch(token, `/pages/${encodeURIComponent(rootPageId)}`);
         refs.push(await upsertExternalRef({
           companyId,
@@ -1391,40 +2022,61 @@ export function knowledgeService(db: Db) {
           updatedAt: syncedAt,
         }));
 
-        const children = await fetchNotionBlockChildren(token, rootPageId, input.maxObjects);
-        const notionObjects = children
-          .filter((block) => {
-            const type = String(block.type ?? "");
-            return type === "child_page" || type === "child_database";
-          })
-          .slice(0, input.maxObjects);
+        await progress?.onProgress({
+          stage: "discovering",
+          message: "Discovering Notion pages and databases.",
+          current: 0,
+          total: null,
+        });
+        const notionObjects = await discoverNotionObjects(rootPageId);
+        await progress?.onProgress({
+          stage: "processing",
+          message: `Processing ${notionObjects.length} discovered Notion object${notionObjects.length === 1 ? "" : "s"}.`,
+          current: 0,
+          total: notionObjects.length,
+        });
 
-        for (const block of notionObjects) {
-          const blockType = String(block.type ?? "");
-          const objectId = notionObjectId(block);
-          if (!objectId) continue;
-          const fallbackTitle = titleFromBlock(block);
+        for (const [index, notionObject] of notionObjects.entries()) {
+          const blockType = notionObject.blockType;
+          const objectId = notionObject.objectId;
+          await progress?.onProgress({
+            stage: "processing",
+            message: `Syncing ${notionObject.fallbackTitle || objectId}.`,
+            current: index + 1,
+            total: notionObjects.length,
+          });
           const exported = blockType === "child_database"
-            ? await fetchNotionDatabaseExport(token, objectId, fallbackTitle, {
+            ? await fetchNotionDatabaseExport(token, objectId, notionObject.fallbackTitle, {
               maxRows: input.maxDatabaseRows,
               maxPageBlocks: input.maxPageBlocks,
               maxBlockDepth: input.maxBlockDepth,
             })
-            : await fetchNotionPageMarkdown(token, objectId, fallbackTitle, input.maxPageBlocks, input.maxBlockDepth);
-          const classification = classifyNotionObject(exported.title, objectId, projectsByName, companyId);
-          const relativePath = obsidianVaultPath ? notionMirrorRelativePath(classification, exported.title) : null;
+            : await fetchNotionPageMarkdown(token, objectId, notionObject.fallbackTitle, input.maxPageBlocks, input.maxBlockDepth);
+          const classification: NotionClassification = notionObject.isProjectRoot && notionObject.projectId
+            ? {
+              localObjectType: "project_workspace",
+              localObjectId: notionObject.projectId,
+              kind: "project_workspace_root",
+              sectionKey: null,
+              ownerClass: "operator_owned",
+            }
+            : classifyNotionObject(exported.title, objectId, projectsByName, companyId, notionObject.projectId);
           const projectId = classification.kind === "project_workspace_section"
             ? String(classification.localObjectId).split(":")[0]
+            : classification.kind === "project_workspace_root"
+              ? classification.localObjectId
             : null;
-          const projectName = projectId ? projectNamesById.get(projectId) ?? null : null;
+          const projectName = projectId ? projectNamesById.get(projectId) ?? notionObject.projectName ?? null : null;
+          const relativePath = obsidianVaultPath ? notionMirrorRelativePath(classification, exported.title, projectName) : null;
           const metadata = {
             kind: classification.kind,
             title: exported.title,
             sectionKey: classification.sectionKey,
             notionObjectType: blockType === "child_database" ? "database" : "page",
-            source: "notion_root_child",
+            source: notionObject.source,
             projectId,
             projectName,
+            projectIssuePrefix: projectId ? projectPrefixesById.get(projectId) ?? null : null,
             path: relativePath,
           };
           const checksum = sha256(JSON.stringify({
@@ -1500,6 +2152,9 @@ export function knowledgeService(db: Db) {
                     fallbackProjectId: projectId,
                     projectsByName,
                     projectNamesById,
+                    projectPrefixesById,
+                    projectsByPrefix,
+                    projectArchivedAtById,
                   })
                   : projectId;
                 const rowProjectName = rowProjectId ? projectNamesById.get(rowProjectId) ?? null : null;
@@ -1551,6 +2206,7 @@ export function knowledgeService(db: Db) {
                     source: "notion_database_row",
                     projectId: rowProjectId,
                     projectName: rowProjectName,
+                    projectIssuePrefix: rowProjectId ? projectPrefixesById.get(rowProjectId) ?? null : null,
                     issueId: rowIssue?.id ?? null,
                     issueIdentifier: rowIssue?.identifier ?? null,
                   },
@@ -1603,6 +2259,25 @@ export function knowledgeService(db: Db) {
           }
         }
 
+        await progress?.onProgress({
+          stage: "finalizing",
+          message: "Finalizing sync receipts.",
+          current: notionObjects.length,
+          total: notionObjects.length,
+        });
+
+        const resultSummary = {
+          provider: "notion" as const,
+          syncedAt: syncedAt.toISOString(),
+          rootPageId,
+          discoveredObjects: notionObjects.length,
+          syncedRefs: refs.length,
+          mirroredFiles: obsidianRefs.length,
+          exportedDatabaseRows,
+          importedTasks,
+          importedProjects,
+        };
+
         await db
           .insert(syncCursors)
           .values({
@@ -1610,14 +2285,21 @@ export function knowledgeService(db: Db) {
             provider: "notion",
             scope: "knowledge_root",
             cursorJson: {
+              jobId: progress?.jobId ?? null,
+              startedAt: progress?.jobId ? undefined : syncedAt.toISOString(),
+              stage: "completed",
+              message: "Notion sync completed.",
+              progress: { current: notionObjects.length, total: notionObjects.length },
               rootPageId,
               discoveredObjects: notionObjects.length,
               syncedRefs: refs.length,
               mirroredFiles: obsidianRefs.length,
               exportedDatabaseRows,
               importedTasks,
+              importedProjects,
+              result: resultSummary,
             },
-            status: "idle",
+            status: "completed",
             lastSyncedAt: syncedAt,
             lastError: null,
             updatedAt: syncedAt,
@@ -1626,14 +2308,20 @@ export function knowledgeService(db: Db) {
             target: [syncCursors.companyId, syncCursors.provider, syncCursors.scope],
             set: {
               cursorJson: {
+                jobId: progress?.jobId ?? null,
+                stage: "completed",
+                message: "Notion sync completed.",
+                progress: { current: notionObjects.length, total: notionObjects.length },
                 rootPageId,
                 discoveredObjects: notionObjects.length,
                 syncedRefs: refs.length,
                 mirroredFiles: obsidianRefs.length,
                 exportedDatabaseRows,
                 importedTasks,
+                importedProjects,
+                result: resultSummary,
               },
-              status: "idle",
+              status: "completed",
               lastSyncedAt: syncedAt,
               lastError: null,
               updatedAt: syncedAt,
@@ -1641,26 +2329,32 @@ export function knowledgeService(db: Db) {
           });
 
         return {
-          provider: "notion",
-          syncedAt: syncedAt.toISOString(),
-          rootPageId,
-          discoveredObjects: notionObjects.length,
-          syncedRefs: refs.length,
-          mirroredFiles: obsidianRefs.length,
-          exportedDatabaseRows,
-          importedTasks,
+          ...resultSummary,
           refs,
           obsidianRefs,
         };
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown Notion sync error";
+        const existing = await getNotionKnowledgeSyncCursor(companyId);
+        const existingCursor = asRecord(existing?.cursorJson);
+        const existingProgress = asRecord(existingCursor.progress);
         await db
           .insert(syncCursors)
           .values({
             companyId,
             provider: "notion",
             scope: "knowledge_root",
-            cursorJson: { rootPageId },
+            cursorJson: {
+              ...existingCursor,
+              jobId: progress?.jobId ?? (typeof existingCursor.jobId === "string" ? existingCursor.jobId : null),
+              stage: "error",
+              message: "Notion sync failed.",
+              progress: {
+                current: typeof existingProgress.current === "number" ? existingProgress.current : 0,
+                total: typeof existingProgress.total === "number" ? existingProgress.total : null,
+              },
+              rootPageId,
+            },
             status: "error",
             lastSyncedAt: null,
             lastError: message,
@@ -1669,6 +2363,17 @@ export function knowledgeService(db: Db) {
           .onConflictDoUpdate({
             target: [syncCursors.companyId, syncCursors.provider, syncCursors.scope],
             set: {
+              cursorJson: {
+                ...existingCursor,
+                jobId: progress?.jobId ?? (typeof existingCursor.jobId === "string" ? existingCursor.jobId : null),
+                stage: "error",
+                message: "Notion sync failed.",
+                progress: {
+                  current: typeof existingProgress.current === "number" ? existingProgress.current : 0,
+                  total: typeof existingProgress.total === "number" ? existingProgress.total : null,
+                },
+                rootPageId,
+              },
               status: "error",
               lastError: message,
               updatedAt: new Date(),

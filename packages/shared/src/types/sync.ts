@@ -85,8 +85,47 @@ export interface NotionKnowledgeSyncResult {
   mirroredFiles: number;
   exportedDatabaseRows: number;
   importedTasks: number;
+  importedProjects: number;
   refs: ExternalObjectRef[];
   obsidianRefs: ExternalObjectRef[];
+}
+
+export interface NotionKnowledgeSyncJobStatus {
+  provider: "notion";
+  scope: "knowledge_root";
+  status: "idle" | "queued" | "running" | "completed" | "error";
+  jobId: string | null;
+  stage: string | null;
+  message: string | null;
+  progress: {
+    current: number;
+    total: number | null;
+  };
+  result: Omit<NotionKnowledgeSyncResult, "refs" | "obsidianRefs"> | null;
+  error: string | null;
+  startedAt: string | null;
+  updatedAt: string | null;
+  lastSyncedAt: string | null;
+}
+
+export interface StartNotionKnowledgeSyncResult {
+  started: boolean;
+  status: NotionKnowledgeSyncJobStatus;
+}
+
+export interface KnowledgeClearResult {
+  clearedRefs: number;
+  removedMirrorFiles: number;
+  deletedImportedIssues: number;
+  deletedImportedProjects: number;
+  deletedKnowledgeProposals: number;
+  deletedSyncConflicts: number;
+  clearedSyncCursors: number;
+  skippedProjects: Array<{
+    projectId: string;
+    projectName: string;
+    reason: string;
+  }>;
 }
 
 export interface NotionTaskSyncRef {
