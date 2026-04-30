@@ -100,7 +100,7 @@ function stripSecretRefValuesFromPluginLeaseMetadata(input: {
 export interface EnvironmentDriverAcquireInput {
   companyId: string;
   environment: Environment;
-  issueId: string | null;
+  taskId: string | null;
   heartbeatRunId: string;
   executionWorkspaceId: string | null;
   executionWorkspaceMode: ExecutionWorkspace["mode"] | null;
@@ -174,7 +174,7 @@ function createLocalEnvironmentDriver(db: Db): EnvironmentRuntimeDriver {
         companyId: input.companyId,
         environmentId: input.environment.id,
         executionWorkspaceId: input.executionWorkspaceId,
-        issueId: input.issueId,
+        taskId: input.taskId,
         heartbeatRunId: input.heartbeatRunId,
         leasePolicy: "ephemeral",
         provider: "local",
@@ -244,7 +244,7 @@ function createSshEnvironmentDriver(db: Db): EnvironmentRuntimeDriver {
         companyId: input.companyId,
         environmentId: input.environment.id,
         executionWorkspaceId: input.executionWorkspaceId,
-        issueId: input.issueId,
+        taskId: input.taskId,
         heartbeatRunId: input.heartbeatRunId,
         leasePolicy: "ephemeral",
         provider: "ssh",
@@ -405,7 +405,7 @@ function createSandboxEnvironmentDriver(
           companyId: input.companyId,
           environmentId: input.environment.id,
           executionWorkspaceId: input.executionWorkspaceId,
-          issueId: input.issueId,
+          taskId: input.taskId,
           heartbeatRunId: input.heartbeatRunId,
           leasePolicy: resolvedLeasePolicy,
           provider: parsed.config.provider,
@@ -437,7 +437,7 @@ function createSandboxEnvironmentDriver(
         config: parsed.config,
         environmentId: input.environment.id,
         heartbeatRunId: input.heartbeatRunId,
-        issueId: input.issueId,
+        taskId: input.taskId,
         reusableProviderLeaseId,
       });
 
@@ -449,7 +449,7 @@ function createSandboxEnvironmentDriver(
         companyId: input.companyId,
         environmentId: input.environment.id,
         executionWorkspaceId: input.executionWorkspaceId,
-        issueId: input.issueId,
+        taskId: input.taskId,
         heartbeatRunId: input.heartbeatRunId,
         leasePolicy: resolvedLeasePolicy,
         provider: parsed.config.provider,
@@ -783,7 +783,7 @@ function createPluginEnvironmentDriver(
         companyId: input.companyId,
         environmentId: input.environment.id,
         executionWorkspaceId: input.executionWorkspaceId,
-        issueId: input.issueId,
+        taskId: input.taskId,
         heartbeatRunId: input.heartbeatRunId,
         leasePolicy: "ephemeral",
         provider: `plugin:${parsed.config.pluginKey}:${parsed.config.driverKey}`,
@@ -977,7 +977,7 @@ export function environmentRuntimeService(
     async acquireRunLease(input: {
       companyId: string;
       environment: Environment;
-      issueId: string | null;
+      taskId: string | null;
       heartbeatRunId: string;
       persistedExecutionWorkspace: Pick<ExecutionWorkspace, "id" | "mode"> | null;
     }): Promise<EnvironmentRuntimeLeaseRecord> {
@@ -992,7 +992,7 @@ export function environmentRuntimeService(
       const lease = await driver.acquireRunLease({
         companyId: input.companyId,
         environment: input.environment,
-        issueId: input.issueId,
+        taskId: input.taskId,
         heartbeatRunId: input.heartbeatRunId,
         executionWorkspaceId: leaseContext.executionWorkspaceId,
         executionWorkspaceMode: leaseContext.executionWorkspaceMode,
@@ -1032,7 +1032,7 @@ export function environmentRuntimeService(
           companyId: leaseRow.companyId,
           environmentId: leaseRow.environmentId,
           executionWorkspaceId: leaseRow.executionWorkspaceId ?? null,
-          issueId: leaseRow.issueId ?? null,
+          taskId: leaseRow.taskId ?? null,
           heartbeatRunId: leaseRow.heartbeatRunId ?? null,
           status: leaseRow.status as EnvironmentLease["status"],
           leasePolicy: leaseRow.leasePolicy as EnvironmentLease["leasePolicy"],

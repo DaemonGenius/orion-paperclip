@@ -43,7 +43,7 @@ describeEmbeddedPostgres("heartbeat list", () => {
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      taskPrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
@@ -70,7 +70,7 @@ describeEmbeddedPostgres("heartbeat list", () => {
       continuationAttempt: 1,
       lastUsefulActionAt: new Date("2026-04-18T12:00:00Z"),
       nextAction: "continue implementation",
-      contextSnapshot: { issueId: randomUUID() },
+      contextSnapshot: { taskId: randomUUID() },
     });
 
     const originalDescriptor = Object.getOwnPropertyDescriptor(heartbeatRuns, "processGroupId");
@@ -109,7 +109,7 @@ describeEmbeddedPostgres("heartbeat list", () => {
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      taskPrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
@@ -159,7 +159,7 @@ describeEmbeddedPostgres("heartbeat list", () => {
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      taskPrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
@@ -209,7 +209,7 @@ describe("heartbeat run event payload bounding", () => {
       adapterType: "codex_local",
       prompt: "x".repeat(40_000),
       context: {
-        issueId: "issue-1",
+        taskId: "task-1",
         memory: "y".repeat(40_000),
       },
     });
@@ -219,7 +219,7 @@ describe("heartbeat run event payload bounding", () => {
     expect((payload.prompt as string).length).toBeLessThan(20_000);
     expect(payload.prompt).toContain("[truncated");
     expect(payload.context).toMatchObject({
-      issueId: "issue-1",
+      taskId: "task-1",
     });
     expect(JSON.stringify(payload).length).toBeLessThan(45_000);
   });

@@ -42,11 +42,11 @@ describe("parseCodexJsonl", () => {
       }),
       JSON.stringify({
         type: "item.completed",
-        item: { type: "agent_message", text: "I’m checking out the issue and reading the docs now." },
+        item: { type: "agent_message", text: "I’m checking out the task and reading the docs now." },
       }),
       JSON.stringify({
         type: "item.completed",
-        item: { type: "agent_message", text: "Fixed the issue and verified the targeted tests pass." },
+        item: { type: "agent_message", text: "Fixed the task and verified the targeted tests pass." },
       }),
       JSON.stringify({
         type: "turn.completed",
@@ -56,7 +56,7 @@ describe("parseCodexJsonl", () => {
 
     expect(parseCodexJsonl(stdout)).toEqual({
       sessionId: "thread_123",
-      summary: "Fixed the issue and verified the targeted tests pass.",
+      summary: "Fixed the task and verified the targeted tests pass.",
       usage: {
         inputTokens: 10,
         cachedInputTokens: 2,

@@ -63,7 +63,7 @@ describe("RunTranscriptView", () => {
       {
         kind: "stderr",
         ts: "2026-03-12T00:00:00.000Z",
-        text: "[paperclip] Skipping saved session resume for task \"PAP-485\" because wake reason is issue_assigned.",
+        text: "[paperclip] Skipping saved session resume for task \"PAP-485\" because wake reason is task_assigned.",
       },
       {
         kind: "assistant",
@@ -91,7 +91,7 @@ describe("RunTranscriptView", () => {
             {
               kind: "result",
               ts: "2026-03-12T00:00:02.000Z",
-              text: "## Summary\n\n- fixed deploy config\n- posted issue update",
+              text: "## Summary\n\n- fixed deploy config\n- posted task update",
               inputTokens: 10,
               outputTokens: 20,
               cachedTokens: 0,
@@ -107,7 +107,7 @@ describe("RunTranscriptView", () => {
 
     expect(html).toContain("<h2>Summary</h2>");
     expect(html).toMatch(/<li[^>]*>fixed deploy config<\/li>/);
-    expect(html).toMatch(/<li[^>]*>posted issue update<\/li>/);
+    expect(html).toMatch(/<li[^>]*>posted task update<\/li>/);
     expect(html).not.toContain("result");
   });
 

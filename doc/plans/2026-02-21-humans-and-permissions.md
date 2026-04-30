@@ -162,7 +162,7 @@ Security rules:
   - `agent_name`, `adapter_type`, `capabilities`, `created_agent_id` nullable until approved
 - each consumed invite creates exactly one join request record after join type is selected
 
-6. `issues` extension
+6. `tasks` extension
 
 - add `assignee_user_id` nullable
 - preserve single-assignee invariant with XOR check:
@@ -264,7 +264,7 @@ Behavior:
 
 - agents can assign tasks to humans when policy permits
 - humans see assigned tasks in inbox view (including in local trusted mode)
-- comment and status transitions follow same issue lifecycle guards
+- comment and status transitions follow same task lifecycle guards
 
 ## Agent join path (via unified invite link)
 
@@ -285,7 +285,7 @@ Long-lived token policy:
 API additions (proposed):
 
 - `GET /companies/:companyId/inbox` (human actor scoped to self; includes task items + pending join approval alerts when authorized)
-- `POST /companies/:companyId/issues/:issueId/assign-user`
+- `POST /companies/:companyId/tasks/:taskId/assign-user`
 - `POST /companies/:companyId/invites`
 - `GET /invites/:token` (invite landing payload with `allowed_join_types`)
 - `POST /invites/:token/accept` (body includes `requestType=human|agent` and request metadata)
@@ -365,7 +365,7 @@ V1 approach:
 
 ## Phase 5: Human inbox + task assignment updates
 
-- extend issue assignee model for human users
+- extend task assignee model for human users
 - inbox API and UI for:
   - task assignments
   - pending join approval alerts with inline approve/reject actions

@@ -6,7 +6,7 @@ describe("extractLegacyPlanBody", () => {
     expect(extractLegacyPlanBody("hello world")).toBeNull();
   });
 
-  it("extracts plan body from legacy issue descriptions", () => {
+  it("extracts plan body from legacy task descriptions", () => {
     expect(
       extractLegacyPlanBody(`
 intro

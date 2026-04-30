@@ -11,7 +11,7 @@ import { companies } from "./companies.js";
 import { projects } from "./projects.js";
 import { projectWorkspaces } from "./project_workspaces.js";
 import { executionWorkspaces } from "./execution_workspaces.js";
-import { issues } from "./issues.js";
+import { tasks } from "./tasks.js";
 import { agents } from "./agents.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 
@@ -23,7 +23,7 @@ export const workspaceRuntimeServices = pgTable(
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
     projectWorkspaceId: uuid("project_workspace_id").references(() => projectWorkspaces.id, { onDelete: "set null" }),
     executionWorkspaceId: uuid("execution_workspace_id").references(() => executionWorkspaces.id, { onDelete: "set null" }),
-    issueId: uuid("issue_id").references(() => issues.id, { onDelete: "set null" }),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
     scopeType: text("scope_type").notNull(),
     scopeId: text("scope_id"),
     serviceName: text("service_name").notNull(),

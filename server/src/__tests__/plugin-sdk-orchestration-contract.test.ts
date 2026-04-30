@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import type { Issue, PaperclipPluginManifestV1 } from "@paperclipai/shared";
+import type { Task, PaperclipPluginManifestV1 } from "@paperclipai/shared";
 import { createTestHarness } from "../../../packages/plugins/sdk/src/testing.js";
 
 function manifest(capabilities: PaperclipPluginManifestV1["capabilities"]): PaperclipPluginManifestV1 {
@@ -17,7 +17,7 @@ function manifest(capabilities: PaperclipPluginManifestV1["capabilities"]): Pape
   };
 }
 
-function issue(input: Partial<Issue> & Pick<Issue, "id" | "companyId" | "title">): Issue {
+function task(input: Partial<Task> & Pick<Task, "id" | "companyId" | "title">): Task {
   const now = new Date();
   return {
     id: input.id,
@@ -38,7 +38,7 @@ function issue(input: Partial<Issue> & Pick<Issue, "id" | "companyId" | "title">
     executionLockedAt: null,
     createdByAgentId: null,
     createdByUserId: null,
-    issueNumber: null,
+    taskNumber: null,
     identifier: null,
     requestDepth: 0,
     billingCode: null,
@@ -57,24 +57,24 @@ function issue(input: Partial<Issue> & Pick<Issue, "id" | "companyId" | "title">
 }
 
 describe("plugin SDK orchestration contract", () => {
-  it("supports expanded issue create fields and relation helpers", async () => {
+  it("supports expanded task create fields and relation helpers", async () => {
     const companyId = randomUUID();
-    const blockerIssueId = randomUUID();
+    const blockerTaskId = randomUUID();
     const harness = createTestHarness({
-      manifest: manifest(["issues.create", "issue.relations.read", "issue.relations.write", "issue.subtree.read"]),
+      manifest: manifest(["tasks.create", "task.relations.read", "task.relations.write", "task.subtree.read"]),
     });
     harness.seed({
-      issues: [issue({ id: blockerIssueId, companyId, title: "Blocker" })],
+      tasks: [task({ id: blockerTaskId, companyId, title: "Blocker" })],
     });
 
-    const created = await harness.ctx.issues.create({
+    const created = await harness.ctx.tasks.create({
       companyId,
-      title: "Generated issue",
+      title: "Generated task",
       status: "todo",
       assigneeUserId: "board-user",
       billingCode: "mission:alpha",
       originId: "mission-alpha",
-      blockedByIssueIds: [blockerIssueId],
+      blockedByTaskIds: [blockerTaskId],
     });
 
     expect(created.originKind).toBe("plugin:paperclip.test-orchestration");
@@ -82,34 +82,34 @@ describe("plugin SDK orchestration contract", () => {
     expect(created.billingCode).toBe("mission:alpha");
     expect(created.assigneeUserId).toBe("board-user");
 
-    await expect(harness.ctx.issues.relations.get(created.id, companyId)).resolves.toEqual({
+    await expect(harness.ctx.tasks.relations.get(created.id, companyId)).resolves.toEqual({
       blockedBy: [
         expect.objectContaining({
-          id: blockerIssueId,
+          id: blockerTaskId,
           title: "Blocker",
         }),
       ],
       blocks: [],
     });
 
-    await expect(harness.ctx.issues.relations.removeBlockers(created.id, [blockerIssueId], companyId)).resolves.toEqual({
+    await expect(harness.ctx.tasks.relations.removeBlockers(created.id, [blockerTaskId], companyId)).resolves.toEqual({
       blockedBy: [],
       blocks: [],
     });
 
-    await expect(harness.ctx.issues.relations.addBlockers(created.id, [blockerIssueId], companyId)).resolves.toEqual({
-      blockedBy: [expect.objectContaining({ id: blockerIssueId })],
+    await expect(harness.ctx.tasks.relations.addBlockers(created.id, [blockerTaskId], companyId)).resolves.toEqual({
+      blockedBy: [expect.objectContaining({ id: blockerTaskId })],
       blocks: [],
     });
 
     await expect(
-      harness.ctx.issues.getSubtree(created.id, companyId, { includeRelations: true }),
+      harness.ctx.tasks.getSubtree(created.id, companyId, { includeRelations: true }),
     ).resolves.toMatchObject({
-      rootIssueId: created.id,
-      issueIds: [created.id],
+      rootTaskId: created.id,
+      taskIds: [created.id],
       relations: {
         [created.id]: {
-          blockedBy: [expect.objectContaining({ id: blockerIssueId })],
+          blockedBy: [expect.objectContaining({ id: blockerTaskId })],
         },
       },
     });
@@ -118,31 +118,31 @@ describe("plugin SDK orchestration contract", () => {
   it("enforces plugin origin namespaces in the test harness", async () => {
     const companyId = randomUUID();
     const harness = createTestHarness({
-      manifest: manifest(["issues.create", "issues.update", "issues.read"]),
+      manifest: manifest(["tasks.create", "tasks.update", "tasks.read"]),
     });
 
-    const created = await harness.ctx.issues.create({
+    const created = await harness.ctx.tasks.create({
       companyId,
-      title: "Generated issue",
+      title: "Generated task",
       originKind: "plugin:paperclip.test-orchestration:feature",
     });
 
     expect(created.originKind).toBe("plugin:paperclip.test-orchestration:feature");
     await expect(
-      harness.ctx.issues.list({
+      harness.ctx.tasks.list({
         companyId,
         originKind: "plugin:paperclip.test-orchestration:feature",
       }),
     ).resolves.toHaveLength(1);
     await expect(
-      harness.ctx.issues.create({
+      harness.ctx.tasks.create({
         companyId,
-        title: "Spoofed issue",
+        title: "Spoofed task",
         originKind: "plugin:other.plugin:feature",
       }),
     ).rejects.toThrow("Plugin may only use originKind values under plugin:paperclip.test-orchestration");
     await expect(
-      harness.ctx.issues.update(
+      harness.ctx.tasks.update(
         created.id,
         { originKind: "plugin:other.plugin:feature" },
         companyId,
@@ -154,14 +154,14 @@ describe("plugin SDK orchestration contract", () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
     const runId = randomUUID();
-    const checkedOutIssueId = randomUUID();
+    const checkedOutTaskId = randomUUID();
     const harness = createTestHarness({
-      manifest: manifest(["issues.checkout", "issues.wakeup", "issues.read"]),
+      manifest: manifest(["tasks.checkout", "tasks.wakeup", "tasks.read"]),
     });
     harness.seed({
-      issues: [
-        issue({
-          id: checkedOutIssueId,
+      tasks: [
+        task({
+          id: checkedOutTaskId,
           companyId,
           title: "Checked out",
           status: "in_progress",
@@ -172,31 +172,31 @@ describe("plugin SDK orchestration contract", () => {
     });
 
     await expect(
-      harness.ctx.issues.assertCheckoutOwner({
-        issueId: checkedOutIssueId,
+      harness.ctx.tasks.assertCheckoutOwner({
+        taskId: checkedOutTaskId,
         companyId,
         actorAgentId: agentId,
         actorRunId: runId,
       }),
     ).resolves.toMatchObject({
-      issueId: checkedOutIssueId,
+      taskId: checkedOutTaskId,
       checkoutRunId: runId,
     });
 
     await expect(
-      harness.ctx.issues.requestWakeup(checkedOutIssueId, companyId, {
+      harness.ctx.tasks.requestWakeup(checkedOutTaskId, companyId, {
         reason: "mission_advance",
       }),
     ).resolves.toMatchObject({ queued: true });
 
     await expect(
-      harness.ctx.issues.requestWakeups([checkedOutIssueId], companyId, {
+      harness.ctx.tasks.requestWakeups([checkedOutTaskId], companyId, {
         reason: "mission_advance",
         idempotencyKeyPrefix: "mission:alpha",
       }),
     ).resolves.toEqual([
       expect.objectContaining({
-        issueId: checkedOutIssueId,
+        taskId: checkedOutTaskId,
         queued: true,
       }),
     ]);
@@ -204,23 +204,23 @@ describe("plugin SDK orchestration contract", () => {
 
   it("rejects wakeups when blockers are unresolved", async () => {
     const companyId = randomUUID();
-    const blockerIssueId = randomUUID();
-    const blockedIssueId = randomUUID();
+    const blockerTaskId = randomUUID();
+    const blockedTaskId = randomUUID();
     const harness = createTestHarness({
-      manifest: manifest(["issues.wakeup", "issues.read"]),
+      manifest: manifest(["tasks.wakeup", "tasks.read"]),
     });
     harness.seed({
-      issues: [
-        issue({ id: blockerIssueId, companyId, title: "Unresolved blocker", status: "todo" }),
-        issue({
-          id: blockedIssueId,
+      tasks: [
+        task({ id: blockerTaskId, companyId, title: "Unresolved blocker", status: "todo" }),
+        task({
+          id: blockedTaskId,
           companyId,
           title: "Blocked work",
           status: "todo",
           assigneeAgentId: randomUUID(),
           blockedBy: [
             {
-              id: blockerIssueId,
+              id: blockerTaskId,
               identifier: null,
               title: "Unresolved blocker",
               status: "todo",
@@ -234,7 +234,7 @@ describe("plugin SDK orchestration contract", () => {
     });
 
     await expect(
-      harness.ctx.issues.requestWakeup(blockedIssueId, companyId),
-    ).rejects.toThrow("Issue is blocked by unresolved blockers");
+      harness.ctx.tasks.requestWakeup(blockedTaskId, companyId),
+    ).rejects.toThrow("Task is blocked by unresolved blockers");
   });
 });

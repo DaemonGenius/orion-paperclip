@@ -10,7 +10,7 @@ import {
   companies,
   createDb,
   executionWorkspaces,
-  issues,
+  tasks,
   projectWorkspaces,
   projects,
 } from "@paperclipai/db";
@@ -156,7 +156,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
   }, 20_000);
 
   afterEach(async () => {
-    await db.delete(issues);
+    await db.delete(tasks);
     await db.delete(executionWorkspaces);
     await db.delete(projectWorkspaces);
     await db.delete(projects);
@@ -172,7 +172,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     await tempDb?.cleanup();
   });
 
-  it("allows archiving shared workspace sessions with warnings even when issues are still open", async () => {
+  it("allows archiving shared workspace sessions with warnings even when tasks are still open", async () => {
     const companyId = randomUUID();
     const projectId = randomUUID();
     const projectWorkspaceId = randomUUID();
@@ -181,7 +181,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: "PAP",
+      taskPrefix: "PAP",
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(projects).values({
@@ -219,7 +219,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
         },
       },
     });
-    await db.insert(issues).values({
+    await db.insert(tasks).values({
       id: randomUUID(),
       companyId,
       projectId,
@@ -240,7 +240,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     });
     expect(readiness?.blockingReasons).toEqual([]);
     expect(readiness?.warnings).toEqual(expect.arrayContaining([
-      "This workspace is still linked to an open issue. Archiving it will detach this shared workspace session from those issues, but keep the underlying project workspace available.",
+      "This workspace is still linked to an open task. Archiving it will detach this shared workspace session from those tasks, but keep the underlying project workspace available.",
       "This shared workspace session points at project workspace infrastructure. Archiving it only removes the session record.",
     ]));
   });
@@ -256,7 +256,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: "PAP",
+      taskPrefix: "PAP",
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(projects).values({
@@ -364,7 +364,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: "PAP",
+      taskPrefix: "PAP",
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(projects).values({

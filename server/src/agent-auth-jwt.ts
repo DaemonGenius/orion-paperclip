@@ -32,7 +32,7 @@ function jwtConfig() {
   return {
     secret,
     ttlSeconds: parseNumber(process.env.PAPERCLIP_AGENT_JWT_TTL_SECONDS, 60 * 60 * 48),
-    issuer: process.env.PAPERCLIP_AGENT_JWT_ISSUER ?? "paperclip",
+    taskr: process.env.PAPERCLIP_AGENT_JWT_TASKR ?? "paperclip",
     audience: process.env.PAPERCLIP_AGENT_JWT_AUDIENCE ?? "paperclip-api",
   };
 }
@@ -77,7 +77,7 @@ export function createLocalAgentJwt(agentId: string, companyId: string, adapterT
     run_id: runId,
     iat: now,
     exp: now + config.ttlSeconds,
-    iss: config.issuer,
+    iss: config.taskr,
     aud: config.audience,
   };
 
@@ -122,9 +122,9 @@ export function verifyLocalAgentJwt(token: string): LocalAgentJwtClaims | null {
   const now = Math.floor(Date.now() / 1000);
   if (exp < now) return null;
 
-  const issuer = typeof claims.iss === "string" ? claims.iss : undefined;
+  const taskr = typeof claims.iss === "string" ? claims.iss : undefined;
   const audience = typeof claims.aud === "string" ? claims.aud : undefined;
-  if (issuer && issuer !== config.issuer) return null;
+  if (taskr && taskr !== config.taskr) return null;
   if (audience && audience !== config.audience) return null;
 
   return {
@@ -134,7 +134,7 @@ export function verifyLocalAgentJwt(token: string): LocalAgentJwtClaims | null {
     run_id: runId,
     iat,
     exp,
-    ...(issuer ? { iss: issuer } : {}),
+    ...(taskr ? { iss: taskr } : {}),
     ...(audience ? { aud: audience } : {}),
     jti: typeof claims.jti === "string" ? claims.jti : undefined,
   };

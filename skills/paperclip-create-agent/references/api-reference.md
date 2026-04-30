@@ -14,8 +14,8 @@
 - `POST /api/companies/:companyId/agents`
 - `GET /api/agents/:agentId/config-revisions`
 - `POST /api/agents/:agentId/config-revisions/:revisionId/rollback`
-- `POST /api/issues/:issueId/approvals`
-- `GET /api/approvals/:approvalId/issues`
+- `POST /api/tasks/:taskId/approvals`
+- `GET /api/approvals/:approvalId/tasks`
 
 Approval collaboration:
 
@@ -24,7 +24,7 @@ Approval collaboration:
 - `POST /api/approvals/:approvalId/resubmit`
 - `GET /api/approvals/:approvalId/comments`
 - `POST /api/approvals/:approvalId/comments`
-- `GET /api/approvals/:approvalId/issues`
+- `GET /api/approvals/:approvalId/tasks`
 
 ## `POST /api/companies/:companyId/agent-hires`
 
@@ -52,8 +52,8 @@ Request body matches agent create shape:
     }
   },
   "budgetMonthlyCents": 0,
-  "sourceIssueId": "uuid-or-null",
-  "sourceIssueIds": ["uuid-1", "uuid-2"]
+  "sourceTaskId": "uuid-or-null",
+  "sourceTaskIds": ["uuid-1", "uuid-2"]
 }
 ```
 
@@ -101,5 +101,5 @@ For hire approvals:
 - Config read APIs redact obvious secrets.
 - `pending_approval` agents cannot run heartbeats, receive assignments, or create keys.
 - All actions are logged in activity for auditability.
-- Use markdown in issue/approval comments and include links to approval, agent, and source issue.
-- After approval resolution, requester may be woken with `PAPERCLIP_APPROVAL_ID` and should reconcile linked issues.
+- Use markdown in task/approval comments and include links to approval, agent, and source task.
+- After approval resolution, requester may be woken with `PAPERCLIP_APPROVAL_ID` and should reconcile linked tasks.

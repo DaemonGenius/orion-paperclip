@@ -15,7 +15,7 @@ Each vote creates two local records:
 | Record | What it contains |
 |--------|-----------------|
 | **Vote** | Your vote (up/down), optional reason text, sharing preference, consent version, timestamp |
-| **Trace bundle** | Full context snapshot: the voted-on comment/revision text, issue title, agent info, your vote, and reason — everything needed to understand the feedback in isolation |
+| **Trace bundle** | Full context snapshot: the voted-on comment/revision text, task title, agent info, your vote, and reason — everything needed to understand the feedback in isolation |
 
 All data lives in your local Paperclip database. Nothing leaves your machine unless you explicitly choose to share.
 
@@ -46,14 +46,14 @@ pnpm paperclipai feedback report --payloads
 
 All endpoints require board-user access (automatic in local dev).
 
-**List votes for an issue:**
+**List votes for an task:**
 ```bash
-curl http://127.0.0.1:3102/api/issues/<issueId>/feedback-votes
+curl http://127.0.0.1:3102/api/tasks/<taskId>/feedback-votes
 ```
 
-**List trace bundles for an issue (with full payloads):**
+**List trace bundles for an task (with full payloads):**
 ```bash
-curl 'http://127.0.0.1:3102/api/issues/<issueId>/feedback-traces?includePayload=true'
+curl 'http://127.0.0.1:3102/api/tasks/<taskId>/feedback-traces?includePayload=true'
 ```
 
 **List all traces company-wide:**
@@ -79,7 +79,7 @@ The trace endpoints accept query parameters:
 |-----------|--------|-------------|
 | `vote` | `up`, `down` | Filter by vote direction |
 | `status` | `local_only`, `pending`, `sent`, `failed` | Filter by export status |
-| `targetType` | `issue_comment`, `issue_document_revision` | Filter by what was voted on |
+| `targetType` | `task_comment`, `task_document_revision` | Filter by what was voted on |
 | `sharedOnly` | `true` | Only show votes the user chose to share |
 | `includePayload` | `true` | Include the full context snapshot |
 | `from` / `to` | ISO date | Date range filter |
@@ -123,9 +123,9 @@ Open any file in `traces/` to see:
 {
   "id": "trace-uuid",
   "vote": "down",
-  "issueIdentifier": "PAP-123",
-  "issueTitle": "Fix login timeout",
-  "targetType": "issue_comment",
+  "taskIdentifier": "PAP-123",
+  "taskTitle": "Fix login timeout",
+  "targetType": "task_comment",
   "targetSummary": {
     "label": "Comment",
     "excerpt": "The first 80 chars of the comment that was voted on..."
@@ -138,7 +138,7 @@ Open any file in `traces/` to see:
     "target": {
       "body": "Full text of the agent comment..."
     },
-    "issue": {
+    "task": {
       "identifier": "PAP-123",
       "title": "Fix login timeout"
     }
@@ -146,7 +146,7 @@ Open any file in `traces/` to see:
 }
 ```
 
-Open `full-traces/<issue>-<trace>/bundle.json` to see the expanded export metadata, including capture notes, adapter type, integrity metadata, and the inventory of raw files written alongside it.
+Open `full-traces/<task>-<trace>/bundle.json` to see the expanded export metadata, including capture notes, adapter type, integrity metadata, and the inventory of raw files written alongside it.
 
 Each entry in `bundle.json.files[]` includes the actual captured file payload under `contents`, not just a pathname. For text artifacts this is stored as UTF-8 text; binary artifacts use base64 plus an `encoding` marker.
 

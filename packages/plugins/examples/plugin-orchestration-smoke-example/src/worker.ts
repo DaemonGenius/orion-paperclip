@@ -3,7 +3,7 @@ import { definePlugin, runWorker, type PluginApiRequestInput } from "@paperclipa
 
 type SmokeInput = {
   companyId: string;
-  issueId: string;
+  taskId: string;
   assigneeAgentId?: string | null;
   actorAgentId?: string | null;
   actorUserId?: string | null;
@@ -11,16 +11,16 @@ type SmokeInput = {
 };
 
 type SmokeSummary = {
-  rootIssueId: string;
-  childIssueId: string | null;
-  blockerIssueId: string | null;
+  rootTaskId: string;
+  childTaskId: string | null;
+  blockerTaskId: string | null;
   billingCode: string;
   joinedRows: unknown[];
-  subtreeIssueIds: string[];
+  subtreeTaskIds: string[];
   wakeupQueued: boolean;
 };
 
-let readSmokeSummary: ((companyId: string, issueId: string) => Promise<SmokeSummary | null>) | null = null;
+let readSmokeSummary: ((companyId: string, taskId: string) => Promise<SmokeSummary | null>) | null = null;
 let initializeSmoke: ((input: SmokeInput) => Promise<SmokeSummary>) | null = null;
 
 function tableName(namespace: string) {
@@ -33,83 +33,83 @@ function stringField(value: unknown): string | null {
 
 const plugin = definePlugin({
   async setup(ctx) {
-    readSmokeSummary = async function readSummary(companyId: string, issueId: string): Promise<SmokeSummary | null> {
+    readSmokeSummary = async function readSummary(companyId: string, taskId: string): Promise<SmokeSummary | null> {
       const rows = await ctx.db.query<{
-        root_issue_id: string;
-        child_issue_id: string | null;
-        blocker_issue_id: string | null;
+        root_task_id: string;
+        child_task_id: string | null;
+        blocker_task_id: string | null;
         billing_code: string;
-        issue_title: string;
+        task_title: string;
         last_summary: unknown;
       }>(
-        `SELECT s.root_issue_id, s.child_issue_id, s.blocker_issue_id, s.billing_code, i.title AS issue_title, s.last_summary
+        `SELECT s.root_task_id, s.child_task_id, s.blocker_task_id, s.billing_code, i.title AS task_title, s.last_summary
          FROM ${tableName(ctx.db.namespace)} s
-         JOIN public.issues i ON i.id = s.root_issue_id
-         WHERE s.root_issue_id = $1`,
-        [issueId],
+         JOIN public.tasks i ON i.id = s.root_task_id
+         WHERE s.root_task_id = $1`,
+        [taskId],
       );
       const row = rows[0];
       if (!row) return null;
-      const orchestration = await ctx.issues.summaries.getOrchestration({
-        issueId,
+      const orchestration = await ctx.tasks.summaries.getOrchestration({
+        taskId,
         companyId,
         includeSubtree: true,
         billingCode: row.billing_code,
       });
       return {
-        rootIssueId: row.root_issue_id,
-        childIssueId: row.child_issue_id,
-        blockerIssueId: row.blocker_issue_id,
+        rootTaskId: row.root_task_id,
+        childTaskId: row.child_task_id,
+        blockerTaskId: row.blocker_task_id,
         billingCode: row.billing_code,
         joinedRows: rows,
-        subtreeIssueIds: orchestration.subtreeIssueIds,
+        subtreeTaskIds: orchestration.subtreeTaskIds,
         wakeupQueued: Boolean((row.last_summary as { wakeupQueued?: unknown } | null)?.wakeupQueued),
       };
     };
 
     initializeSmoke = async function runSmoke(input: SmokeInput): Promise<SmokeSummary> {
-      const root = await ctx.issues.get(input.issueId, input.companyId);
-      if (!root) throw new Error(`Issue not found: ${input.issueId}`);
+      const root = await ctx.tasks.get(input.taskId, input.companyId);
+      if (!root) throw new Error(`Task not found: ${input.taskId}`);
 
-      const billingCode = `plugin-smoke:${input.issueId}`;
+      const billingCode = `plugin-smoke:${input.taskId}`;
       const actor = {
         actorAgentId: input.actorAgentId ?? null,
         actorUserId: input.actorUserId ?? null,
         actorRunId: input.actorRunId ?? null,
       };
-      const blocker = await ctx.issues.create({
+      const blocker = await ctx.tasks.create({
         companyId: input.companyId,
-        parentId: input.issueId,
-        inheritExecutionWorkspaceFromIssueId: input.issueId,
+        parentId: input.taskId,
+        inheritExecutionWorkspaceFromTaskId: input.taskId,
         title: "Orchestration smoke blocker",
         description: "Resolved blocker used to verify plugin relation writes without preventing the smoke wakeup.",
         status: "done",
         priority: "low",
         billingCode,
         originKind: `plugin:${ctx.manifest.id}:blocker`,
-        originId: `${input.issueId}:blocker`,
+        originId: `${input.taskId}:blocker`,
         actor,
       });
 
-      const child = await ctx.issues.create({
+      const child = await ctx.tasks.create({
         companyId: input.companyId,
-        parentId: input.issueId,
-        inheritExecutionWorkspaceFromIssueId: input.issueId,
+        parentId: input.taskId,
+        inheritExecutionWorkspaceFromTaskId: input.taskId,
         title: "Orchestration smoke child",
-        description: "Generated by the orchestration smoke plugin to verify issue, document, relation, wakeup, and summary APIs.",
+        description: "Generated by the orchestration smoke plugin to verify task, document, relation, wakeup, and summary APIs.",
         status: "todo",
         priority: "medium",
         assigneeAgentId: input.assigneeAgentId ?? root.assigneeAgentId ?? undefined,
         billingCode,
         originKind: `plugin:${ctx.manifest.id}:child`,
-        originId: `${input.issueId}:child`,
-        blockedByIssueIds: [blocker.id],
+        originId: `${input.taskId}:child`,
+        blockedByTaskIds: [blocker.id],
         actor,
       });
 
-      await ctx.issues.relations.setBlockedBy(child.id, [blocker.id], input.companyId, actor);
-      await ctx.issues.documents.upsert({
-        issueId: child.id,
+      await ctx.tasks.relations.setBlockedBy(child.id, [blocker.id], input.companyId, actor);
+      await ctx.tasks.documents.upsert({
+        taskId: child.id,
         companyId: input.companyId,
         key: "orchestration-smoke",
         title: "Orchestration Smoke",
@@ -117,44 +117,44 @@ const plugin = definePlugin({
         body: [
           "# Orchestration Smoke",
           "",
-          `- Root issue: ${input.issueId}`,
-          `- Child issue: ${child.id}`,
+          `- Root task: ${input.taskId}`,
+          `- Child task: ${child.id}`,
           `- Billing code: ${billingCode}`,
         ].join("\n"),
         changeSummary: "Recorded orchestration smoke output",
       });
 
-      const wakeup = await ctx.issues.requestWakeup(child.id, input.companyId, {
+      const wakeup = await ctx.tasks.requestWakeup(child.id, input.companyId, {
         reason: "plugin:orchestration_smoke",
         contextSource: "plugin-orchestration-smoke",
-        idempotencyKey: `${input.issueId}:child`,
+        idempotencyKey: `${input.taskId}:child`,
         ...actor,
       });
-      const orchestration = await ctx.issues.summaries.getOrchestration({
-        issueId: input.issueId,
+      const orchestration = await ctx.tasks.summaries.getOrchestration({
+        taskId: input.taskId,
         companyId: input.companyId,
         includeSubtree: true,
         billingCode,
       });
       const summarySnapshot = {
-        childIssueId: child.id,
-        blockerIssueId: blocker.id,
+        childTaskId: child.id,
+        blockerTaskId: blocker.id,
         wakeupQueued: wakeup.queued,
-        subtreeIssueIds: orchestration.subtreeIssueIds,
+        subtreeTaskIds: orchestration.subtreeTaskIds,
       };
 
       await ctx.db.execute(
-        `INSERT INTO ${tableName(ctx.db.namespace)} (id, root_issue_id, child_issue_id, blocker_issue_id, billing_code, last_summary)
+        `INSERT INTO ${tableName(ctx.db.namespace)} (id, root_task_id, child_task_id, blocker_task_id, billing_code, last_summary)
          VALUES ($1, $2, $3, $4, $5, $6::jsonb)
          ON CONFLICT (id) DO UPDATE SET
-           child_issue_id = EXCLUDED.child_issue_id,
-           blocker_issue_id = EXCLUDED.blocker_issue_id,
+           child_task_id = EXCLUDED.child_task_id,
+           blocker_task_id = EXCLUDED.blocker_task_id,
            billing_code = EXCLUDED.billing_code,
            last_summary = EXCLUDED.last_summary,
            updated_at = now()`,
         [
           randomUUID(),
-          input.issueId,
+          input.taskId,
           child.id,
           blocker.id,
           billingCode,
@@ -163,43 +163,43 @@ const plugin = definePlugin({
       );
 
       return {
-        rootIssueId: input.issueId,
-        childIssueId: child.id,
-        blockerIssueId: blocker.id,
+        rootTaskId: input.taskId,
+        childTaskId: child.id,
+        blockerTaskId: blocker.id,
         billingCode,
         joinedRows: await ctx.db.query(
           `SELECT s.id, s.billing_code, i.title AS root_title
            FROM ${tableName(ctx.db.namespace)} s
-           JOIN public.issues i ON i.id = s.root_issue_id
-           WHERE s.root_issue_id = $1`,
-          [input.issueId],
+           JOIN public.tasks i ON i.id = s.root_task_id
+           WHERE s.root_task_id = $1`,
+          [input.taskId],
         ),
-        subtreeIssueIds: orchestration.subtreeIssueIds,
+        subtreeTaskIds: orchestration.subtreeTaskIds,
         wakeupQueued: wakeup.queued,
       };
     };
 
     ctx.data.register("surface-status", async (params) => {
       const companyId = stringField(params.companyId);
-      const issueId = stringField(params.issueId);
+      const taskId = stringField(params.taskId);
       return {
         status: "ok",
         checkedAt: new Date().toISOString(),
         databaseNamespace: ctx.db.namespace,
         routeKeys: (ctx.manifest.apiRoutes ?? []).map((route) => route.routeKey),
         capabilities: ctx.manifest.capabilities,
-        summary: companyId && issueId ? await readSmokeSummary?.(companyId, issueId) ?? null : null,
+        summary: companyId && taskId ? await readSmokeSummary?.(companyId, taskId) ?? null : null,
       };
     });
 
     ctx.actions.register("initialize-smoke", async (params) => {
       const companyId = stringField(params.companyId);
-      const issueId = stringField(params.issueId);
-      if (!companyId || !issueId) throw new Error("companyId and issueId are required");
+      const taskId = stringField(params.taskId);
+      if (!companyId || !taskId) throw new Error("companyId and taskId are required");
       if (!initializeSmoke) throw new Error("Smoke initializer is not ready");
       return initializeSmoke({
         companyId,
-        issueId,
+        taskId,
         assigneeAgentId: stringField(params.assigneeAgentId),
         actorAgentId: stringField(params.actorAgentId),
         actorUserId: stringField(params.actorUserId),
@@ -210,9 +210,9 @@ const plugin = definePlugin({
 
   async onApiRequest(input: PluginApiRequestInput) {
     if (input.routeKey === "summary") {
-      const issueId = input.params.issueId;
+      const taskId = input.params.taskId;
       return {
-        body: await readSmokeSummary?.(input.companyId, issueId) ?? null,
+        body: await readSmokeSummary?.(input.companyId, taskId) ?? null,
       };
     }
 
@@ -223,7 +223,7 @@ const plugin = definePlugin({
         status: 201,
         body: await initializeSmoke({
           companyId: input.companyId,
-          issueId: input.params.issueId,
+          taskId: input.params.taskId,
           assigneeAgentId: stringField(body?.assigneeAgentId),
           actorAgentId: input.actor.agentId ?? null,
           actorUserId: input.actor.userId ?? null,
@@ -243,7 +243,7 @@ const plugin = definePlugin({
       status: "ok",
       message: "Orchestration smoke plugin worker is running",
       details: {
-        surfaces: ["database", "scoped-api-route", "issue-panel", "orchestration-apis"],
+        surfaces: ["database", "scoped-api-route", "task-panel", "orchestration-apis"],
       },
     };
   }

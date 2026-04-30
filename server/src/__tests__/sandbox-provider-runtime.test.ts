@@ -53,7 +53,7 @@ describe("sandbox provider runtime", () => {
       },
       environmentId: "env-1",
       heartbeatRunId: "run-1",
-      issueId: "issue-1",
+      taskId: "task-1",
     });
 
     expect(lease.providerLeaseId).toBe("sandbox://fake/env-1");
@@ -71,7 +71,7 @@ describe("sandbox provider runtime", () => {
       },
       environmentId: "env-1",
       heartbeatRunId: "run-2",
-      issueId: "issue-1",
+      taskId: "task-1",
       reusableProviderLeaseId: lease.providerLeaseId,
     });
 

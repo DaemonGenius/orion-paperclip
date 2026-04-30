@@ -188,7 +188,7 @@ describe("CommentThread", () => {
             comments={[{
               id: "comment-1",
               companyId: "company-1",
-              issueId: "issue-1",
+              taskId: "task-1",
               authorAgentId: null,
               authorUserId: "local-board",
               body: "Please continue validation.",
@@ -218,7 +218,7 @@ describe("CommentThread", () => {
     });
   });
 
-  it("hides the reopen control and infers reopen for closed agent-assigned issues", async () => {
+  it("hides the reopen control and infers reopen for closed agent-assigned tasks", async () => {
     const root = createRoot(container);
     const onAdd = vi.fn(async () => {});
 
@@ -227,7 +227,7 @@ describe("CommentThread", () => {
         <MemoryRouter>
           <CommentThread
             comments={[]}
-            issueStatus="done"
+            taskStatus="done"
             currentAssigneeValue="agent:agent-1"
             onAdd={onAdd}
           />
@@ -345,7 +345,7 @@ describe("CommentThread", () => {
             comments={[{
               id: "comment-1",
               companyId: "company-1",
-              issueId: "issue-1",
+              taskId: "task-1",
               authorAgentId: null,
               authorUserId: "user-1",
               body: "Hello from the comment body",

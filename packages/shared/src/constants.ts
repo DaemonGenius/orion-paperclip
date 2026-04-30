@@ -117,7 +117,7 @@ export const AGENT_ICON_NAMES = [
 ] as const;
 export type AgentIconName = (typeof AGENT_ICON_NAMES)[number];
 
-export const ISSUE_STATUSES = [
+export const TASK_STATUSES = [
   "backlog",
   "todo",
   "in_progress",
@@ -126,9 +126,9 @@ export const ISSUE_STATUSES = [
   "blocked",
   "cancelled",
 ] as const;
-export type IssueStatus = (typeof ISSUE_STATUSES)[number];
+export type TaskStatus = (typeof TASK_STATUSES)[number];
 
-export const INBOX_MINE_ISSUE_STATUSES = [
+export const INBOX_MINE_TASK_STATUSES = [
   "backlog",
   "todo",
   "in_progress",
@@ -136,19 +136,19 @@ export const INBOX_MINE_ISSUE_STATUSES = [
   "blocked",
   "done",
 ] as const;
-export const INBOX_MINE_ISSUE_STATUS_FILTER = INBOX_MINE_ISSUE_STATUSES.join(",");
+export const INBOX_MINE_TASK_STATUS_FILTER = INBOX_MINE_TASK_STATUSES.join(",");
 
-export const ISSUE_PRIORITIES = ["critical", "high", "medium", "low"] as const;
-export type IssuePriority = (typeof ISSUE_PRIORITIES)[number];
+export const TASK_PRIORITIES = ["critical", "high", "medium", "low"] as const;
+export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 
-export const ISSUE_THREAD_INTERACTION_KINDS = [
+export const TASK_THREAD_INTERACTION_KINDS = [
   "suggest_tasks",
   "ask_user_questions",
   "request_confirmation",
 ] as const;
-export type IssueThreadInteractionKind = (typeof ISSUE_THREAD_INTERACTION_KINDS)[number];
+export type TaskThreadInteractionKind = (typeof TASK_THREAD_INTERACTION_KINDS)[number];
 
-export const ISSUE_THREAD_INTERACTION_STATUSES = [
+export const TASK_THREAD_INTERACTION_STATUSES = [
   "pending",
   "accepted",
   "rejected",
@@ -156,56 +156,56 @@ export const ISSUE_THREAD_INTERACTION_STATUSES = [
   "expired",
   "failed",
 ] as const;
-export type IssueThreadInteractionStatus = (typeof ISSUE_THREAD_INTERACTION_STATUSES)[number];
+export type TaskThreadInteractionStatus = (typeof TASK_THREAD_INTERACTION_STATUSES)[number];
 
-export const ISSUE_THREAD_INTERACTION_CONTINUATION_POLICIES = [
+export const TASK_THREAD_INTERACTION_CONTINUATION_POLICIES = [
   "none",
   "wake_assignee",
   "wake_assignee_on_accept",
 ] as const;
-export type IssueThreadInteractionContinuationPolicy =
-  (typeof ISSUE_THREAD_INTERACTION_CONTINUATION_POLICIES)[number];
+export type TaskThreadInteractionContinuationPolicy =
+  (typeof TASK_THREAD_INTERACTION_CONTINUATION_POLICIES)[number];
 
-export const ISSUE_ORIGIN_KINDS = ["manual", "routine_execution", "stale_active_run_evaluation"] as const;
-export type BuiltInIssueOriginKind = (typeof ISSUE_ORIGIN_KINDS)[number];
-export type PluginIssueOriginKind = `plugin:${string}`;
-export type IssueOriginKind = BuiltInIssueOriginKind | PluginIssueOriginKind;
+export const TASK_ORIGIN_KINDS = ["manual", "notion_task", "routine_execution", "stale_active_run_evaluation"] as const;
+export type BuiltInTaskOriginKind = (typeof TASK_ORIGIN_KINDS)[number];
+export type PluginTaskOriginKind = `plugin:${string}`;
+export type TaskOriginKind = BuiltInTaskOriginKind | PluginTaskOriginKind;
 
-export const ISSUE_RELATION_TYPES = ["blocks"] as const;
-export type IssueRelationType = (typeof ISSUE_RELATION_TYPES)[number];
+export const TASK_RELATION_TYPES = ["blocks"] as const;
+export type TaskRelationType = (typeof TASK_RELATION_TYPES)[number];
 
-export const ISSUE_TREE_CONTROL_MODES = ["pause", "resume", "cancel", "restore"] as const;
-export type IssueTreeControlMode = (typeof ISSUE_TREE_CONTROL_MODES)[number];
+export const TASK_TREE_CONTROL_MODES = ["pause", "resume", "cancel", "restore"] as const;
+export type TaskTreeControlMode = (typeof TASK_TREE_CONTROL_MODES)[number];
 
-export const ISSUE_TREE_HOLD_STATUSES = ["active", "released"] as const;
-export type IssueTreeHoldStatus = (typeof ISSUE_TREE_HOLD_STATUSES)[number];
+export const TASK_TREE_HOLD_STATUSES = ["active", "released"] as const;
+export type TaskTreeHoldStatus = (typeof TASK_TREE_HOLD_STATUSES)[number];
 
-export const ISSUE_TREE_HOLD_RELEASE_POLICY_STRATEGIES = ["manual", "after_active_runs_finish"] as const;
-export type IssueTreeHoldReleasePolicyStrategy = (typeof ISSUE_TREE_HOLD_RELEASE_POLICY_STRATEGIES)[number];
+export const TASK_TREE_HOLD_RELEASE_POLICY_STRATEGIES = ["manual", "after_active_runs_finish"] as const;
+export type TaskTreeHoldReleasePolicyStrategy = (typeof TASK_TREE_HOLD_RELEASE_POLICY_STRATEGIES)[number];
 
-export const ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY = "continuation-summary" as const;
-export const SYSTEM_ISSUE_DOCUMENT_KEYS = [ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY] as const;
-export type SystemIssueDocumentKey = (typeof SYSTEM_ISSUE_DOCUMENT_KEYS)[number];
+export const TASK_CONTINUATION_SUMMARY_DOCUMENT_KEY = "continuation-summary" as const;
+export const SYSTEM_TASK_DOCUMENT_KEYS = [TASK_CONTINUATION_SUMMARY_DOCUMENT_KEY] as const;
+export type SystemTaskDocumentKey = (typeof SYSTEM_TASK_DOCUMENT_KEYS)[number];
 
-const SYSTEM_ISSUE_DOCUMENT_KEY_SET = new Set<string>(SYSTEM_ISSUE_DOCUMENT_KEYS);
+const SYSTEM_TASK_DOCUMENT_KEY_SET = new Set<string>(SYSTEM_TASK_DOCUMENT_KEYS);
 
-export function isSystemIssueDocumentKey(key: string): key is SystemIssueDocumentKey {
-  return SYSTEM_ISSUE_DOCUMENT_KEY_SET.has(key);
+export function isSystemTaskDocumentKey(key: string): key is SystemTaskDocumentKey {
+  return SYSTEM_TASK_DOCUMENT_KEY_SET.has(key);
 }
-export const ISSUE_REFERENCE_SOURCE_KINDS = ["title", "description", "comment", "document"] as const;
-export type IssueReferenceSourceKind = (typeof ISSUE_REFERENCE_SOURCE_KINDS)[number];
+export const TASK_REFERENCE_SOURCE_KINDS = ["title", "description", "comment", "document"] as const;
+export type TaskReferenceSourceKind = (typeof TASK_REFERENCE_SOURCE_KINDS)[number];
 
-export const ISSUE_EXECUTION_POLICY_MODES = ["normal", "auto"] as const;
-export type IssueExecutionPolicyMode = (typeof ISSUE_EXECUTION_POLICY_MODES)[number];
+export const TASK_EXECUTION_POLICY_MODES = ["normal", "auto"] as const;
+export type TaskExecutionPolicyMode = (typeof TASK_EXECUTION_POLICY_MODES)[number];
 
-export const ISSUE_EXECUTION_STAGE_TYPES = ["review", "approval"] as const;
-export type IssueExecutionStageType = (typeof ISSUE_EXECUTION_STAGE_TYPES)[number];
+export const TASK_EXECUTION_STAGE_TYPES = ["review", "approval"] as const;
+export type TaskExecutionStageType = (typeof TASK_EXECUTION_STAGE_TYPES)[number];
 
-export const ISSUE_EXECUTION_STATE_STATUSES = ["idle", "pending", "changes_requested", "completed"] as const;
-export type IssueExecutionStateStatus = (typeof ISSUE_EXECUTION_STATE_STATUSES)[number];
+export const TASK_EXECUTION_STATE_STATUSES = ["idle", "pending", "changes_requested", "completed"] as const;
+export type TaskExecutionStateStatus = (typeof TASK_EXECUTION_STATE_STATUSES)[number];
 
-export const ISSUE_EXECUTION_DECISION_OUTCOMES = ["approved", "changes_requested"] as const;
-export type IssueExecutionDecisionOutcome = (typeof ISSUE_EXECUTION_DECISION_OUTCOMES)[number];
+export const TASK_EXECUTION_DECISION_OUTCOMES = ["approved", "changes_requested"] as const;
+export type TaskExecutionDecisionOutcome = (typeof TASK_EXECUTION_DECISION_OUTCOMES)[number];
 
 export const GOAL_LEVELS = ["company", "team", "agent", "task"] as const;
 export type GoalLevel = (typeof GOAL_LEVELS)[number];
@@ -264,7 +264,7 @@ export const ROUTINE_RUN_STATUSES = [
   "received",
   "coalesced",
   "skipped",
-  "issue_created",
+  "task_created",
   "completed",
   "failed",
  ] as const;
@@ -397,7 +397,7 @@ export type WakeupTriggerDetail = (typeof WAKEUP_TRIGGER_DETAILS)[number];
 
 export const WAKEUP_REQUEST_STATUSES = [
   "queued",
-  "deferred_issue_execution",
+  "deferred_task_execution",
   "claimed",
   "coalesced",
   "skipped",
@@ -562,28 +562,28 @@ export const PLUGIN_CAPABILITIES = [
   "companies.read",
   "projects.read",
   "project.workspaces.read",
-  "issues.read",
-  "issue.relations.read",
-  "issue.subtree.read",
-  "issue.comments.read",
-  "issue.documents.read",
+  "tasks.read",
+  "task.relations.read",
+  "task.subtree.read",
+  "task.comments.read",
+  "task.documents.read",
   "agents.read",
   "goals.read",
   "goals.create",
   "goals.update",
   "activity.read",
   "costs.read",
-  "issues.orchestration.read",
+  "tasks.orchestration.read",
   "database.namespace.read",
   // Data Write
-  "issues.create",
-  "issues.update",
-  "issue.relations.write",
-  "issues.checkout",
-  "issues.wakeup",
-  "issue.comments.create",
-  "issue.interactions.create",
-  "issue.documents.write",
+  "tasks.create",
+  "tasks.update",
+  "task.relations.write",
+  "tasks.checkout",
+  "tasks.wakeup",
+  "task.comments.create",
+  "task.interactions.create",
+  "task.documents.write",
   "agents.pause",
   "agents.resume",
   "agents.invoke",
@@ -641,14 +641,14 @@ export const PLUGIN_DATABASE_CORE_READ_TABLES = [
   "projects",
   "goals",
   "agents",
-  "issues",
-  "issue_documents",
-  "issue_relations",
-  "issue_comments",
+  "tasks",
+  "task_documents",
+  "task_relations",
+  "task_comments",
   "heartbeat_runs",
   "cost_events",
   "approvals",
-  "issue_approvals",
+  "task_approvals",
   "budget_incidents",
 ] as const;
 export type PluginDatabaseCoreReadTable = (typeof PLUGIN_DATABASE_CORE_READ_TABLES)[number];
@@ -704,7 +704,7 @@ export const PLUGIN_RESERVED_COMPANY_ROUTE_SEGMENTS = [
   "org",
   "agents",
   "projects",
-  "issues",
+  "tasks",
   "goals",
   "approvals",
   "costs",
@@ -786,7 +786,7 @@ export type PluginLauncherRenderEnvironment =
  */
 export const PLUGIN_UI_SLOT_ENTITY_TYPES = [
   "project",
-  "issue",
+  "task",
   "agent",
   "goal",
   "run",
@@ -806,7 +806,7 @@ export const PLUGIN_STATE_SCOPE_KINDS = [
   "project",
   "project_workspace",
   "agent",
-  "issue",
+  "task",
   "goal",
   "run",
 ] as const;
@@ -861,16 +861,16 @@ export const PLUGIN_EVENT_TYPES = [
   "project.workspace_created",
   "project.workspace_updated",
   "project.workspace_deleted",
-  "issue.created",
-  "issue.updated",
-  "issue.comment.created",
-  "issue.document.created",
-  "issue.document.updated",
-  "issue.document.deleted",
-  "issue.relations.updated",
-  "issue.checked_out",
-  "issue.released",
-  "issue.assignment_wakeup_requested",
+  "task.created",
+  "task.updated",
+  "task.comment.created",
+  "task.document.created",
+  "task.document.updated",
+  "task.document.deleted",
+  "task.relations.updated",
+  "task.checked_out",
+  "task.released",
+  "task.assignment_wakeup_requested",
   "agent.created",
   "agent.updated",
   "agent.status_changed",

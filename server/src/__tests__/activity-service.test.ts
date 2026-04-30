@@ -8,11 +8,11 @@ import {
   documentRevisions,
   documents,
   heartbeatRuns,
-  issueComments,
-  issueDocuments,
-  issues,
+  taskComments,
+  taskDocuments,
+  tasks,
 } from "@paperclipai/db";
-import { ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY } from "@paperclipai/shared";
+import { TASK_CONTINUATION_SUMMARY_DOCUMENT_KEY } from "@paperclipai/shared";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -22,7 +22,7 @@ import { activityService } from "../services/activity.ts";
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
 type ActivityService = ReturnType<typeof activityService>;
-type IssueRun = Awaited<ReturnType<ActivityService["runsForIssue"]>>[number];
+type TaskRun = Awaited<ReturnType<ActivityService["runsForTask"]>>[number];
 
 if (!embeddedPostgresSupport.supported) {
   console.warn(
@@ -30,21 +30,21 @@ if (!embeddedPostgresSupport.supported) {
   );
 }
 
-async function waitForIssueRun(
+async function waitForTaskRun(
   service: ActivityService,
   companyId: string,
-  issueId: string,
-  predicate: (run: IssueRun) => boolean,
+  taskId: string,
+  predicate: (run: TaskRun) => boolean,
 ) {
   const deadline = Date.now() + 2_000;
-  let latestRuns: IssueRun[] = [];
+  let latestRuns: TaskRun[] = [];
   while (Date.now() < deadline) {
-    latestRuns = await service.runsForIssue(companyId, issueId);
+    latestRuns = await service.runsForTask(companyId, taskId);
     const run = latestRuns.find(predicate);
     if (run) return { run, runs: latestRuns };
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  throw new Error(`Timed out waiting for issue run. Latest run count: ${latestRuns.length}`);
+  throw new Error(`Timed out waiting for task run. Latest run count: ${latestRuns.length}`);
 }
 
 describeEmbeddedPostgres("activity service", () => {
@@ -58,11 +58,11 @@ describeEmbeddedPostgres("activity service", () => {
 
   afterEach(async () => {
     await db.delete(activityLog);
-    await db.delete(issueComments);
-    await db.delete(issueDocuments);
+    await db.delete(taskComments);
+    await db.delete(taskDocuments);
     await db.delete(documentRevisions);
     await db.delete(documents);
-    await db.delete(issues);
+    await db.delete(tasks);
     await db.delete(heartbeatRuns);
     await db.delete(agents);
     await db.delete(companies);
@@ -78,7 +78,7 @@ describeEmbeddedPostgres("activity service", () => {
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      taskPrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
@@ -117,16 +117,16 @@ describeEmbeddedPostgres("activity service", () => {
     expect(result.map((event) => event.action)).toEqual(["test.newest", "test.middle"]);
   });
 
-  it("returns compact usage and result summaries for issue runs", async () => {
+  it("returns compact usage and result summaries for task runs", async () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
-    const issueId = randomUUID();
+    const taskId = randomUUID();
     const runId = randomUUID();
 
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      taskPrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
@@ -148,7 +148,7 @@ describeEmbeddedPostgres("activity service", () => {
       agentId,
       invocationSource: "assignment",
       status: "succeeded",
-      contextSnapshot: { issueId },
+      contextSnapshot: { taskId },
       usageJson: {
         inputTokens: 11,
         output_tokens: 7,
@@ -167,13 +167,13 @@ describeEmbeddedPostgres("activity service", () => {
         nestedHuge: { payload: "y".repeat(256_000) },
       },
       livenessState: "advanced",
-      livenessReason: "Run produced concrete action evidence: 1 issue comment(s)",
+      livenessReason: "Run produced concrete action evidence: 1 task comment(s)",
       continuationAttempt: 2,
       lastUsefulActionAt: new Date("2026-04-18T19:59:00.000Z"),
       nextAction: "Review the completed output.",
     });
 
-    const runs = await activityService(db).runsForIssue(companyId, issueId);
+    const runs = await activityService(db).runsForTask(companyId, taskId);
 
     expect(runs).toHaveLength(1);
     expect(runs[0]).toMatchObject({
@@ -207,24 +207,24 @@ describeEmbeddedPostgres("activity service", () => {
     });
     expect(runs[0]).toMatchObject({
       livenessState: "advanced",
-      livenessReason: "Run produced concrete action evidence: 1 issue comment(s)",
+      livenessReason: "Run produced concrete action evidence: 1 task comment(s)",
       continuationAttempt: 2,
       lastUsefulActionAt: new Date("2026-04-18T19:59:00.000Z"),
       nextAction: "Review the completed output.",
     });
   });
 
-  it("backfills missing liveness for completed issue runs before returning the ledger", async () => {
+  it("backfills missing liveness for completed task runs before returning the ledger", async () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
-    const issueId = randomUUID();
+    const taskId = randomUUID();
     const runId = randomUUID();
     const completedAt = new Date("2026-04-18T20:04:00.000Z");
 
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      taskPrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
@@ -240,8 +240,8 @@ describeEmbeddedPostgres("activity service", () => {
       permissions: {},
     });
 
-    await db.insert(issues).values({
-      id: issueId,
+    await db.insert(tasks).values({
+      id: taskId,
       companyId,
       title: "Fix run ledger",
       description: "Make the run ledger answer whether a run advanced.",
@@ -259,7 +259,7 @@ describeEmbeddedPostgres("activity service", () => {
       status: "succeeded",
       startedAt: new Date("2026-04-18T20:00:00.000Z"),
       finishedAt: completedAt,
-      contextSnapshot: { issueId },
+      contextSnapshot: { taskId },
       resultJson: {
         summary: "Finished the implementation.",
       },
@@ -269,9 +269,9 @@ describeEmbeddedPostgres("activity service", () => {
       nextAction: null,
     });
 
-    await db.insert(issueComments).values({
+    await db.insert(taskComments).values({
       companyId,
-      issueId,
+      taskId,
       authorAgentId: agentId,
       createdByRunId: runId,
       body: "Done",
@@ -279,10 +279,10 @@ describeEmbeddedPostgres("activity service", () => {
     });
 
     const service = activityService(db);
-    const { run, runs } = await waitForIssueRun(
+    const { run, runs } = await waitForTaskRun(
       service,
       companyId,
-      issueId,
+      taskId,
       (entry) => entry.runId === runId && entry.livenessState === "completed",
     );
 
@@ -290,7 +290,7 @@ describeEmbeddedPostgres("activity service", () => {
     expect(run).toMatchObject({
       runId,
       livenessState: "completed",
-      livenessReason: "Issue is done",
+      livenessReason: "Task is done",
       continuationAttempt: 0,
       lastUsefulActionAt: completedAt,
     });
@@ -299,7 +299,7 @@ describeEmbeddedPostgres("activity service", () => {
     expect(persisted).toMatchObject({
       id: runId,
       livenessState: "completed",
-      livenessReason: "Issue is done",
+      livenessReason: "Task is done",
       continuationAttempt: 0,
       lastUsefulActionAt: completedAt,
     });
@@ -308,7 +308,7 @@ describeEmbeddedPostgres("activity service", () => {
   it("does not backfill document evidence from a different run", async () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
-    const issueId = randomUUID();
+    const taskId = randomUUID();
     const runId = randomUUID();
     const otherRunId = randomUUID();
     const documentId = randomUUID();
@@ -318,7 +318,7 @@ describeEmbeddedPostgres("activity service", () => {
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      taskPrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
@@ -334,8 +334,8 @@ describeEmbeddedPostgres("activity service", () => {
       permissions: {},
     });
 
-    await db.insert(issues).values({
-      id: issueId,
+    await db.insert(tasks).values({
+      id: taskId,
       companyId,
       title: "Fix run ledger",
       description: "Make the run ledger answer whether a run advanced.",
@@ -353,7 +353,7 @@ describeEmbeddedPostgres("activity service", () => {
         status: "succeeded",
         startedAt: new Date("2026-04-18T20:00:00.000Z"),
         finishedAt: new Date("2026-04-18T20:02:00.000Z"),
-        contextSnapshot: { issueId },
+        contextSnapshot: { taskId },
         resultJson: {
           summary: "Next steps:\n- inspect files",
         },
@@ -368,7 +368,7 @@ describeEmbeddedPostgres("activity service", () => {
         status: "succeeded",
         startedAt: new Date("2026-04-18T20:05:00.000Z"),
         finishedAt: createdAt,
-        contextSnapshot: { issueId },
+        contextSnapshot: { taskId },
         resultJson: {
           summary: "Updated the plan document.",
         },
@@ -404,9 +404,9 @@ describeEmbeddedPostgres("activity service", () => {
       createdAt,
     });
 
-    await db.insert(issueDocuments).values({
+    await db.insert(taskDocuments).values({
       companyId,
-      issueId,
+      taskId,
       documentId,
       key: "plan",
       createdAt,
@@ -414,10 +414,10 @@ describeEmbeddedPostgres("activity service", () => {
     });
 
     const service = activityService(db);
-    const { run: backfilledRun } = await waitForIssueRun(
+    const { run: backfilledRun } = await waitForTaskRun(
       service,
       companyId,
-      issueId,
+      taskId,
       (entry) => entry.runId === runId && entry.livenessState === "plan_only",
     );
 
@@ -432,7 +432,7 @@ describeEmbeddedPostgres("activity service", () => {
   it("does not treat continuation summary revisions as concrete backfill evidence", async () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
-    const issueId = randomUUID();
+    const taskId = randomUUID();
     const runId = randomUUID();
     const documentId = randomUUID();
     const revisionId = randomUUID();
@@ -441,7 +441,7 @@ describeEmbeddedPostgres("activity service", () => {
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      taskPrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
@@ -457,8 +457,8 @@ describeEmbeddedPostgres("activity service", () => {
       permissions: {},
     });
 
-    await db.insert(issues).values({
-      id: issueId,
+    await db.insert(tasks).values({
+      id: taskId,
       companyId,
       title: "Fix run ledger",
       description: "Make the run ledger answer whether a run advanced.",
@@ -475,7 +475,7 @@ describeEmbeddedPostgres("activity service", () => {
       status: "succeeded",
       startedAt: new Date("2026-04-18T20:10:00.000Z"),
       finishedAt: createdAt,
-      contextSnapshot: { issueId },
+      contextSnapshot: { taskId },
       resultJson: {
         summary: "Next steps:\n- inspect files",
       },
@@ -510,20 +510,20 @@ describeEmbeddedPostgres("activity service", () => {
       createdAt,
     });
 
-    await db.insert(issueDocuments).values({
+    await db.insert(taskDocuments).values({
       companyId,
-      issueId,
+      taskId,
       documentId,
-      key: ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY,
+      key: TASK_CONTINUATION_SUMMARY_DOCUMENT_KEY,
       createdAt,
       updatedAt: createdAt,
     });
 
     const service = activityService(db);
-    const { run: backfilledRun } = await waitForIssueRun(
+    const { run: backfilledRun } = await waitForTaskRun(
       service,
       companyId,
-      issueId,
+      taskId,
       (entry) => entry.runId === runId && entry.livenessState === "plan_only",
     );
 

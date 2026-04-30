@@ -1,4 +1,4 @@
-export type ExternalAppProvider = "notion" | "obsidian";
+export type ExternalAppProvider = "notion" | "obsidian" | "github" | "bitbucket";
 
 export type ExternalAppStatus = "configured" | "healthy" | "error";
 

@@ -7,13 +7,13 @@ import type { Agent, Project } from "@paperclipai/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RoutineRunVariablesDialog } from "./RoutineRunVariablesDialog";
 
-let issueWorkspaceDraftCalls = 0;
-let issueWorkspaceDraft = {
+let taskWorkspaceDraftCalls = 0;
+let taskWorkspaceDraft = {
   executionWorkspaceId: null as string | null,
   executionWorkspacePreference: "shared_workspace",
   executionWorkspaceSettings: { mode: "shared_workspace" },
 };
-let issueWorkspaceBranchName: string | null = null;
+let taskWorkspaceBranchName: string | null = null;
 
 vi.mock("../api/instanceSettings", () => ({
   instanceSettingsApi: {
@@ -21,11 +21,11 @@ vi.mock("../api/instanceSettings", () => ({
   },
 }));
 
-vi.mock("./IssueWorkspaceCard", async () => {
+vi.mock("./TaskWorkspaceCard", async () => {
   const React = await import("react");
 
   return {
-    IssueWorkspaceCard: ({
+    TaskWorkspaceCard: ({
       onDraftChange,
     }: {
       onDraftChange?: (
@@ -34,13 +34,13 @@ vi.mock("./IssueWorkspaceCard", async () => {
       ) => void;
     }) => {
       React.useEffect(() => {
-        issueWorkspaceDraftCalls += 1;
-        if (issueWorkspaceDraftCalls > 20) {
-          throw new Error("IssueWorkspaceCard onDraftChange looped");
+        taskWorkspaceDraftCalls += 1;
+        if (taskWorkspaceDraftCalls > 20) {
+          throw new Error("TaskWorkspaceCard onDraftChange looped");
         }
-        onDraftChange?.(issueWorkspaceDraft, {
+        onDraftChange?.(taskWorkspaceDraft, {
           canSave: true,
-          workspaceBranchName: issueWorkspaceBranchName,
+          workspaceBranchName: taskWorkspaceBranchName,
         });
       }, [onDraftChange]);
 
@@ -73,7 +73,7 @@ function createProject(): Project {
     executionWorkspacePolicy: {
       enabled: true,
       defaultMode: "shared_workspace",
-      allowIssueOverride: true,
+      allowTaskOverride: true,
     },
     codebase: {
       workspaceId: null,
@@ -126,13 +126,13 @@ describe("RoutineRunVariablesDialog", () => {
   beforeEach(() => {
     container = document.createElement("div");
     document.body.appendChild(container);
-    issueWorkspaceDraftCalls = 0;
-    issueWorkspaceDraft = {
+    taskWorkspaceDraftCalls = 0;
+    taskWorkspaceDraft = {
       executionWorkspaceId: null,
       executionWorkspacePreference: "shared_workspace",
       executionWorkspaceSettings: { mode: "shared_workspace" },
     };
-    issueWorkspaceBranchName = null;
+    taskWorkspaceBranchName = null;
   });
 
   afterEach(() => {
@@ -172,7 +172,7 @@ describe("RoutineRunVariablesDialog", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    expect(issueWorkspaceDraftCalls).toBeLessThanOrEqual(2);
+    expect(taskWorkspaceDraftCalls).toBeLessThanOrEqual(2);
     expect(document.body.textContent).toContain("Run routine");
     expect(document.body.textContent).not.toContain("Search agents...");
     expect(document.body.textContent).not.toContain("Search projects...");
@@ -183,12 +183,12 @@ describe("RoutineRunVariablesDialog", () => {
   });
 
   it("renders workspaceBranch as a read-only selected workspace value", async () => {
-    issueWorkspaceDraft = {
+    taskWorkspaceDraft = {
       executionWorkspaceId: "workspace-1",
       executionWorkspacePreference: "reuse_existing",
       executionWorkspaceSettings: { mode: "isolated_workspace" },
     };
-    issueWorkspaceBranchName = "pap-1634-routine-branch";
+    taskWorkspaceBranchName = "pap-1634-routine-branch";
     const onSubmit = vi.fn();
     const root = createRoot(container);
     const queryClient = new QueryClient({

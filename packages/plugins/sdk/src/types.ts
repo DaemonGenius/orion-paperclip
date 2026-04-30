@@ -17,17 +17,17 @@ import type {
   PluginLauncherDeclaration,
   Company,
   Project,
-  Issue,
-  IssueComment,
-  IssueDocument,
-  IssueDocumentSummary,
-  IssueRelationIssueSummary,
-  IssueThreadInteraction,
+  Task,
+  TaskComment,
+  TaskDocument,
+  TaskDocumentSummary,
+  TaskRelationTaskSummary,
+  TaskThreadInteraction,
   SuggestTasksInteraction,
   AskUserQuestionsInteraction,
   RequestConfirmationInteraction,
-  CreateIssueThreadInteraction,
-  PluginIssueOriginKind,
+  CreateTaskThreadInteraction,
+  PluginTaskOriginKind,
   Agent,
   Goal,
 } from "@paperclipai/shared";
@@ -81,17 +81,17 @@ export type {
   PluginBridgeErrorCode,
   Company,
   Project,
-  Issue,
-  IssueComment,
-  IssueDocument,
-  IssueDocumentSummary,
-  IssueRelationIssueSummary,
-  IssueThreadInteraction,
+  Task,
+  TaskComment,
+  TaskDocument,
+  TaskDocumentSummary,
+  TaskRelationTaskSummary,
+  TaskThreadInteraction,
   SuggestTasksInteraction,
   AskUserQuestionsInteraction,
   RequestConfirmationInteraction,
-  CreateIssueThreadInteraction,
-  PluginIssueOriginKind,
+  CreateTaskThreadInteraction,
+  PluginTaskOriginKind,
   Agent,
   Goal,
 } from "@paperclipai/shared";
@@ -107,7 +107,7 @@ export type {
  * Examples:
  * - `{ scopeKind: "instance" }` — single global value for the whole instance
  * - `{ scopeKind: "project", scopeId: "proj-uuid" }` — per-project state
- * - `{ scopeKind: "issue", scopeId: "iss-uuid" }` — per-issue state
+ * - `{ scopeKind: "task", scopeId: "iss-uuid" }` — per-task state
  *
  * @see PLUGIN_SPEC.md §21.3 `plugin_state`
  */
@@ -154,7 +154,7 @@ export interface EventFilter {
 export interface PluginEvent<TPayload = unknown> {
   /** Unique event identifier (UUID). */
   eventId: string;
-  /** The event type (e.g. `"issue.created"`). */
+  /** The event type (e.g. `"task.created"`). */
   eventType: PluginEventType | `plugin.${string}`;
   /** ISO 8601 timestamp when the event occurred. */
   occurredAt: string;
@@ -236,13 +236,13 @@ export interface ToolResult {
  * @see PLUGIN_SPEC.md §21.3 `plugin_entities`
  */
 export interface PluginEntityUpsert {
-  /** Plugin-defined entity type (e.g. `"linear-issue"`, `"github-pr"`). */
+  /** Plugin-defined entity type (e.g. `"linear-task"`, `"github-pr"`). */
   entityType: string;
   /** Scope where this entity lives. */
   scopeKind: PluginStateScopeKind;
   /** Optional scope ID. */
   scopeId?: string;
-  /** External identifier in the remote system (e.g. Linear issue ID). */
+  /** External identifier in the remote system (e.g. Linear task ID). */
   externalId?: string;
   /** Human-readable title for display in the Paperclip UI. */
   title?: string;
@@ -361,7 +361,7 @@ export interface PluginEventsClient {
   /**
    * Subscribe to a core Paperclip domain event or a plugin-namespaced event.
    *
-   * @param name - Event type, e.g. `"issue.created"` or `"plugin.@acme/linear.sync-done"`
+   * @param name - Event type, e.g. `"task.created"` or `"plugin.@acme/linear.sync-done"`
    * @param fn - Async event handler
    */
   on(name: PluginEventType | `plugin.${string}`, fn: (event: PluginEvent) => Promise<void>): () => void;
@@ -547,7 +547,7 @@ export interface PluginActivityClient {
  * | `"project"` | project UUID | Per-project settings, branch tracking |
  * | `"project_workspace"` | workspace UUID | Per-workspace state |
  * | `"agent"` | agent UUID | Per-agent memory |
- * | `"issue"` | issue UUID | Idempotency keys, linked external IDs |
+ * | `"task"` | task UUID | Idempotency keys, linked external IDs |
  * | `"goal"` | goal UUID | Per-goal progress |
  * | `"run"` | run UUID | Per-run checkpoints |
  *
@@ -567,11 +567,11 @@ export interface PluginActivityClient {
  * // Instance-global flag
  * await ctx.state.set({ scopeKind: "instance", stateKey: "schema-version" }, 2);
  *
- * // Idempotency key per issue
- * const synced = await ctx.state.get({ scopeKind: "issue", scopeId: issueId, stateKey: "synced-to-linear" });
+ * // Idempotency key per task
+ * const synced = await ctx.state.get({ scopeKind: "task", scopeId: taskId, stateKey: "synced-to-linear" });
  * if (!synced) {
- *   await syncToLinear(issueId);
- *   await ctx.state.set({ scopeKind: "issue", scopeId: issueId, stateKey: "synced-to-linear" }, true);
+ *   await syncToLinear(taskId);
+ *   await ctx.state.set({ scopeKind: "task", scopeId: taskId, stateKey: "synced-to-linear" }, true);
  * }
  *
  * // Per-project, namespaced for two integrations
@@ -683,20 +683,20 @@ export interface PluginProjectsClient {
   getPrimaryWorkspace(projectId: string, companyId: string): Promise<PluginWorkspace | null>;
 
   /**
-   * Resolve the primary workspace for an issue by looking up the issue's
+   * Resolve the primary workspace for an task by looking up the task's
    * project and returning its primary workspace.
    *
-   * This is a convenience method that combines `issues.get()` and
+   * This is a convenience method that combines `tasks.get()` and
    * `getPrimaryWorkspace()` in a single RPC call.
    *
-   * @param issueId - UUID of the issue
-   * @param companyId - UUID of the company that owns the issue
-   * @returns The primary workspace for the issue's project, or `null` if
-   *   the issue has no project or the project has no workspace
+   * @param taskId - UUID of the task
+   * @param companyId - UUID of the company that owns the task
+   * @returns The primary workspace for the task's project, or `null` if
+   *   the task has no project or the project has no workspace
    *
    * @see PLUGIN_SPEC.md §20 — Local Tooling
    */
-  getWorkspaceForIssue(issueId: string, companyId: string): Promise<PluginWorkspace | null>;
+  getWorkspaceForTask(taskId: string, companyId: string): Promise<PluginWorkspace | null>;
 }
 
 /**
@@ -839,73 +839,73 @@ export interface PluginCompaniesClient {
 }
 
 /**
- * `ctx.issues.documents` — read and write issue documents.
+ * `ctx.tasks.documents` — read and write task documents.
  *
  * Requires:
- * - `issue.documents.read` for `list` and `get`
- * - `issue.documents.write` for `upsert` and `delete`
+ * - `task.documents.read` for `list` and `get`
+ * - `task.documents.write` for `upsert` and `delete`
  *
  * @see PLUGIN_SPEC.md §14 — SDK Surface
  */
-export interface PluginIssueDocumentsClient {
+export interface PluginTaskDocumentsClient {
   /**
-   * List all documents attached to an issue.
+   * List all documents attached to an task.
    *
    * Returns summary metadata (id, key, title, format, timestamps) without
    * the full document body. Use `get()` to fetch a specific document's body.
    *
-   * Requires the `issue.documents.read` capability.
+   * Requires the `task.documents.read` capability.
    */
-  list(issueId: string, companyId: string): Promise<IssueDocumentSummary[]>;
+  list(taskId: string, companyId: string): Promise<TaskDocumentSummary[]>;
 
   /**
    * Get a single document by key, including its full body content.
    *
    * Returns `null` if no document exists with the given key.
    *
-   * Requires the `issue.documents.read` capability.
+   * Requires the `task.documents.read` capability.
    *
-   * @param issueId - UUID of the issue
+   * @param taskId - UUID of the task
    * @param key - Document key (e.g. `"plan"`, `"design-spec"`)
    * @param companyId - UUID of the company
    */
-  get(issueId: string, key: string, companyId: string): Promise<IssueDocument | null>;
+  get(taskId: string, key: string, companyId: string): Promise<TaskDocument | null>;
 
   /**
-   * Create or update a document on an issue.
+   * Create or update a document on an task.
    *
    * If a document with the given key already exists, it is updated and a new
    * revision is created. If it does not exist, it is created.
    *
-   * Requires the `issue.documents.write` capability.
+   * Requires the `task.documents.write` capability.
    *
-   * @param input - Document data including issueId, key, body, and optional title/format/changeSummary
+   * @param input - Document data including taskId, key, body, and optional title/format/changeSummary
    */
   upsert(input: {
-    issueId: string;
+    taskId: string;
     key: string;
     body: string;
     companyId: string;
     title?: string;
     format?: string;
     changeSummary?: string;
-  }): Promise<IssueDocument>;
+  }): Promise<TaskDocument>;
 
   /**
    * Delete a document and all its revisions.
    *
    * No-ops silently if the document does not exist (idempotent).
    *
-   * Requires the `issue.documents.write` capability.
+   * Requires the `task.documents.write` capability.
    *
-   * @param issueId - UUID of the issue
+   * @param taskId - UUID of the task
    * @param key - Document key to delete
    * @param companyId - UUID of the company
    */
-  delete(issueId: string, key: string, companyId: string): Promise<void>;
+  delete(taskId: string, key: string, companyId: string): Promise<void>;
 }
 
-export interface PluginIssueMutationActor {
+export interface PluginTaskMutationActor {
   /** Agent that initiated the plugin operation, when the plugin is acting from an agent run. */
   actorAgentId?: string | null;
   /** Board/user that initiated the plugin operation, when known. */
@@ -914,59 +914,59 @@ export interface PluginIssueMutationActor {
   actorRunId?: string | null;
 }
 
-export interface PluginIssueRelationSummary {
-  blockedBy: IssueRelationIssueSummary[];
-  blocks: IssueRelationIssueSummary[];
+export interface PluginTaskRelationSummary {
+  blockedBy: TaskRelationTaskSummary[];
+  blocks: TaskRelationTaskSummary[];
 }
 
-export interface PluginIssueRelationsClient {
-  /** Read blocker relationships for an issue. Requires `issue.relations.read`. */
-  get(issueId: string, companyId: string): Promise<PluginIssueRelationSummary>;
-  /** Replace the issue's blocked-by relation set. Requires `issue.relations.write`. */
+export interface PluginTaskRelationsClient {
+  /** Read blocker relationships for an task. Requires `task.relations.read`. */
+  get(taskId: string, companyId: string): Promise<PluginTaskRelationSummary>;
+  /** Replace the task's blocked-by relation set. Requires `task.relations.write`. */
   setBlockedBy(
-    issueId: string,
-    blockedByIssueIds: string[],
+    taskId: string,
+    blockedByTaskIds: string[],
     companyId: string,
-    actor?: PluginIssueMutationActor,
-  ): Promise<PluginIssueRelationSummary>;
-  /** Add one or more blockers while preserving existing blockers. Requires `issue.relations.write`. */
+    actor?: PluginTaskMutationActor,
+  ): Promise<PluginTaskRelationSummary>;
+  /** Add one or more blockers while preserving existing blockers. Requires `task.relations.write`. */
   addBlockers(
-    issueId: string,
-    blockerIssueIds: string[],
+    taskId: string,
+    blockerTaskIds: string[],
     companyId: string,
-    actor?: PluginIssueMutationActor,
-  ): Promise<PluginIssueRelationSummary>;
-  /** Remove one or more blockers while preserving all other blockers. Requires `issue.relations.write`. */
+    actor?: PluginTaskMutationActor,
+  ): Promise<PluginTaskRelationSummary>;
+  /** Remove one or more blockers while preserving all other blockers. Requires `task.relations.write`. */
   removeBlockers(
-    issueId: string,
-    blockerIssueIds: string[],
+    taskId: string,
+    blockerTaskIds: string[],
     companyId: string,
-    actor?: PluginIssueMutationActor,
-  ): Promise<PluginIssueRelationSummary>;
+    actor?: PluginTaskMutationActor,
+  ): Promise<PluginTaskRelationSummary>;
 }
 
-export interface PluginIssueCheckoutOwnership {
-  issueId: string;
-  status: Issue["status"];
+export interface PluginTaskCheckoutOwnership {
+  taskId: string;
+  status: Task["status"];
   assigneeAgentId: string | null;
   checkoutRunId: string | null;
   adoptedFromRunId: string | null;
 }
 
-export interface PluginIssueWakeupResult {
+export interface PluginTaskWakeupResult {
   queued: boolean;
   runId: string | null;
 }
 
-export interface PluginIssueWakeupBatchResult {
-  issueId: string;
+export interface PluginTaskWakeupBatchResult {
+  taskId: string;
   queued: boolean;
   runId: string | null;
 }
 
-export interface PluginIssueRunSummary {
+export interface PluginTaskRunSummary {
   id: string;
-  issueId: string | null;
+  taskId: string | null;
   agentId: string;
   status: string;
   invocationSource: string;
@@ -977,8 +977,8 @@ export interface PluginIssueRunSummary {
   createdAt: string;
 }
 
-export interface PluginIssueApprovalSummary {
-  issueId: string;
+export interface PluginTaskApprovalSummary {
+  taskId: string;
   id: string;
   type: string;
   status: string;
@@ -989,7 +989,7 @@ export interface PluginIssueApprovalSummary {
   createdAt: string;
 }
 
-export interface PluginIssueCostSummary {
+export interface PluginTaskCostSummary {
   costCents: number;
   inputTokens: number;
   cachedInputTokens: number;
@@ -1011,8 +1011,8 @@ export interface PluginBudgetIncidentSummary {
   createdAt: string;
 }
 
-export interface PluginIssueInvocationBlockSummary {
-  issueId: string;
+export interface PluginTaskInvocationBlockSummary {
+  taskId: string;
   agentId: string;
   scopeType: "company" | "agent" | "project";
   scopeId: string;
@@ -1020,32 +1020,32 @@ export interface PluginIssueInvocationBlockSummary {
   reason: string;
 }
 
-export interface PluginIssueOrchestrationSummary {
-  issueId: string;
+export interface PluginTaskOrchestrationSummary {
+  taskId: string;
   companyId: string;
-  subtreeIssueIds: string[];
-  relations: Record<string, PluginIssueRelationSummary>;
-  approvals: PluginIssueApprovalSummary[];
-  runs: PluginIssueRunSummary[];
-  costs: PluginIssueCostSummary;
+  subtreeTaskIds: string[];
+  relations: Record<string, PluginTaskRelationSummary>;
+  approvals: PluginTaskApprovalSummary[];
+  runs: PluginTaskRunSummary[];
+  costs: PluginTaskCostSummary;
   openBudgetIncidents: PluginBudgetIncidentSummary[];
-  invocationBlocks: PluginIssueInvocationBlockSummary[];
+  invocationBlocks: PluginTaskInvocationBlockSummary[];
 }
 
-export interface PluginIssueSubtreeOptions {
-  /** Include the root issue in the result. Defaults to true. */
+export interface PluginTaskSubtreeOptions {
+  /** Include the root task in the result. Defaults to true. */
   includeRoot?: boolean;
-  /** Include blocker relationship summaries keyed by issue ID. */
+  /** Include blocker relationship summaries keyed by task ID. */
   includeRelations?: boolean;
-  /** Include issue document summaries keyed by issue ID. */
+  /** Include task document summaries keyed by task ID. */
   includeDocuments?: boolean;
-  /** Include queued/running heartbeat runs keyed by issue ID. */
+  /** Include queued/running heartbeat runs keyed by task ID. */
   includeActiveRuns?: boolean;
   /** Include assignee summaries keyed by agent ID. */
   includeAssignees?: boolean;
 }
 
-export interface PluginIssueAssigneeSummary {
+export interface PluginTaskAssigneeSummary {
   id: string;
   name: string;
   role: string;
@@ -1053,86 +1053,86 @@ export interface PluginIssueAssigneeSummary {
   status: Agent["status"];
 }
 
-export interface PluginIssueSubtree {
-  rootIssueId: string;
+export interface PluginTaskSubtree {
+  rootTaskId: string;
   companyId: string;
-  issueIds: string[];
-  issues: Issue[];
-  relations?: Record<string, PluginIssueRelationSummary>;
-  documents?: Record<string, IssueDocumentSummary[]>;
-  activeRuns?: Record<string, PluginIssueRunSummary[]>;
-  assignees?: Record<string, PluginIssueAssigneeSummary>;
+  taskIds: string[];
+  tasks: Task[];
+  relations?: Record<string, PluginTaskRelationSummary>;
+  documents?: Record<string, TaskDocumentSummary[]>;
+  activeRuns?: Record<string, PluginTaskRunSummary[]>;
+  assignees?: Record<string, PluginTaskAssigneeSummary>;
 }
 
-export interface PluginIssueSummariesClient {
+export interface PluginTaskSummariesClient {
   /**
    * Read the compact orchestration inputs a workflow plugin needs for an
-   * issue or issue subtree. Requires `issues.orchestration.read`.
+   * task or task subtree. Requires `tasks.orchestration.read`.
    */
   getOrchestration(input: {
-    issueId: string;
+    taskId: string;
     companyId: string;
     includeSubtree?: boolean;
     billingCode?: string | null;
-  }): Promise<PluginIssueOrchestrationSummary>;
+  }): Promise<PluginTaskOrchestrationSummary>;
 }
 
 /**
- * `ctx.issues` — read and mutate issues plus comments.
+ * `ctx.tasks` — read and mutate tasks plus comments.
  *
  * Requires:
- * - `issues.read` for read operations
- * - `issues.create` for create
- * - `issues.update` for update
- * - `issues.checkout` for checkout ownership assertions
- * - `issues.wakeup` for assignment wakeup requests
- * - `issues.orchestration.read` for orchestration summaries
- * - `issue.comments.read` for `listComments`
- * - `issue.comments.create` for `createComment`
- * - `issue.interactions.create` for `createInteraction`, `suggestTasks`, `askUserQuestions`, and `requestConfirmation`
- * - `issue.documents.read` for `documents.list` and `documents.get`
- * - `issue.documents.write` for `documents.upsert` and `documents.delete`
+ * - `tasks.read` for read operations
+ * - `tasks.create` for create
+ * - `tasks.update` for update
+ * - `tasks.checkout` for checkout ownership assertions
+ * - `tasks.wakeup` for assignment wakeup requests
+ * - `tasks.orchestration.read` for orchestration summaries
+ * - `task.comments.read` for `listComments`
+ * - `task.comments.create` for `createComment`
+ * - `task.interactions.create` for `createInteraction`, `suggestTasks`, `askUserQuestions`, and `requestConfirmation`
+ * - `task.documents.read` for `documents.list` and `documents.get`
+ * - `task.documents.write` for `documents.upsert` and `documents.delete`
  */
-export interface PluginIssuesClient {
+export interface PluginTasksClient {
   list(input: {
     companyId: string;
     projectId?: string;
     assigneeAgentId?: string;
-    originKind?: PluginIssueOriginKind;
+    originKind?: PluginTaskOriginKind;
     originId?: string;
-    status?: Issue["status"];
+    status?: Task["status"];
     limit?: number;
     offset?: number;
-  }): Promise<Issue[]>;
-  get(issueId: string, companyId: string): Promise<Issue | null>;
+  }): Promise<Task[]>;
+  get(taskId: string, companyId: string): Promise<Task | null>;
   create(input: {
     companyId: string;
     projectId?: string;
     goalId?: string;
     parentId?: string;
-    inheritExecutionWorkspaceFromIssueId?: string;
+    inheritExecutionWorkspaceFromTaskId?: string;
     title: string;
     description?: string;
-    status?: Issue["status"];
-    priority?: Issue["priority"];
+    status?: Task["status"];
+    priority?: Task["priority"];
     assigneeAgentId?: string;
     assigneeUserId?: string | null;
     requestDepth?: number;
     billingCode?: string | null;
-    originKind?: PluginIssueOriginKind;
+    originKind?: PluginTaskOriginKind;
     originId?: string | null;
     originRunId?: string | null;
-    blockedByIssueIds?: string[];
+    blockedByTaskIds?: string[];
     labelIds?: string[];
     executionWorkspaceId?: string | null;
     executionWorkspacePreference?: string | null;
     executionWorkspaceSettings?: Record<string, unknown> | null;
-    actor?: PluginIssueMutationActor;
-  }): Promise<Issue>;
+    actor?: PluginTaskMutationActor;
+  }): Promise<Task>;
   update(
-    issueId: string,
+    taskId: string,
     patch: Partial<Pick<
-      Issue,
+      Task,
       | "title"
       | "description"
       | "status"
@@ -1147,83 +1147,83 @@ export interface PluginIssuesClient {
       | "executionWorkspaceId"
       | "executionWorkspacePreference"
     >> & {
-      blockedByIssueIds?: string[];
+      blockedByTaskIds?: string[];
       labelIds?: string[];
       executionWorkspaceSettings?: Record<string, unknown> | null;
     },
     companyId: string,
-    actor?: PluginIssueMutationActor,
-  ): Promise<Issue>;
+    actor?: PluginTaskMutationActor,
+  ): Promise<Task>;
   assertCheckoutOwner(input: {
-    issueId: string;
+    taskId: string;
     companyId: string;
     actorAgentId: string;
     actorRunId: string;
-  }): Promise<PluginIssueCheckoutOwnership>;
+  }): Promise<PluginTaskCheckoutOwnership>;
   /**
-   * Read a root issue's descendants with optional relation/document/run/assignee
-   * summaries. Requires `issue.subtree.read`.
+   * Read a root task's descendants with optional relation/document/run/assignee
+   * summaries. Requires `task.subtree.read`.
    */
   getSubtree(
-    issueId: string,
+    taskId: string,
     companyId: string,
-    options?: PluginIssueSubtreeOptions,
-  ): Promise<PluginIssueSubtree>;
+    options?: PluginTaskSubtreeOptions,
+  ): Promise<PluginTaskSubtree>;
   requestWakeup(
-    issueId: string,
+    taskId: string,
     companyId: string,
     options?: {
       reason?: string;
       contextSource?: string;
       idempotencyKey?: string | null;
-    } & PluginIssueMutationActor,
-  ): Promise<PluginIssueWakeupResult>;
+    } & PluginTaskMutationActor,
+  ): Promise<PluginTaskWakeupResult>;
   requestWakeups(
-    issueIds: string[],
+    taskIds: string[],
     companyId: string,
     options?: {
       reason?: string;
       contextSource?: string;
       idempotencyKeyPrefix?: string | null;
-    } & PluginIssueMutationActor,
-  ): Promise<PluginIssueWakeupBatchResult[]>;
-  listComments(issueId: string, companyId: string): Promise<IssueComment[]>;
+    } & PluginTaskMutationActor,
+  ): Promise<PluginTaskWakeupBatchResult[]>;
+  listComments(taskId: string, companyId: string): Promise<TaskComment[]>;
   createComment(
-    issueId: string,
+    taskId: string,
     body: string,
     companyId: string,
     options?: { authorAgentId?: string },
-  ): Promise<IssueComment>;
+  ): Promise<TaskComment>;
   createInteraction(
-    issueId: string,
-    interaction: CreateIssueThreadInteraction,
+    taskId: string,
+    interaction: CreateTaskThreadInteraction,
     companyId: string,
     options?: { authorAgentId?: string },
-  ): Promise<IssueThreadInteraction>;
+  ): Promise<TaskThreadInteraction>;
   suggestTasks(
-    issueId: string,
-    interaction: Omit<Extract<CreateIssueThreadInteraction, { kind: "suggest_tasks" }>, "kind">,
+    taskId: string,
+    interaction: Omit<Extract<CreateTaskThreadInteraction, { kind: "suggest_tasks" }>, "kind">,
     companyId: string,
     options?: { authorAgentId?: string },
   ): Promise<SuggestTasksInteraction>;
   askUserQuestions(
-    issueId: string,
-    interaction: Omit<Extract<CreateIssueThreadInteraction, { kind: "ask_user_questions" }>, "kind">,
+    taskId: string,
+    interaction: Omit<Extract<CreateTaskThreadInteraction, { kind: "ask_user_questions" }>, "kind">,
     companyId: string,
     options?: { authorAgentId?: string },
   ): Promise<AskUserQuestionsInteraction>;
   requestConfirmation(
-    issueId: string,
-    interaction: Omit<Extract<CreateIssueThreadInteraction, { kind: "request_confirmation" }>, "kind">,
+    taskId: string,
+    interaction: Omit<Extract<CreateTaskThreadInteraction, { kind: "request_confirmation" }>, "kind">,
     companyId: string,
     options?: { authorAgentId?: string },
   ): Promise<RequestConfirmationInteraction>;
-  /** Read and write issue documents. Requires `issue.documents.read` / `issue.documents.write`. */
-  documents: PluginIssueDocumentsClient;
+  /** Read and write task documents. Requires `task.documents.read` / `task.documents.write`. */
+  documents: PluginTaskDocumentsClient;
   /** Read and write blocker relationships. */
-  relations: PluginIssueRelationsClient;
+  relations: PluginTaskRelationsClient;
   /** Read compact orchestration summaries. */
-  summaries: PluginIssueSummariesClient;
+  summaries: PluginTaskSummariesClient;
 }
 
 /**
@@ -1415,8 +1415,8 @@ export interface PluginStreamsClient {
  *
  * export default definePlugin({
  *   async setup(ctx) {
- *     ctx.events.on("issue.created", async (event) => {
- *       ctx.logger.info("Issue created", { issueId: event.entityId });
+ *     ctx.events.on("task.created", async (event) => {
+ *       ctx.logger.info("Task created", { taskId: event.entityId });
  *     });
  *
  *     ctx.data.register("sync-health", async ({ companyId }) => {
@@ -1469,8 +1469,8 @@ export interface PluginContext {
   /** Read company metadata. Requires `companies.read`. */
   companies: PluginCompaniesClient;
 
-  /** Read and write issues, comments, and documents. Requires issue capabilities. */
-  issues: PluginIssuesClient;
+  /** Read and write tasks, comments, and documents. Requires task capabilities. */
+  tasks: PluginTasksClient;
 
   /** Read and manage agents. Requires `agents.read` for reads; `agents.pause` / `agents.resume` / `agents.invoke` for write ops. */
   agents: PluginAgentsClient;

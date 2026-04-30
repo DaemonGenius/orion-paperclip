@@ -1,6 +1,6 @@
 import { Link } from "@/lib/router";
 import { Identity } from "./Identity";
-import { IssueReferenceActivitySummary } from "./IssueReferenceActivitySummary";
+import { TaskReferenceActivitySummary } from "./TaskReferenceActivitySummary";
 import { timeAgo } from "../lib/timeAgo";
 import { cn } from "../lib/utils";
 import { formatActivityVerb } from "../lib/activity-format";
@@ -9,7 +9,7 @@ import type { CompanyUserProfile } from "../lib/company-members";
 
 function entityLink(entityType: string, entityId: string, name?: string | null): string | null {
   switch (entityType) {
-    case "issue": return `/issues/${name ?? entityId}`;
+    case "task": return `/tasks/${name ?? entityId}`;
     case "agent": return `/agents/${entityId}`;
     case "project": return `/projects/${deriveProjectUrlKey(name, entityId)}`;
     case "goal": return `/goals/${entityId}`;
@@ -66,7 +66,7 @@ export function ActivityRow({ event, agentMap, userProfileMap, entityNameMap, en
         </p>
         <span className="text-xs text-muted-foreground shrink-0 pt-0.5">{timeAgo(event.createdAt)}</span>
       </div>
-      <IssueReferenceActivitySummary event={event} />
+      <TaskReferenceActivitySummary event={event} />
     </div>
   );
 

@@ -27,7 +27,7 @@ pending -> approved
 
 1. An agent creates an approval request
 2. It appears in your approval queue (Approvals page in the UI)
-3. You review the request details and any linked issues
+3. You review the request details and any linked tasks
 4. You can:
    - **Approve** — the action proceeds
    - **Reject** — the action is denied
@@ -38,7 +38,7 @@ pending -> approved
 From the Approvals page, you can see all pending approvals. Each approval shows:
 
 - Who requested it and why
-- Linked issues (context for the request)
+- Linked tasks (context for the request)
 - The full payload (e.g. proposed agent config for hires)
 
 ## Board Override Powers

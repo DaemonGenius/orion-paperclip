@@ -1,6 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agentWakeupRequests, agents, heartbeatRuns, issues } from "@paperclipai/db";
+import { agentWakeupRequests, agents, heartbeatRuns, tasks } from "@paperclipai/db";
 import type { RunLivenessState } from "@paperclipai/shared";
 import { RECOVERY_REASON_KINDS } from "./origins.js";
 
@@ -8,15 +8,15 @@ export const RUN_LIVENESS_CONTINUATION_REASON = RECOVERY_REASON_KINDS.runLivenes
 export const DEFAULT_MAX_LIVENESS_CONTINUATION_ATTEMPTS = 2;
 
 const ACTIONABLE_LIVENESS_STATES = new Set<RunLivenessState>(["plan_only", "empty_response"]);
-const CONTINUATION_ACTIVE_ISSUE_STATUSES = new Set(["todo", "in_progress"]);
+const CONTINUATION_ACTIVE_TASK_STATUSES = new Set(["todo", "in_progress"]);
 // A prior adapter error should not permanently suppress bounded liveness
 // continuations; the max-attempt/idempotency guards prevent unbounded retries.
 const CONTINUATION_AGENT_STATUSES = new Set(["active", "idle", "running", "error"]);
-const IDEMPOTENT_WAKE_STATUSES = ["queued", "deferred_issue_execution", "completed"];
+const IDEMPOTENT_WAKE_STATUSES = ["queued", "deferred_task_execution", "completed"];
 
 type HeartbeatRunRow = typeof heartbeatRuns.$inferSelect;
-type IssueRow = Pick<
-  typeof issues.$inferSelect,
+type TaskRow = Pick<
+  typeof tasks.$inferSelect,
   "id" | "companyId" | "identifier" | "title" | "status" | "assigneeAgentId" | "executionState" | "projectId"
 >;
 type AgentRow = Pick<typeof agents.$inferSelect, "id" | "companyId" | "status">;
@@ -46,14 +46,14 @@ export function readContinuationAttempt(value: unknown): number {
 }
 
 export function buildRunLivenessContinuationIdempotencyKey(input: {
-  issueId: string;
+  taskId: string;
   sourceRunId: string;
   livenessState: RunLivenessState;
   nextAttempt: number;
 }) {
   return [
     RUN_LIVENESS_CONTINUATION_REASON,
-    input.issueId,
+    input.taskId,
     input.sourceRunId,
     input.livenessState,
     String(input.nextAttempt),
@@ -83,7 +83,7 @@ export async function findExistingRunLivenessContinuationWake(
 
 export function decideRunLivenessContinuation(input: {
   run: HeartbeatRunRow;
-  issue: IssueRow | null;
+  task: TaskRow | null;
   agent: AgentRow | null;
   livenessState: RunLivenessState | null;
   livenessReason: string | null;
@@ -94,7 +94,7 @@ export function decideRunLivenessContinuation(input: {
 }): RunContinuationDecision {
   const {
     run,
-    issue,
+    task,
     agent,
     livenessState,
     livenessReason,
@@ -107,19 +107,19 @@ export function decideRunLivenessContinuation(input: {
   if (!livenessState || !ACTIONABLE_LIVENESS_STATES.has(livenessState)) {
     return { kind: "skip", reason: "liveness state is not actionable for continuation" };
   }
-  if (!issue) return { kind: "skip", reason: "issue not found" };
+  if (!task) return { kind: "skip", reason: "task not found" };
   if (!agent) return { kind: "skip", reason: "agent not found" };
-  if (issue.companyId !== run.companyId || agent.companyId !== run.companyId) {
+  if (task.companyId !== run.companyId || agent.companyId !== run.companyId) {
     return { kind: "skip", reason: "company scope mismatch" };
   }
-  if (issue.assigneeAgentId !== run.agentId) {
-    return { kind: "skip", reason: "issue is no longer assigned to the source run agent" };
+  if (task.assigneeAgentId !== run.agentId) {
+    return { kind: "skip", reason: "task is no longer assigned to the source run agent" };
   }
-  if (!CONTINUATION_ACTIVE_ISSUE_STATUSES.has(issue.status)) {
-    return { kind: "skip", reason: `issue status ${issue.status} is not continuable` };
+  if (!CONTINUATION_ACTIVE_TASK_STATUSES.has(task.status)) {
+    return { kind: "skip", reason: `task status ${task.status} is not continuable` };
   }
-  if (issue.executionState) {
-    return { kind: "skip", reason: "issue is blocked by execution policy state" };
+  if (task.executionState) {
+    return { kind: "skip", reason: "task is blocked by execution policy state" };
   }
   if (!CONTINUATION_AGENT_STATUSES.has(agent.status)) {
     return { kind: "skip", reason: `agent status ${agent.status} is not invokable` };
@@ -147,7 +147,7 @@ export function decideRunLivenessContinuation(input: {
 
   const nextAttempt = currentAttempt + 1;
   const idempotencyKey = buildRunLivenessContinuationIdempotencyKey({
-    issueId: issue.id,
+    taskId: task.id,
     sourceRunId: run.id,
     livenessState,
     nextAttempt,
@@ -157,7 +157,7 @@ export function decideRunLivenessContinuation(input: {
   }
 
   const payload = {
-    issueId: issue.id,
+    taskId: task.id,
     sourceRunId: run.id,
     livenessState,
     livenessReason,
@@ -165,7 +165,7 @@ export function decideRunLivenessContinuation(input: {
     maxContinuationAttempts: maxAttempts,
     instruction:
       nextAction ??
-      "The previous run ended without concrete progress. Take the first concrete action now or mark the issue blocked with a specific unblock request.",
+      "The previous run ended without concrete progress. Take the first concrete action now or mark the task blocked with a specific unblock request.",
   };
 
   return {
@@ -174,9 +174,8 @@ export function decideRunLivenessContinuation(input: {
     idempotencyKey,
     payload,
     contextSnapshot: {
-      issueId: issue.id,
-      taskId: issue.id,
-      taskKey: issue.id,
+      taskId: task.id,
+      taskKey: task.id,
       wakeReason: RUN_LIVENESS_CONTINUATION_REASON,
       livenessContinuationAttempt: nextAttempt,
       livenessContinuationMaxAttempts: maxAttempts,

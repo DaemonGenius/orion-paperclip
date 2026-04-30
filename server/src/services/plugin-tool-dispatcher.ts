@@ -52,7 +52,7 @@ import { logger } from "../middleware/logger.js";
  * what agents need to decide whether and how to call a tool.
  */
 export interface AgentToolDescriptor {
-  /** Fully namespaced tool name (e.g. `"acme.linear:search-issues"`). */
+  /** Fully namespaced tool name (e.g. `"acme.linear:search-tasks"`). */
   name: string;
   /** Human-readable display name. */
   displayName: string;
@@ -122,7 +122,7 @@ export interface PluginToolDispatcher {
   /**
    * Look up a tool by its namespaced name.
    *
-   * @param namespacedName - e.g. `"acme.linear:search-issues"`
+   * @param namespacedName - e.g. `"acme.linear:search-tasks"`
    * @returns The registered tool, or `null` if not found
    */
   getTool(namespacedName: string): RegisteredTool | null;
@@ -213,7 +213,7 @@ export interface PluginToolDispatcher {
  *
  * // In agent service — execute a tool
  * const result = await dispatcher.executeTool(
- *   "acme.linear:search-issues",
+ *   "acme.linear:search-tasks",
  *   { query: "auth bug" },
  *   { agentId: "a-1", runId: "r-1", companyId: "c-1", projectId: "p-1" },
  * );

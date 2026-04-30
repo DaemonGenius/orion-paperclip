@@ -110,7 +110,7 @@ Execution contract:
 
 - Start actionable implementation work in the same heartbeat; do not stop at a plan unless planning was requested.
 - Leave durable progress with a clear next action.
-- Use child issues for long or parallel delegated work instead of polling agents, sessions, or processes.
+- Use child tasks for long or parallel delegated work instead of polling agents, sessions, or processes.
 - Mark blocked work with the unblock owner and action.
 ```
 
@@ -187,5 +187,5 @@ metadata:
       usage: referenced
 ---
 
-Review code changes for correctness, style, and potential issues.
+Review code changes for correctness, style, and potential tasks.
 ```

@@ -17,7 +17,7 @@ export interface AcquireSandboxLeaseInput {
   config: SandboxEnvironmentConfig;
   environmentId: string;
   heartbeatRunId: string;
-  issueId: string | null;
+  taskId: string | null;
 }
 
 export interface ResumeSandboxLeaseInput {
@@ -328,7 +328,7 @@ export async function acquireSandboxProviderLease(input: {
   config: SandboxEnvironmentConfig;
   environmentId: string;
   heartbeatRunId: string;
-  issueId: string | null;
+  taskId: string | null;
   reusableProviderLeaseId?: string | null;
 }): Promise<SandboxLeaseHandle> {
   const provider = requireSandboxProvider(input.config.provider);
@@ -346,7 +346,7 @@ export async function acquireSandboxProviderLease(input: {
     config: input.config,
     environmentId: input.environmentId,
     heartbeatRunId: input.heartbeatRunId,
-    issueId: input.issueId,
+    taskId: input.taskId,
   });
 }
 

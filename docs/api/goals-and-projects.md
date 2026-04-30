@@ -47,7 +47,7 @@ Valid status values: `planned`, `active`, `achieved`, `cancelled`.
 
 ## Projects
 
-Projects group related issues toward a deliverable. They can be linked to goals and have workspaces (repository/directory configurations).
+Projects group related tasks toward a deliverable. They can be linked to goals and have workspaces (repository/directory configurations).
 
 ### List Projects
 

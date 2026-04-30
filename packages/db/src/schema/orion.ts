@@ -15,7 +15,7 @@ import { assets } from "./assets.js";
 import { companies } from "./companies.js";
 import { companySecrets } from "./company_secrets.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
-import { issues } from "./issues.js";
+import { tasks } from "./tasks.js";
 
 export const companyNotionBindings = pgTable(
   "company_notion_bindings",
@@ -64,7 +64,7 @@ export const orionTaskPolicies = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
-    issueId: uuid("issue_id").notNull().references(() => issues.id, { onDelete: "cascade" }),
+    taskId: uuid("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
     mode: text("mode").notNull(),
     autonomyEnvelope: jsonb("autonomy_envelope").$type<Record<string, unknown>>(),
     approvedByUserId: text("approved_by_user_id"),
@@ -73,7 +73,7 @@ export const orionTaskPolicies = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    issueIdx: uniqueIndex("orion_task_policies_issue_uq").on(table.issueId),
+    taskIdx: uniqueIndex("orion_task_policies_task_uq").on(table.taskId),
     companyModeIdx: index("orion_task_policies_company_mode_idx").on(table.companyId, table.mode),
   }),
 );
@@ -83,7 +83,7 @@ export const orionReqLedgers = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
-    issueId: uuid("issue_id").notNull().references(() => issues.id, { onDelete: "cascade" }),
+    taskId: uuid("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
     runId: uuid("run_id").notNull().references(() => heartbeatRuns.id, { onDelete: "cascade" }),
     mode: text("mode").notNull(),
     status: text("status").notNull().default("new"),
@@ -98,7 +98,7 @@ export const orionReqLedgers = pgTable(
   },
   (table) => ({
     runIdx: uniqueIndex("orion_req_ledgers_run_uq").on(table.runId),
-    issueIdx: index("orion_req_ledgers_issue_idx").on(table.companyId, table.issueId),
+    taskIdx: index("orion_req_ledgers_task_idx").on(table.companyId, table.taskId),
     statusIdx: index("orion_req_ledgers_company_status_idx").on(table.companyId, table.status),
   }),
 );
@@ -148,7 +148,7 @@ export const orionDecisions = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
-    issueId: uuid("issue_id").references(() => issues.id, { onDelete: "set null" }),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
     runId: uuid("run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),
     kind: text("kind").notNull(),
     status: text("status").notNull().default("open"),
@@ -163,7 +163,7 @@ export const orionDecisions = pgTable(
   },
   (table) => ({
     companyStatusIdx: index("orion_decisions_company_status_idx").on(table.companyId, table.status),
-    issueIdx: index("orion_decisions_issue_idx").on(table.companyId, table.issueId),
+    taskIdx: index("orion_decisions_task_idx").on(table.companyId, table.taskId),
   }),
 );
 
@@ -172,7 +172,7 @@ export const orionPrReceipts = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
-    issueId: uuid("issue_id").notNull().references(() => issues.id, { onDelete: "cascade" }),
+    taskId: uuid("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
     runId: uuid("run_id").notNull().references(() => heartbeatRuns.id, { onDelete: "cascade" }),
     ledgerId: uuid("ledger_id").notNull().references(() => orionReqLedgers.id, { onDelete: "cascade" }),
     provider: text("provider").notNull().default("github"),
@@ -190,7 +190,7 @@ export const orionPrReceipts = pgTable(
   },
   (table) => ({
     runIdx: uniqueIndex("orion_pr_receipts_run_uq").on(table.runId),
-    companyIssueIdx: index("orion_pr_receipts_issue_idx").on(table.companyId, table.issueId),
+    companyTaskIdx: index("orion_pr_receipts_task_idx").on(table.companyId, table.taskId),
   }),
 );
 
@@ -264,7 +264,7 @@ export const orionTaskWorkflowBindings = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
-    issueId: uuid("issue_id").notNull().references(() => issues.id, { onDelete: "cascade" }),
+    taskId: uuid("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
     workflowId: uuid("workflow_id").notNull().references(() => orionWorkflows.id, { onDelete: "cascade" }),
     currentNodeKey: text("current_node_key"),
     status: text("status").notNull().default("active"),
@@ -272,7 +272,7 @@ export const orionTaskWorkflowBindings = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    issueIdx: uniqueIndex("orion_task_workflow_bindings_issue_uq").on(table.issueId),
+    taskIdx: uniqueIndex("orion_task_workflow_bindings_task_uq").on(table.taskId),
     workflowIdx: index("orion_task_workflow_bindings_workflow_idx").on(table.companyId, table.workflowId),
   }),
 );
@@ -283,7 +283,7 @@ export const orionWorkflowRuns = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     workflowId: uuid("workflow_id").notNull().references(() => orionWorkflows.id, { onDelete: "cascade" }),
-    issueId: uuid("issue_id").references(() => issues.id, { onDelete: "set null" }),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
     runId: uuid("run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),
     currentNodeKey: text("current_node_key"),
     status: text("status").notNull().default("active"),
@@ -293,6 +293,6 @@ export const orionWorkflowRuns = pgTable(
   (table) => ({
     runIdx: uniqueIndex("orion_workflow_runs_run_uq").on(table.runId),
     workflowIdx: index("orion_workflow_runs_workflow_idx").on(table.companyId, table.workflowId),
-    issueIdx: index("orion_workflow_runs_issue_idx").on(table.companyId, table.issueId),
+    taskIdx: index("orion_workflow_runs_task_idx").on(table.companyId, table.taskId),
   }),
 );

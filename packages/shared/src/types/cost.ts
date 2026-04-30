@@ -4,7 +4,7 @@ export interface CostEvent {
   id: string;
   companyId: string;
   agentId: string;
-  issueId: string | null;
+  taskId: string | null;
   projectId: string | null;
   goalId: string | null;
   heartbeatRunId: string | null;
@@ -102,7 +102,7 @@ export interface CostWindowSpendRow {
   outputTokens: number;
 }
 
-/** cost attributed to a project via heartbeat run → activity log → issue → project chain */
+/** cost attributed to a project via heartbeat run → activity log → task → project chain */
 export interface CostByProject {
   projectId: string | null;
   projectName: string | null;

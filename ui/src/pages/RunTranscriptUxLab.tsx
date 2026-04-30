@@ -26,9 +26,9 @@ const surfaceOptions: Array<{
   },
   {
     id: "live",
-    label: "Issue Widget",
+    label: "Task Widget",
     eyebrow: "Live stream",
-    description: "The issue-detail live run widget, optimized for following an active run without leaving the task page.",
+    description: "The task-detail live run widget, optimized for following an active run without leaving the task page.",
     icon: RadioTower,
   },
   {
@@ -103,7 +103,7 @@ function LiveWidgetPreview({
           Live Runs
         </div>
         <div className="mt-1 text-xs text-muted-foreground">
-          Compact live transcript stream for the issue detail page.
+          Compact live transcript stream for the task detail page.
         </div>
       </div>
       <div className="px-5 py-4">
@@ -173,7 +173,7 @@ function DashboardPreview({
             </span>
           </div>
           <div className="mt-3 rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-xs text-cyan-700 dark:text-cyan-300">
-            {runTranscriptFixtureMeta.issueIdentifier} - {runTranscriptFixtureMeta.issueTitle}
+            {runTranscriptFixtureMeta.taskIdentifier} - {runTranscriptFixtureMeta.taskTitle}
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -266,7 +266,7 @@ export function RunTranscriptUxLab() {
                   Source run {runTranscriptFixtureMeta.sourceRunId.slice(0, 8)}
                 </Badge>
                 <Badge variant="outline" className="rounded-full px-3 py-1 text-[10px] uppercase tracking-[0.18em]">
-                  {runTranscriptFixtureMeta.issueIdentifier}
+                  {runTranscriptFixtureMeta.taskIdentifier}
                 </Badge>
               </div>
             </div>

@@ -59,8 +59,8 @@ import { definePlugin, runWorker } from "@paperclipai/plugin-sdk";
 
 const plugin = definePlugin({
   async setup(ctx) {
-    ctx.events.on("issue.created", async (event) => {
-      ctx.logger.info("Issue created", { issueId: event.entityId });
+    ctx.events.on("task.created", async (event) => {
+      ctx.logger.info("Task created", { taskId: event.entityId });
     });
 
     ctx.data.register("health", async () => ({ status: "ok" }));
@@ -100,11 +100,11 @@ runWorker(plugin, import.meta.url);
 | `onValidateConfig?(config)` | Optional. Return `{ ok, warnings?, errors? }` for settings UI / Test Connection. |
 | `onWebhook?(input)` | Optional. Handle `POST /api/plugins/:pluginId/webhooks/:endpointKey`; required if webhooks declared. |
 
-**Context (`ctx`) in setup:** `config`, `events`, `jobs`, `launchers`, `http`, `secrets`, `activity`, `state`, `entities`, `projects`, `companies`, `issues`, `agents`, `goals`, `data`, `actions`, `streams`, `tools`, `metrics`, `logger`, `manifest`. Worker-side host APIs are capability-gated; declare capabilities in the manifest.
+**Context (`ctx`) in setup:** `config`, `events`, `jobs`, `launchers`, `http`, `secrets`, `activity`, `state`, `entities`, `projects`, `companies`, `tasks`, `agents`, `goals`, `data`, `actions`, `streams`, `tools`, `metrics`, `logger`, `manifest`. Worker-side host APIs are capability-gated; declare capabilities in the manifest.
 
 **Agents:** `ctx.agents.invoke(agentId, companyId, opts)` for one-shot invocation. `ctx.agents.sessions` for two-way chat: `create`, `list`, `sendMessage` (with streaming `onEvent` callback), `close`. See the [Plugin Authoring Guide](../../doc/plugins/PLUGIN_AUTHORING_GUIDE.md#agent-sessions-two-way-chat) for details.
 
-**Jobs:** Declare in `manifest.jobs` with `jobKey`, `displayName`, `schedule` (cron). Register handler with `ctx.jobs.register(jobKey, fn)`. **Webhooks:** Declare in `manifest.webhooks` with `endpointKey`; handle in `onWebhook(input)`. **State:** `ctx.state.get/set/delete(scopeKey)`; scope kinds: `instance`, `company`, `project`, `project_workspace`, `agent`, `issue`, `goal`, `run`.
+**Jobs:** Declare in `manifest.jobs` with `jobKey`, `displayName`, `schedule` (cron). Register handler with `ctx.jobs.register(jobKey, fn)`. **Webhooks:** Declare in `manifest.webhooks` with `endpointKey`; handle in `onWebhook(input)`. **State:** `ctx.state.get/set/delete(scopeKey)`; scope kinds: `instance`, `company`, `project`, `project_workspace`, `agent`, `task`, `goal`, `run`.
 
 ## Events
 
@@ -117,9 +117,9 @@ Subscribe in `setup` with `ctx.events.on(name, handler)` or `ctx.events.on(name,
 | `company.created`, `company.updated` | company |
 | `project.created`, `project.updated` | project |
 | `project.workspace_created`, `project.workspace_updated`, `project.workspace_deleted` | project_workspace |
-| `issue.created`, `issue.updated`, `issue.comment.created` | issue |
-| `issue.document.created`, `issue.document.updated`, `issue.document.deleted` | issue |
-| `issue.relations.updated`, `issue.checked_out`, `issue.released`, `issue.assignment_wakeup_requested` | issue |
+| `task.created`, `task.updated`, `task.comment.created` | task |
+| `task.document.created`, `task.document.updated`, `task.document.deleted` | task |
+| `task.relations.updated`, `task.checked_out`, `task.released`, `task.assignment_wakeup_requested` | task |
 | `agent.created`, `agent.updated`, `agent.status_changed` | agent |
 | `agent.run.started`, `agent.run.finished`, `agent.run.failed`, `agent.run.cancelled` | run |
 | `goal.created`, `goal.updated` | goal |
@@ -211,17 +211,17 @@ The same set of values is used as **slot types** (where a component mounts) and 
 | `settingsPage` | Global | — |
 | `dashboardWidget` | Global | — |
 | `globalToolbarButton` | Global | — |
-| `detailTab` | Entity | `project`, `issue`, `agent`, `goal`, `run` |
-| `taskDetailView` | Entity | (task/issue context) |
+| `detailTab` | Entity | `project`, `task`, `agent`, `goal`, `run` |
+| `taskDetailView` | Entity | (task/task context) |
 | `commentAnnotation` | Entity | `comment` |
 | `commentContextMenuItem` | Entity | `comment` |
 | `projectSidebarItem` | Entity | `project` |
 | `toolbarButton` | Entity | varies by host surface |
 | `contextMenuItem` | Entity | varies by host surface |
 
-**Scope** describes whether the slot requires an entity to render. **Global** slots render without a specific entity but still receive the active `companyId` through `PluginHostContext` — use it to scope data fetches to the current company. **Entity** slots additionally require `entityId` and `entityType` (e.g. a detail tab on a specific issue).
+**Scope** describes whether the slot requires an entity to render. **Global** slots render without a specific entity but still receive the active `companyId` through `PluginHostContext` — use it to scope data fetches to the current company. **Entity** slots additionally require `entityId` and `entityType` (e.g. a detail tab on a specific task).
 
-**Entity types** (for `entityTypes` on slots): `project` \| `issue` \| `agent` \| `goal` \| `run` \| `comment`. Full list: import `PLUGIN_UI_SLOT_TYPES` and `PLUGIN_UI_SLOT_ENTITY_TYPES` from `@paperclipai/plugin-sdk`.
+**Entity types** (for `entityTypes` on slots): `project` \| `task` \| `agent` \| `goal` \| `run` \| `comment`. Full list: import `PLUGIN_UI_SLOT_TYPES` and `PLUGIN_UI_SLOT_ENTITY_TYPES` from `@paperclipai/plugin-sdk`.
 
 ### Slot component descriptions
 
@@ -231,7 +231,7 @@ A full-page extension mounted at `/plugins/:pluginId` (global) or `/:company/plu
 
 #### `sidebar`
 
-Adds a navigation-style entry to the main company sidebar navigation area, rendered alongside the core nav items (Dashboard, Issues, Goals, etc.). Use this for lightweight, always-visible links or status indicators that feel native to the sidebar. Receives `PluginSidebarProps` with `context.companyId` set to the active company. Requires the `ui.sidebar.register` capability.
+Adds a navigation-style entry to the main company sidebar navigation area, rendered alongside the core nav items (Dashboard, Tasks, Goals, etc.). Use this for lightweight, always-visible links or status indicators that feel native to the sidebar. Receives `PluginSidebarProps` with `context.companyId` set to the active company. Requires the `ui.sidebar.register` capability.
 
 #### `sidebarPanel`
 
@@ -247,11 +247,11 @@ A card or section rendered on the main dashboard. Use this for at-a-glance metri
 
 #### `detailTab`
 
-An additional tab on a project, issue, agent, goal, or run detail page. Rendered when the user navigates to that entity's detail view. Receives `PluginDetailTabProps` with `context.companyId` set to the active company and `context.entityId` / `context.entityType` guaranteed to be non-null, so you can immediately scope data fetches to the relevant entity. Specify which entity types the tab applies to via the `entityTypes` array in the manifest slot declaration. Requires the `ui.detailTab.register` capability.
+An additional tab on a project, task, agent, goal, or run detail page. Rendered when the user navigates to that entity's detail view. Receives `PluginDetailTabProps` with `context.companyId` set to the active company and `context.entityId` / `context.entityType` guaranteed to be non-null, so you can immediately scope data fetches to the relevant entity. Specify which entity types the tab applies to via the `entityTypes` array in the manifest slot declaration. Requires the `ui.detailTab.register` capability.
 
 #### `taskDetailView`
 
-A specialized slot rendered in the context of a task or issue detail view. Similar to `detailTab` but designed for inline content within the task detail layout rather than a separate tab. Receives `context.companyId`, `context.entityId`, and `context.entityType` like `detailTab`. Requires the `ui.detailTab.register` capability.
+A specialized slot rendered in the context of a task or task detail view. Similar to `detailTab` but designed for inline content within the task detail layout rather than a separate tab. Receives `context.companyId`, `context.entityId`, and `context.entityType` like `detailTab`. Requires the `ui.detailTab.register` capability.
 
 #### `projectSidebarItem`
 
@@ -263,7 +263,7 @@ A button rendered in the global top bar (breadcrumb bar) that appears on every p
 
 #### `toolbarButton`
 
-A button rendered in the toolbar of an entity page (e.g. project detail, issue detail). Use this for short-lived, contextual actions scoped to the current entity — like triggering a project sync, opening a picker, or running a quick command on that entity. The component can open a plugin-owned modal internally for confirmations or compact forms. Receives `context.companyId`, `context.entityId`, and `context.entityType`; declare `entityTypes` in the manifest to control which entity pages the button appears on. Requires the `ui.action.register` capability.
+A button rendered in the toolbar of an entity page (e.g. project detail, task detail). Use this for short-lived, contextual actions scoped to the current entity — like triggering a project sync, opening a picker, or running a quick command on that entity. The component can open a plugin-owned modal internally for confirmations or compact forms. Receives `context.companyId`, `context.entityId`, and `context.entityType`; declare `entityTypes` in the manifest to control which entity pages the button appears on. Requires the `ui.action.register` capability.
 
 #### `contextMenuItem`
 
@@ -271,11 +271,11 @@ An entry added to a right-click or overflow context menu on a host surface. Use 
 
 #### `commentAnnotation`
 
-A per-comment annotation region rendered below each individual comment in the issue detail timeline. Use this to augment comments with parsed file links, sentiment badges, inline actions, or any per-comment metadata. Receives `PluginCommentAnnotationProps` with `context.entityId` set to the comment UUID, `context.entityType` set to `"comment"`, `context.parentEntityId` set to the parent issue UUID, `context.projectId` set to the issue's project (if any), and `context.companyPrefix` set to the active company slug. Requires the `ui.commentAnnotation.register` capability.
+A per-comment annotation region rendered below each individual comment in the task detail timeline. Use this to augment comments with parsed file links, sentiment badges, inline actions, or any per-comment metadata. Receives `PluginCommentAnnotationProps` with `context.entityId` set to the comment UUID, `context.entityType` set to `"comment"`, `context.parentEntityId` set to the parent task UUID, `context.projectId` set to the task's project (if any), and `context.companyPrefix` set to the active company slug. Requires the `ui.commentAnnotation.register` capability.
 
 #### `commentContextMenuItem`
 
-A per-comment context menu item rendered in the "more" dropdown menu (⋮) on each comment in the issue detail timeline. Use this to add per-comment actions such as "Create sub-issue from comment", "Translate", "Flag for review", or custom plugin actions. Receives `PluginCommentContextMenuItemProps` with `context.entityId` set to the comment UUID, `context.entityType` set to `"comment"`, `context.parentEntityId` set to the parent issue UUID, `context.projectId` set to the issue's project (if any), and `context.companyPrefix` set to the active company slug. Plugins can open drawers, modals, or popovers scoped to that comment. The ⋮ menu button only appears on comments where at least one plugin renders visible content. Requires the `ui.action.register` capability.
+A per-comment context menu item rendered in the "more" dropdown menu (⋮) on each comment in the task detail timeline. Use this to add per-comment actions such as "Create sub-task from comment", "Translate", "Flag for review", or custom plugin actions. Receives `PluginCommentContextMenuItemProps` with `context.entityId` set to the comment UUID, `context.entityType` set to `"comment"`, `context.parentEntityId` set to the parent task UUID, `context.projectId` set to the task's project (if any), and `context.companyPrefix` set to the active company slug. Plugins can open drawers, modals, or popovers scoped to that comment. The ⋮ menu button only appears on comments where at least one plugin renders visible content. Requires the `ui.action.register` capability.
 
 ### Launcher actions and render options
 
@@ -302,26 +302,26 @@ Declare in `manifest.capabilities`. Grouped by scope:
 | **Company** | `companies.read` |
 | | `projects.read` |
 | | `project.workspaces.read` |
-| | `issues.read` |
-| | `issue.comments.read` |
-| | `issue.documents.read` |
-| | `issue.relations.read` |
-| | `issue.subtree.read` |
+| | `tasks.read` |
+| | `task.comments.read` |
+| | `task.documents.read` |
+| | `task.relations.read` |
+| | `task.subtree.read` |
 | | `agents.read` |
 | | `goals.read` |
 | | `goals.create` |
 | | `goals.update` |
 | | `activity.read` |
 | | `costs.read` |
-| | `issues.orchestration.read` |
+| | `tasks.orchestration.read` |
 | | `database.namespace.read` |
-| | `issues.create` |
-| | `issues.update` |
-| | `issues.checkout` |
-| | `issues.wakeup` |
-| | `issue.comments.create` |
-| | `issue.documents.write` |
-| | `issue.relations.write` |
+| | `tasks.create` |
+| | `tasks.update` |
+| | `tasks.checkout` |
+| | `tasks.wakeup` |
+| | `task.comments.create` |
+| | `task.documents.write` |
+| | `task.relations.write` |
 | | `activity.log.write` |
 | | `metrics.write` |
 | | `telemetry.track` |
@@ -360,7 +360,7 @@ Trusted orchestration plugins can declare a host-owned PostgreSQL namespace:
 ```ts
 database: {
   migrationsDir: "migrations",
-  coreReadTables: ["issues"],
+  coreReadTables: ["tasks"],
 }
 ```
 
@@ -382,11 +382,11 @@ apiRoutes: [
   {
     routeKey: "initialize",
     method: "POST",
-    path: "/issues/:issueId/smoke",
+    path: "/tasks/:taskId/smoke",
     auth: "board-or-agent",
     capability: "api.routes.register",
     checkoutPolicy: "required-for-agent-in-progress",
-    companyResolution: { from: "issue", param: "issueId" },
+    companyResolution: { from: "task", param: "taskId" },
   },
 ]
 ```
@@ -397,24 +397,24 @@ before dispatch. The worker receives route params, query, parsed JSON body,
 sanitized headers, actor context, and `companyId`; responses are JSON `{ status?,
 headers?, body? }`.
 
-## Issue Orchestration APIs
+## Task Orchestration APIs
 
-Workflow plugins can use `ctx.issues` for orchestration-grade issue operations without importing host server internals.
+Workflow plugins can use `ctx.tasks` for orchestration-grade task operations without importing host server internals.
 
 Expanded create/update fields include blockers, billing code, board or agent assignees, labels, namespaced plugin origins, request depth, and safe execution workspace fields:
 
 ```ts
-const child = await ctx.issues.create({
+const child = await ctx.tasks.create({
   companyId,
-  parentId: missionIssueId,
-  inheritExecutionWorkspaceFromIssueId: missionIssueId,
+  parentId: missionTaskId,
+  inheritExecutionWorkspaceFromTaskId: missionTaskId,
   title: "Implement feature slice",
   status: "todo",
   assigneeAgentId: workerAgentId,
   billingCode: "mission:alpha",
   originKind: "plugin:paperclip.missions:feature",
   originId: "mission-alpha:feature-1",
-  blockedByIssueIds: [planningIssueId],
+  blockedByTaskIds: [planningTaskId],
 });
 ```
 
@@ -423,16 +423,16 @@ If `originKind` is omitted, the host stores `plugin:<pluginKey>`. Plugins may us
 Blocker relationships are also exposed as first-class helpers:
 
 ```ts
-const relations = await ctx.issues.relations.get(child.id, companyId);
-await ctx.issues.relations.setBlockedBy(child.id, [planningIssueId], companyId);
-await ctx.issues.relations.addBlockers(child.id, [validationIssueId], companyId);
-await ctx.issues.relations.removeBlockers(child.id, [planningIssueId], companyId);
+const relations = await ctx.tasks.relations.get(child.id, companyId);
+await ctx.tasks.relations.setBlockedBy(child.id, [planningTaskId], companyId);
+await ctx.tasks.relations.addBlockers(child.id, [validationTaskId], companyId);
+await ctx.tasks.relations.removeBlockers(child.id, [planningTaskId], companyId);
 ```
 
-Subtree reads can include just the issue tree, or compact related data for orchestration dashboards:
+Subtree reads can include just the task tree, or compact related data for orchestration dashboards:
 
 ```ts
-const subtree = await ctx.issues.getSubtree(missionIssueId, companyId, {
+const subtree = await ctx.tasks.getSubtree(missionTaskId, companyId, {
   includeRoot: true,
   includeRelations: true,
   includeDocuments: true,
@@ -444,8 +444,8 @@ const subtree = await ctx.issues.getSubtree(missionIssueId, companyId, {
 Agent-run actions can assert checkout ownership before mutating in-progress work:
 
 ```ts
-await ctx.issues.assertCheckoutOwner({
-  issueId,
+await ctx.tasks.assertCheckoutOwner({
+  taskId,
   companyId,
   actorAgentId: runCtx.agentId,
   actorRunId: runCtx.runId,
@@ -455,23 +455,23 @@ await ctx.issues.assertCheckoutOwner({
 Plugins can request assignment wakeups through the host so budget stops, execution locks, blocker checks, and heartbeat policy still apply:
 
 ```ts
-await ctx.issues.requestWakeup(child.id, companyId, {
+await ctx.tasks.requestWakeup(child.id, companyId, {
   reason: "mission_advance",
   contextSource: "missions.advance",
 });
 
-await ctx.issues.requestWakeups([featureIssueId, validationIssueId], companyId, {
+await ctx.tasks.requestWakeups([featureTaskId, validationTaskId], companyId, {
   reason: "mission_advance",
   contextSource: "missions.advance",
-  idempotencyKeyPrefix: `mission:${missionIssueId}:advance`,
+  idempotencyKeyPrefix: `mission:${missionTaskId}:advance`,
 });
 ```
 
-Use `ctx.issues.summaries.getOrchestration()` when a workflow needs compact reads across a root issue or subtree:
+Use `ctx.tasks.summaries.getOrchestration()` when a workflow needs compact reads across a root task or subtree:
 
 ```ts
-const summary = await ctx.issues.summaries.getOrchestration({
-  issueId: missionIssueId,
+const summary = await ctx.tasks.summaries.getOrchestration({
+  taskId: missionTaskId,
   companyId,
   includeSubtree: true,
   billingCode: "mission:alpha",
@@ -482,12 +482,12 @@ Required capabilities:
 
 | API | Capability |
 |-----|------------|
-| `ctx.issues.relations.get` | `issue.relations.read` |
-| `ctx.issues.relations.setBlockedBy` / `addBlockers` / `removeBlockers` | `issue.relations.write` |
-| `ctx.issues.getSubtree` | `issue.subtree.read` |
-| `ctx.issues.assertCheckoutOwner` | `issues.checkout` |
-| `ctx.issues.requestWakeup` / `requestWakeups` | `issues.wakeup` |
-| `ctx.issues.summaries.getOrchestration` | `issues.orchestration.read` |
+| `ctx.tasks.relations.get` | `task.relations.read` |
+| `ctx.tasks.relations.setBlockedBy` / `addBlockers` / `removeBlockers` | `task.relations.write` |
+| `ctx.tasks.getSubtree` | `task.subtree.read` |
+| `ctx.tasks.assertCheckoutOwner` | `tasks.checkout` |
+| `ctx.tasks.requestWakeup` / `requestWakeups` | `tasks.wakeup` |
+| `ctx.tasks.summaries.getOrchestration` | `tasks.orchestration.read` |
 
 Plugin-originated mutations are logged with `actorType: "plugin"` and details fields `sourcePluginId`, `sourcePluginKey`, `initiatingActorType`, `initiatingActorId`, and `initiatingRunId` when a user or agent run initiated the plugin work.
 
@@ -587,14 +587,14 @@ Reads the active company, project, entity, and user context. Use this to scope d
 import { useHostContext, usePluginData } from "@paperclipai/plugin-sdk/ui";
 import type { PluginDetailTabProps } from "@paperclipai/plugin-sdk/ui";
 
-export function IssueLinearLink({ context }: PluginDetailTabProps) {
+export function TaskLinearLink({ context }: PluginDetailTabProps) {
   const { companyId, entityId, entityType } = context;
   const { data } = usePluginData<{ url: string }>("linear-link", {
     companyId,
-    issueId: entityId,
+    taskId: entityId,
   });
 
-  if (!data?.url) return <p>No linked Linear issue.</p>;
+  if (!data?.url) return <p>No linked Linear task.</p>;
   return <a href={data.url} target="_blank" rel="noopener">View in Linear</a>;
 }
 ```
@@ -762,7 +762,7 @@ Use optional `order` in the slot to sort among other project sidebar items. See 
 Two toolbar slot types are available depending on where the button should appear:
 
 - **`globalToolbarButton`** — renders in the top bar on every page, scoped to the company. No entity context. Use for workspace-wide actions.
-- **`toolbarButton`** — renders on entity detail pages (project, issue, etc.). Receives `entityId` and `entityType`. Declare `entityTypes` to control which pages the button appears on.
+- **`toolbarButton`** — renders on entity detail pages (project, task, etc.). Receives `entityId` and `entityType`. Declare `entityTypes` to control which pages the button appears on.
 
 For short-lived actions, mount the appropriate slot type and open a plugin-owned modal inside the component. Use `useHostContext()` to scope the action to the current company or entity.
 
@@ -985,7 +985,7 @@ const session = await ctx.agents.sessions.create(agentId, companyId);
 
 // Send a message and stream the response
 await ctx.agents.sessions.sendMessage(session.sessionId, companyId, {
-  prompt: "Help me triage this issue",
+  prompt: "Help me triage this task",
   onEvent: (event) => {
     if (event.eventType === "chunk") console.log(event.message);
     if (event.eventType === "done") console.log("Stream complete");
@@ -1012,7 +1012,7 @@ import manifest from "../src/manifest.js";
 
 const harness = createTestHarness({ manifest });
 await plugin.definition.setup(harness.ctx);
-await harness.emit("issue.created", { issueId: "iss_1" }, { entityId: "iss_1", entityType: "issue" });
+await harness.emit("task.created", { taskId: "iss_1" }, { entityId: "iss_1", entityType: "task" });
 ```
 
 ## Bundler presets

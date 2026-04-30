@@ -4,7 +4,7 @@ import { ActivityRow } from "@/components/ActivityRow";
 import { ApprovalCard } from "@/components/ApprovalCard";
 import { BudgetPolicyCard } from "@/components/BudgetPolicyCard";
 import { Identity } from "@/components/Identity";
-import { IssueRow } from "@/components/IssueRow";
+import { TaskRow } from "@/components/TaskRow";
 import { PriorityIcon } from "@/components/PriorityIcon";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +17,7 @@ import {
   storybookBudgetSummaries,
   storybookEntityNameMap,
   storybookEntityTitleMap,
-  storybookIssues,
+  storybookTasks,
 } from "../fixtures/paperclipData";
 
 function Section({
@@ -62,28 +62,28 @@ function ControlPlaneSurfaces() {
           </div>
         </section>
 
-        <Section eyebrow="Issues" title="Inbox/task rows across selection and unread states">
+        <Section eyebrow="Tasks" title="Inbox/task rows across selection and unread states">
           <div className="overflow-hidden rounded-xl border border-border bg-background/70">
-            {storybookIssues.map((issue, index) => (
-              <IssueRow
-                key={issue.id}
-                issue={issue}
+            {storybookTasks.map((task, index) => (
+              <TaskRow
+                key={task.id}
+                task={task}
                 selected={index === 0}
                 unreadState={index === 0 ? "visible" : index === 1 ? "hidden" : null}
                 onMarkRead={() => undefined}
                 onArchive={() => undefined}
                 desktopTrailing={
                   <span className="hidden items-center gap-2 lg:inline-flex">
-                    <PriorityIcon priority={issue.priority} showLabel />
-                    {issue.assigneeAgentId ? (
-                      <Identity name={storybookAgentMap.get(issue.assigneeAgentId)?.name ?? "Unassigned"} size="sm" />
+                    <PriorityIcon priority={task.priority} showLabel />
+                    {task.assigneeAgentId ? (
+                      <Identity name={storybookAgentMap.get(task.assigneeAgentId)?.name ?? "Unassigned"} size="sm" />
                     ) : (
                       <span className="text-xs text-muted-foreground">Board</span>
                     )}
                   </span>
                 }
                 trailingMeta={index === 0 ? "3m ago" : index === 1 ? "blocked by budget" : "review requested"}
-                mobileMeta={<StatusBadge status={issue.status} />}
+                mobileMeta={<StatusBadge status={task.status} />}
                 titleSuffix={
                   index === 0 ? (
                     <span className="ml-2 inline-flex align-middle">
@@ -230,8 +230,8 @@ function ControlPlaneSurfaces() {
                 <Eye className="h-4 w-4 text-muted-foreground" />
                 Review target
               </div>
-              <IssueRow
-                issue={storybookIssues[0]!}
+              <TaskRow
+                task={storybookTasks[0]!}
                 selected
                 unreadState="visible"
                 onMarkRead={() => undefined}

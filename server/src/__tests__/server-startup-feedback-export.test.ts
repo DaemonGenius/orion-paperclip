@@ -137,12 +137,12 @@ vi.mock("../services/index.js", () => ({
     reapOrphanedRuns: vi.fn(async () => undefined),
     promoteDueScheduledRetries: vi.fn(async () => ({ promoted: 0, runIds: [] })),
     resumeQueuedRuns: vi.fn(async () => undefined),
-    reconcileStrandedAssignedIssues: vi.fn(async () => ({
+    reconcileStrandedAssignedTasks: vi.fn(async () => ({
       dispatchRequeued: 0,
       continuationRequeued: 0,
       escalated: 0,
       skipped: 0,
-      issueIds: [],
+      taskIds: [],
     })),
     tickTimers: vi.fn(async () => ({ enqueued: 0 })),
   })),

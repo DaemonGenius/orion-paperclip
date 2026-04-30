@@ -24,7 +24,7 @@ import {
   storybookCompanies,
   storybookExecutionWorkspaces,
   storybookGoals,
-  storybookIssues,
+  storybookTasks,
   storybookProjectWorkspaces,
   storybookProjects,
 } from "../fixtures/paperclipData";
@@ -76,8 +76,8 @@ function hydrateStorybookQueries(queryClient: ReturnType<typeof useQueryClient>)
   for (const goal of storybookGoals) {
     queryClient.setQueryData(queryKeys.goals.detail(goal.id), goal);
   }
-  queryClient.setQueryData(queryKeys.issues.list(COMPANY_ID), storybookIssues);
-  queryClient.setQueryData(queryKeys.issues.listByProject(COMPANY_ID, boardProject.id), storybookIssues);
+  queryClient.setQueryData(queryKeys.tasks.list(COMPANY_ID), storybookTasks);
+  queryClient.setQueryData(queryKeys.tasks.listByProject(COMPANY_ID, boardProject.id), storybookTasks);
   queryClient.setQueryData(queryKeys.secrets.list(COMPANY_ID), []);
   queryClient.setQueryData(queryKeys.instance.experimentalSettings, {
     enableIsolatedWorkspaces: true,
@@ -180,7 +180,7 @@ function ProjectPropertiesMatrix() {
 function WorkspacesMatrix() {
   const summaries = buildProjectWorkspaceSummaries({
     project: boardProject,
-    issues: storybookIssues.filter((issue) => issue.projectId === boardProject.id),
+    tasks: storybookTasks.filter((task) => task.projectId === boardProject.id),
     executionWorkspaces: storybookExecutionWorkspaces,
   });
   const localSummary = summaries.find((summary) => summary.kind === "project_workspace" && summary.workspaceId === "workspace-board-ui");

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { DocumentRevision } from "@paperclipai/shared";
-import { issuesApi } from "../api/issues";
+import { tasksApi } from "../api/tasks";
 import { queryKeys } from "../lib/queryKeys";
 import { relativeTime } from "../lib/utils";
 import {
@@ -118,21 +118,21 @@ function buildLineDiff(oldText: string, newText: string): DiffRow[] {
 }
 
 export function DocumentDiffModal({
-  issueId,
+  taskId,
   documentKey,
   latestRevisionNumber,
   open,
   onOpenChange,
 }: {
-  issueId: string;
+  taskId: string;
   documentKey: string;
   latestRevisionNumber: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const { data: revisions } = useQuery({
-    queryKey: queryKeys.issues.documentRevisions(issueId, documentKey),
-    queryFn: () => issuesApi.listDocumentRevisions(issueId, documentKey),
+    queryKey: queryKeys.tasks.documentRevisions(taskId, documentKey),
+    queryFn: () => tasksApi.listDocumentRevisions(taskId, documentKey),
     enabled: open,
   });
 

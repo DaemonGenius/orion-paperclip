@@ -30,16 +30,16 @@ vi.mock("../services/index.js", () => ({
     getById: vi.fn(),
   }),
   feedbackService: () => ({
-    listIssueVotesForUser: vi.fn(),
+    listTaskVotesForUser: vi.fn(),
     listFeedbackTraces: vi.fn(),
     getFeedbackTraceById: vi.fn(),
-    saveIssueVote: vi.fn(),
+    saveTaskVote: vi.fn(),
   }),
   logActivity: vi.fn(),
 }));
 
-describe("company routes malformed issue path guard", () => {
-  it("returns a clear error when companyId is missing for issues list path", async () => {
+describe("company routes malformed task path guard", () => {
+  it("returns a clear error when companyId is missing for tasks list path", async () => {
     const app = express();
     app.use((req, _res, next) => {
       (req as any).actor = {
@@ -52,11 +52,11 @@ describe("company routes malformed issue path guard", () => {
     });
     app.use("/api/companies", companyRoutes({} as any));
 
-    const res = await request(app).get("/api/companies/issues");
+    const res = await request(app).get("/api/companies/tasks");
 
     expect(res.status).toBe(400);
     expect(res.body).toEqual({
-      error: "Missing companyId in path. Use /api/companies/{companyId}/issues.",
+      error: "Missing companyId in path. Use /api/companies/{companyId}/tasks.",
     });
   });
 });

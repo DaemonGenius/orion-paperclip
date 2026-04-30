@@ -34,7 +34,7 @@
       "idx": 4,
       "version": "7",
       "when": 1771545600000,
-      "tag": "0004_issue_identifiers",
+      "tag": "0004_task_identifiers",
       "breakpoints": true
     },
     {
@@ -447,14 +447,14 @@
       "idx": 63,
       "version": "7",
       "when": 1776780001000,
-      "tag": "0063_issue_thread_interactions",
+      "tag": "0063_task_thread_interactions",
       "breakpoints": true
     },
     {
       "idx": 64,
       "version": "7",
       "when": 1776780002000,
-      "tag": "0064_issue_thread_interaction_idempotency",
+      "tag": "0064_task_thread_interaction_idempotency",
       "breakpoints": true
     },
     {
@@ -468,7 +468,7 @@
       "idx": 66,
       "version": "7",
       "when": 1776903901000,
-      "tag": "0066_issue_tree_holds",
+      "tag": "0066_task_tree_holds",
       "breakpoints": true
     },
     {
@@ -525,6 +525,20 @@
       "version": "7",
       "when": 1777293098502,
       "tag": "0074_external_sync_registry",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1777293098503,
+      "tag": "0075_project_task_prefixes",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1777293098504,
+      "tag": "0076_orion_task_properties",
       "breakpoints": true
     }
   ]

@@ -228,7 +228,7 @@ export function ProjectWorkspaceDetail() {
   const routeCompanyId = useMemo(() => {
     if (!companyPrefix) return null;
     const requestedPrefix = companyPrefix.toUpperCase();
-    return companies.find((company) => company.issuePrefix.toUpperCase() === requestedPrefix)?.id ?? null;
+    return companies.find((company) => company.taskPrefix.toUpperCase() === requestedPrefix)?.id ?? null;
   }, [companies, companyPrefix]);
 
   const lookupCompanyId = routeCompanyId ?? selectedCompanyId ?? undefined;

@@ -5,8 +5,8 @@ export interface RunTranscriptFixtureMeta {
   fixtureLabel: string;
   agentName: string;
   agentId: string;
-  issueIdentifier: string;
-  issueTitle: string;
+  taskIdentifier: string;
+  taskTitle: string;
   startedAt: string;
   finishedAt: string | null;
 }
@@ -16,8 +16,8 @@ export const runTranscriptFixtureMeta: RunTranscriptFixtureMeta = {
   fixtureLabel: "Sanitized development fixture",
   agentName: "CodexCoder",
   agentId: "codexcoder-fixture",
-  issueIdentifier: "PAP-473",
-  issueTitle: "Humanize run transcripts across run detail and live surfaces",
+  taskIdentifier: "PAP-473",
+  taskTitle: "Humanize run transcripts across run detail and live surfaces",
   startedAt: "2026-03-11T15:21:05.948Z",
   finishedAt: null,
 };
@@ -28,7 +28,7 @@ export const runTranscriptFixtureEntries: TranscriptEntry[] = [
   {
     kind: "stderr",
     ts: "2026-03-11T15:21:05.594Z",
-    text: "[paperclip] Skipping saved session resume for task \"PAP-473\" because wake reason is issue_assigned.",
+    text: "[paperclip] Skipping saved session resume for task \"PAP-473\" because wake reason is task_assigned.",
   },
   {
     kind: "init",
@@ -208,7 +208,7 @@ export const runTranscriptFixtureEntries: TranscriptEntry[] = [
   {
     kind: "assistant",
     ts: "2026-03-11T15:25:00.908Z",
-    text: "Implemented the transcript UI refactor and switched the run detail page, issue live widget, and dashboard agent card onto the same rendering language.",
+    text: "Implemented the transcript UI refactor and switched the run detail page, task live widget, and dashboard agent card onto the same rendering language.",
   },
   {
     kind: "result",

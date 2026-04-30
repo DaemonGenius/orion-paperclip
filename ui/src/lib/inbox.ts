@@ -3,23 +3,23 @@ import type {
   DashboardSummary,
   HeartbeatRun,
   InboxDismissal,
-  Issue,
+  Task,
   JoinRequest,
 } from "@paperclipai/shared";
 import {
-  applyIssueFilters,
-  defaultIssueFilterState,
-  normalizeIssueFilterState,
-  type IssueFilterState,
-} from "./issue-filters";
+  applyTaskFilters,
+  defaultTaskFilterState,
+  normalizeTaskFilterState,
+  type TaskFilterState,
+} from "./task-filters";
 
-export const RECENT_ISSUES_LIMIT = 100;
+export const RECENT_TASKS_LIMIT = 100;
 export const FAILED_RUN_STATUSES = new Set(["failed", "timed_out"]);
 export const ACTIONABLE_APPROVAL_STATUSES = new Set(["pending", "revision_requested"]);
 export const DISMISSED_KEY = "paperclip:inbox:dismissed";
 export const READ_ITEMS_KEY = "paperclip:inbox:read-items";
 export const INBOX_LAST_TAB_KEY = "paperclip:inbox:last-tab";
-export const INBOX_ISSUE_COLUMNS_KEY = "paperclip:inbox:issue-columns";
+export const INBOX_TASK_COLUMNS_KEY = "paperclip:inbox:task-columns";
 export const INBOX_NESTING_KEY = "paperclip:inbox:nesting";
 export const INBOX_GROUP_BY_KEY = "paperclip:inbox:group-by";
 export const INBOX_FILTER_PREFERENCES_KEY_PREFIX = "paperclip:inbox:filters";
@@ -27,14 +27,14 @@ export const INBOX_COLLAPSED_GROUPS_KEY_PREFIX = "paperclip:inbox:collapsed-grou
 export type InboxTab = "mine" | "recent" | "unread" | "all";
 export type InboxCategoryFilter =
   | "everything"
-  | "issues_i_touched"
+  | "tasks_i_touched"
   | "join_requests"
   | "approvals"
   | "failed_runs"
   | "alerts";
 export type InboxApprovalFilter = "all" | "actionable" | "resolved";
 export type InboxWorkItemGroupBy = "none" | "type" | "workspace";
-export const inboxIssueColumns = [
+export const inboxTaskColumns = [
   "status",
   "id",
   "assignee",
@@ -43,19 +43,36 @@ export const inboxIssueColumns = [
   "parent",
   "labels",
   "updated",
+  "taskKey",
+  "dueDate",
+  "layer",
+  "module",
+  "repoPath",
+  "riskLevel",
+  "sprintPhase",
+  "taskType",
+  "routeMode",
+  "reqId",
+  "prState",
+  "prUrl",
+  "agentConfidence",
+  "wikiDocs",
+  "implementationPlans",
+  "reviewChecks",
+  "decisions",
 ] as const;
-export type InboxIssueColumn = (typeof inboxIssueColumns)[number];
-export const DEFAULT_INBOX_ISSUE_COLUMNS: InboxIssueColumn[] = ["status", "id", "updated"];
+export type InboxTaskColumn = (typeof inboxTaskColumns)[number];
+export const DEFAULT_INBOX_TASK_COLUMNS: InboxTaskColumn[] = ["status", "id", "updated"];
 export interface InboxFilterPreferences {
   allCategoryFilter: InboxCategoryFilter;
   allApprovalFilter: InboxApprovalFilter;
-  issueFilters: IssueFilterState;
+  taskFilters: TaskFilterState;
 }
 export type InboxWorkItem =
   | {
-      kind: "issue";
+      kind: "task";
       timestamp: number;
-      issue: Issue;
+      task: Task;
     }
   | {
       kind: "approval";
@@ -78,7 +95,7 @@ export interface InboxBadgeData {
   approvals: number;
   failedRuns: number;
   joinRequests: number;
-  mineIssues: number;
+  mineTasks: number;
   alerts: number;
 }
 
@@ -94,7 +111,7 @@ export interface InboxGroupedSection {
   key: string;
   label: string | null;
   displayItems: InboxWorkItem[];
-  childrenByIssueId: Map<string, Issue[]>;
+  childrenByTaskId: Map<string, Task[]>;
   searchSection: InboxSearchSection;
 }
 
@@ -102,7 +119,7 @@ export interface InboxKeyboardGroupSection {
   key: string;
   label?: string | null;
   displayItems: InboxWorkItem[];
-  childrenByIssueId: ReadonlyMap<string, Issue[]>;
+  childrenByTaskId: ReadonlyMap<string, Task[]>;
 }
 
 export type InboxKeyboardNavEntry =
@@ -119,8 +136,8 @@ export type InboxKeyboardNavEntry =
     }
   | {
       type: "child";
-      issueId: string;
-      issue: Issue;
+      taskId: string;
+      task: Task;
     };
 
 export interface InboxProjectWorkspaceLookup {
@@ -142,11 +159,11 @@ export interface InboxWorkspaceGroupingOptions {
 const defaultInboxFilterPreferences: InboxFilterPreferences = {
   allCategoryFilter: "everything",
   allApprovalFilter: "all",
-  issueFilters: defaultIssueFilterState,
+  taskFilters: defaultTaskFilterState,
 };
 
 function normalizeInboxCategoryFilter(value: unknown): InboxCategoryFilter {
-  return value === "issues_i_touched"
+  return value === "tasks_i_touched"
     || value === "join_requests"
     || value === "approvals"
     || value === "failed_runs"
@@ -176,7 +193,7 @@ export function loadInboxFilterPreferences(
   if (!storageKey) {
     return {
       ...defaultInboxFilterPreferences,
-      issueFilters: { ...defaultIssueFilterState },
+      taskFilters: { ...defaultTaskFilterState },
     };
   }
 
@@ -185,19 +202,19 @@ export function loadInboxFilterPreferences(
     if (!raw) {
       return {
         ...defaultInboxFilterPreferences,
-        issueFilters: { ...defaultIssueFilterState },
+        taskFilters: { ...defaultTaskFilterState },
       };
     }
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     return {
       allCategoryFilter: normalizeInboxCategoryFilter(parsed.allCategoryFilter),
       allApprovalFilter: normalizeInboxApprovalFilter(parsed.allApprovalFilter),
-      issueFilters: normalizeIssueFilterState(parsed.issueFilters),
+      taskFilters: normalizeTaskFilterState(parsed.taskFilters),
     };
   } catch {
     return {
       ...defaultInboxFilterPreferences,
-      issueFilters: { ...defaultIssueFilterState },
+      taskFilters: { ...defaultTaskFilterState },
     };
   }
 }
@@ -215,7 +232,7 @@ export function saveInboxFilterPreferences(
       JSON.stringify({
         allCategoryFilter: normalizeInboxCategoryFilter(preferences.allCategoryFilter),
         allApprovalFilter: normalizeInboxApprovalFilter(preferences.allApprovalFilter),
-        issueFilters: normalizeIssueFilterState(preferences.issueFilters),
+        taskFilters: normalizeTaskFilterState(preferences.taskFilters),
       }),
     );
   } catch {
@@ -306,33 +323,33 @@ export function saveReadInboxItems(ids: Set<string>) {
   }
 }
 
-export function normalizeInboxIssueColumns(columns: Iterable<string | InboxIssueColumn>): InboxIssueColumn[] {
+export function normalizeInboxTaskColumns(columns: Iterable<string | InboxTaskColumn>): InboxTaskColumn[] {
   const selected = new Set(columns);
-  return inboxIssueColumns.filter((column) => selected.has(column));
+  return inboxTaskColumns.filter((column) => selected.has(column));
 }
 
-export function getAvailableInboxIssueColumns(enableWorkspaceColumn: boolean): InboxIssueColumn[] {
-  if (enableWorkspaceColumn) return [...inboxIssueColumns];
-  return inboxIssueColumns.filter((column) => column !== "workspace");
+export function getAvailableInboxTaskColumns(enableWorkspaceColumn: boolean): InboxTaskColumn[] {
+  if (enableWorkspaceColumn) return [...inboxTaskColumns];
+  return inboxTaskColumns.filter((column) => column !== "workspace");
 }
 
-export function loadInboxIssueColumns(): InboxIssueColumn[] {
+export function loadInboxTaskColumns(): InboxTaskColumn[] {
   try {
-    const raw = localStorage.getItem(INBOX_ISSUE_COLUMNS_KEY);
-    if (raw === null) return DEFAULT_INBOX_ISSUE_COLUMNS;
+    const raw = localStorage.getItem(INBOX_TASK_COLUMNS_KEY);
+    if (raw === null) return DEFAULT_INBOX_TASK_COLUMNS;
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return DEFAULT_INBOX_ISSUE_COLUMNS;
-    return normalizeInboxIssueColumns(parsed);
+    if (!Array.isArray(parsed)) return DEFAULT_INBOX_TASK_COLUMNS;
+    return normalizeInboxTaskColumns(parsed);
   } catch {
-    return DEFAULT_INBOX_ISSUE_COLUMNS;
+    return DEFAULT_INBOX_TASK_COLUMNS;
   }
 }
 
-export function saveInboxIssueColumns(columns: InboxIssueColumn[]) {
+export function saveInboxTaskColumns(columns: InboxTaskColumn[]) {
   try {
     localStorage.setItem(
-      INBOX_ISSUE_COLUMNS_KEY,
-      JSON.stringify(normalizeInboxIssueColumns(columns)),
+      INBOX_TASK_COLUMNS_KEY,
+      JSON.stringify(normalizeInboxTaskColumns(columns)),
     );
   } catch {
     // Ignore localStorage failures.
@@ -364,20 +381,20 @@ export function shouldResetInboxWorkspaceGrouping(
   return experimentalSettingsLoaded && groupBy === "workspace" && !isolatedWorkspacesEnabled;
 }
 
-export function shouldIncludeRoutineExecutionIssue(
-  issue: Pick<Issue, "originKind">,
+export function shouldIncludeRoutineExecutionTask(
+  task: Pick<Task, "originKind">,
   hideRoutineExecutions: boolean,
 ): boolean {
-  return !hideRoutineExecutions || issue.originKind !== "routine_execution";
+  return !hideRoutineExecutions || task.originKind !== "routine_execution";
 }
 
-export function filterInboxIssues(issues: Issue[], hideRoutineExecutions: boolean): Issue[] {
-  if (!hideRoutineExecutions) return issues;
-  return issues.filter((issue) => shouldIncludeRoutineExecutionIssue(issue, hideRoutineExecutions));
+export function filterInboxTasks(tasks: Task[], hideRoutineExecutions: boolean): Task[] {
+  if (!hideRoutineExecutions) return tasks;
+  return tasks.filter((task) => shouldIncludeRoutineExecutionTask(task, hideRoutineExecutions));
 }
 
-export function matchesInboxIssueSearch(
-  issue: Pick<Issue, "title" | "identifier" | "description" | "executionWorkspaceId" | "projectId" | "projectWorkspaceId">,
+export function matchesInboxTaskSearch(
+  task: Pick<Task, "title" | "identifier" | "description" | "executionWorkspaceId" | "projectId" | "projectWorkspaceId">,
   query: string,
   {
     isolatedWorkspacesEnabled = false,
@@ -390,12 +407,12 @@ export function matchesInboxIssueSearch(
 ): boolean {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) return true;
-  if (issue.title.toLowerCase().includes(normalizedQuery)) return true;
-  if (issue.identifier?.toLowerCase().includes(normalizedQuery)) return true;
-  if (issue.description?.toLowerCase().includes(normalizedQuery)) return true;
+  if (task.title.toLowerCase().includes(normalizedQuery)) return true;
+  if (task.identifier?.toLowerCase().includes(normalizedQuery)) return true;
+  if (task.description?.toLowerCase().includes(normalizedQuery)) return true;
   if (!isolatedWorkspacesEnabled) return false;
 
-  const workspaceName = resolveIssueWorkspaceName(issue, {
+  const workspaceName = resolveTaskWorkspaceName(task, {
     executionWorkspaceById,
     projectWorkspaceById,
     defaultProjectWorkspaceIdByProjectId,
@@ -403,69 +420,69 @@ export function matchesInboxIssueSearch(
   return workspaceName?.toLowerCase().includes(normalizedQuery) ?? false;
 }
 
-export function getArchivedInboxSearchIssues({
-  visibleIssues,
-  searchableIssues,
+export function getArchivedInboxSearchTasks({
+  visibleTasks,
+  searchableTasks,
   query,
   isolatedWorkspacesEnabled = false,
   executionWorkspaceById,
   projectWorkspaceById,
   defaultProjectWorkspaceIdByProjectId,
 }: {
-  visibleIssues: Issue[];
-  searchableIssues: Issue[];
+  visibleTasks: Task[];
+  searchableTasks: Task[];
   query: string;
   isolatedWorkspacesEnabled?: boolean;
   executionWorkspaceById?: ReadonlyMap<string, InboxExecutionWorkspaceLookup>;
   projectWorkspaceById?: ReadonlyMap<string, InboxProjectWorkspaceLookup>;
   defaultProjectWorkspaceIdByProjectId?: ReadonlyMap<string, string>;
-}): Issue[] {
+}): Task[] {
   const normalizedQuery = query.trim();
   if (!normalizedQuery) return [];
 
-  const visibleIssueIds = new Set(visibleIssues.map((issue) => issue.id));
-  return searchableIssues
-    .filter((issue) => !visibleIssueIds.has(issue.id))
-    .filter((issue) =>
-      matchesInboxIssueSearch(issue, normalizedQuery, {
+  const visibleTaskIds = new Set(visibleTasks.map((task) => task.id));
+  return searchableTasks
+    .filter((task) => !visibleTaskIds.has(task.id))
+    .filter((task) =>
+      matchesInboxTaskSearch(task, normalizedQuery, {
         isolatedWorkspacesEnabled,
         executionWorkspaceById,
         projectWorkspaceById,
         defaultProjectWorkspaceIdByProjectId,
       }),
     )
-    .sort(sortIssuesByMostRecentActivity);
+    .sort(sortTasksByMostRecentActivity);
 }
 
-export function getInboxSearchSupplementIssues({
+export function getInboxSearchSupplementTasks({
   query,
   filteredWorkItems,
-  archivedSearchIssues,
-  remoteIssues,
-  issueFilters,
+  archivedSearchTasks,
+  remoteTasks,
+  taskFilters,
   currentUserId,
   enableRoutineVisibilityFilter = false,
-  liveIssueIds,
+  liveTaskIds,
 }: {
   query: string;
   filteredWorkItems: InboxWorkItem[];
-  archivedSearchIssues: Issue[];
-  remoteIssues: Issue[];
-  issueFilters: IssueFilterState;
+  archivedSearchTasks: Task[];
+  remoteTasks: Task[];
+  taskFilters: TaskFilterState;
   currentUserId?: string | null;
   enableRoutineVisibilityFilter?: boolean;
-  liveIssueIds?: ReadonlySet<string>;
-}): Issue[] {
+  liveTaskIds?: ReadonlySet<string>;
+}): Task[] {
   const normalizedQuery = query.trim();
   if (!normalizedQuery) return [];
-  const visibleIssueIds = new Set([
+  const visibleTaskIds = new Set([
     ...filteredWorkItems
-      .filter((item): item is Extract<InboxWorkItem, { kind: "issue" }> => item.kind === "issue")
-      .map((item) => item.issue.id),
-    ...archivedSearchIssues.map((issue) => issue.id),
+      .filter((item): item is Extract<InboxWorkItem, { kind: "task" }> => item.kind === "task")
+      .map((item) => item.task.id),
+    ...archivedSearchTasks.map((task) => task.id),
   ]);
-  return applyIssueFilters(remoteIssues, issueFilters, currentUserId, enableRoutineVisibilityFilter, liveIssueIds)
-    .filter((issue) => !visibleIssueIds.has(issue.id));
+  return applyTaskFilters(remoteTasks, taskFilters, currentUserId, enableRoutineVisibilityFilter, liveTaskIds)
+    .filter((task) => !visibleTaskIds.has(task.id));
 }
 
 function formatDefaultWorkspaceGroupLabel(name: string | null | undefined): string {
@@ -474,14 +491,14 @@ function formatDefaultWorkspaceGroupLabel(name: string | null | undefined): stri
 }
 
 function resolveDefaultProjectWorkspaceInfo(
-  issue: Pick<Issue, "projectId">,
+  task: Pick<Task, "projectId">,
   {
     projectWorkspaceById,
     defaultProjectWorkspaceIdByProjectId,
   }: Pick<InboxWorkspaceGroupingOptions, "projectWorkspaceById" | "defaultProjectWorkspaceIdByProjectId">,
 ): { id: string; label: string } | null {
-  if (!issue.projectId) return null;
-  const defaultProjectWorkspaceId = defaultProjectWorkspaceIdByProjectId?.get(issue.projectId) ?? null;
+  if (!task.projectId) return null;
+  const defaultProjectWorkspaceId = defaultProjectWorkspaceIdByProjectId?.get(task.projectId) ?? null;
   if (!defaultProjectWorkspaceId) return null;
   return {
     id: defaultProjectWorkspaceId,
@@ -489,22 +506,22 @@ function resolveDefaultProjectWorkspaceInfo(
   };
 }
 
-export function resolveIssueWorkspaceName(
-  issue: Pick<Issue, "executionWorkspaceId" | "projectId" | "projectWorkspaceId">,
+export function resolveTaskWorkspaceName(
+  task: Pick<Task, "executionWorkspaceId" | "projectId" | "projectWorkspaceId">,
   {
     executionWorkspaceById,
     projectWorkspaceById,
     defaultProjectWorkspaceIdByProjectId,
   }: InboxWorkspaceGroupingOptions,
 ): string | null {
-  const defaultProjectWorkspaceId = issue.projectId
-    ? defaultProjectWorkspaceIdByProjectId?.get(issue.projectId) ?? null
+  const defaultProjectWorkspaceId = task.projectId
+    ? defaultProjectWorkspaceIdByProjectId?.get(task.projectId) ?? null
     : null;
 
-  if (issue.executionWorkspaceId) {
-    const executionWorkspace = executionWorkspaceById?.get(issue.executionWorkspaceId) ?? null;
+  if (task.executionWorkspaceId) {
+    const executionWorkspace = executionWorkspaceById?.get(task.executionWorkspaceId) ?? null;
     const linkedProjectWorkspaceId =
-      executionWorkspace?.projectWorkspaceId ?? issue.projectWorkspaceId ?? null;
+      executionWorkspace?.projectWorkspaceId ?? task.projectWorkspaceId ?? null;
     const isDefaultSharedExecutionWorkspace =
       executionWorkspace?.mode === "shared_workspace" && linkedProjectWorkspaceId === defaultProjectWorkspaceId;
     if (isDefaultSharedExecutionWorkspace) return null;
@@ -513,32 +530,32 @@ export function resolveIssueWorkspaceName(
     if (workspaceName) return workspaceName;
   }
 
-  if (issue.projectWorkspaceId) {
-    if (issue.projectWorkspaceId === defaultProjectWorkspaceId) return null;
-    const workspaceName = projectWorkspaceById?.get(issue.projectWorkspaceId)?.name;
+  if (task.projectWorkspaceId) {
+    if (task.projectWorkspaceId === defaultProjectWorkspaceId) return null;
+    const workspaceName = projectWorkspaceById?.get(task.projectWorkspaceId)?.name;
     if (workspaceName) return workspaceName;
   }
 
   return null;
 }
 
-export function resolveIssueWorkspaceGroup(
-  issue: Pick<Issue, "executionWorkspaceId" | "projectId" | "projectWorkspaceId">,
+export function resolveTaskWorkspaceGroup(
+  task: Pick<Task, "executionWorkspaceId" | "projectId" | "projectWorkspaceId">,
   {
     executionWorkspaceById,
     projectWorkspaceById,
     defaultProjectWorkspaceIdByProjectId,
   }: InboxWorkspaceGroupingOptions = {},
 ): { key: string; label: string } {
-  const defaultProjectWorkspace = resolveDefaultProjectWorkspaceInfo(issue, {
+  const defaultProjectWorkspace = resolveDefaultProjectWorkspaceInfo(task, {
     projectWorkspaceById,
     defaultProjectWorkspaceIdByProjectId,
   });
 
-  if (issue.executionWorkspaceId) {
-    const executionWorkspace = executionWorkspaceById?.get(issue.executionWorkspaceId) ?? null;
+  if (task.executionWorkspaceId) {
+    const executionWorkspace = executionWorkspaceById?.get(task.executionWorkspaceId) ?? null;
     const linkedProjectWorkspaceId =
-      executionWorkspace?.projectWorkspaceId ?? issue.projectWorkspaceId ?? null;
+      executionWorkspace?.projectWorkspaceId ?? task.projectWorkspaceId ?? null;
     const isDefaultSharedExecutionWorkspace =
       executionWorkspace?.mode === "shared_workspace"
       && linkedProjectWorkspaceId != null
@@ -554,24 +571,24 @@ export function resolveIssueWorkspaceGroup(
     const workspaceName = executionWorkspace?.name?.trim();
     if (workspaceName) {
       return {
-        key: `workspace:execution:${issue.executionWorkspaceId}`,
+        key: `workspace:execution:${task.executionWorkspaceId}`,
         label: workspaceName,
       };
     }
   }
 
-  if (issue.projectWorkspaceId) {
-    if (issue.projectWorkspaceId === defaultProjectWorkspace?.id) {
+  if (task.projectWorkspaceId) {
+    if (task.projectWorkspaceId === defaultProjectWorkspace?.id) {
       return {
         key: `workspace:project:${defaultProjectWorkspace.id}`,
         label: defaultProjectWorkspace.label,
       };
     }
 
-    const workspaceName = projectWorkspaceById?.get(issue.projectWorkspaceId)?.name?.trim();
+    const workspaceName = projectWorkspaceById?.get(task.projectWorkspaceId)?.name?.trim();
     if (workspaceName) {
       return {
-        key: `workspace:project:${issue.projectWorkspaceId}`,
+        key: `workspace:project:${task.projectWorkspaceId}`,
         label: workspaceName,
       };
     }
@@ -680,28 +697,28 @@ export function normalizeTimestamp(value: string | Date | null | undefined): num
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
-export function issueLastActivityTimestamp(issue: Issue): number {
-  const lastActivityAt = normalizeTimestamp(issue.lastActivityAt);
+export function taskLastActivityTimestamp(task: Task): number {
+  const lastActivityAt = normalizeTimestamp(task.lastActivityAt);
   if (lastActivityAt > 0) return lastActivityAt;
 
-  const lastExternalCommentAt = normalizeTimestamp(issue.lastExternalCommentAt);
+  const lastExternalCommentAt = normalizeTimestamp(task.lastExternalCommentAt);
   if (lastExternalCommentAt > 0) return lastExternalCommentAt;
 
-  return normalizeTimestamp(issue.updatedAt);
+  return normalizeTimestamp(task.updatedAt);
 }
 
-export function sortIssuesByMostRecentActivity(a: Issue, b: Issue): number {
-  const activityDiff = issueLastActivityTimestamp(b) - issueLastActivityTimestamp(a);
+export function sortTasksByMostRecentActivity(a: Task, b: Task): number {
+  const activityDiff = taskLastActivityTimestamp(b) - taskLastActivityTimestamp(a);
   if (activityDiff !== 0) return activityDiff;
   return normalizeTimestamp(b.updatedAt) - normalizeTimestamp(a.updatedAt);
 }
 
-export function getRecentTouchedIssues(issues: Issue[]): Issue[] {
-  return [...issues].sort(sortIssuesByMostRecentActivity).slice(0, RECENT_ISSUES_LIMIT);
+export function getRecentTouchedTasks(tasks: Task[]): Task[] {
+  return [...tasks].sort(sortTasksByMostRecentActivity).slice(0, RECENT_TASKS_LIMIT);
 }
 
-export function getUnreadTouchedIssues(issues: Issue[]): Issue[] {
-  return issues.filter((issue) => issue.isUnreadForMe);
+export function getUnreadTouchedTasks(tasks: Task[]): Task[] {
+  return tasks.filter((task) => task.isUnreadForMe);
 }
 
 export function getApprovalsForTab(
@@ -745,21 +762,21 @@ export function approvalActivityTimestamp(approval: Approval): number {
 }
 
 export function getInboxWorkItems({
-  issues,
+  tasks,
   approvals,
   failedRuns = [],
   joinRequests = [],
 }: {
-  issues: Issue[];
+  tasks: Task[];
   approvals: Approval[];
   failedRuns?: HeartbeatRun[];
   joinRequests?: JoinRequest[];
 }): InboxWorkItem[] {
   return [
-    ...issues.map((issue) => ({
-      kind: "issue" as const,
-      timestamp: issueLastActivityTimestamp(issue),
-      issue,
+    ...tasks.map((task) => ({
+      kind: "task" as const,
+      timestamp: taskLastActivityTimestamp(task),
+      task,
     })),
     ...approvals.map((approval) => ({
       kind: "approval" as const,
@@ -780,8 +797,8 @@ export function getInboxWorkItems({
     const timestampDiff = b.timestamp - a.timestamp;
     if (timestampDiff !== 0) return timestampDiff;
 
-    if (a.kind === "issue" && b.kind === "issue") {
-      return sortIssuesByMostRecentActivity(a.issue, b.issue);
+    if (a.kind === "task" && b.kind === "task") {
+      return sortTasksByMostRecentActivity(a.task, b.task);
     }
     if (a.kind === "approval" && b.kind === "approval") {
       return approvalActivityTimestamp(b.approval) - approvalActivityTimestamp(a.approval);
@@ -792,14 +809,14 @@ export function getInboxWorkItems({
 }
 
 const inboxWorkItemKindOrder: InboxWorkItem["kind"][] = [
-  "issue",
+  "task",
   "approval",
   "failed_run",
   "join_request",
 ];
 
 const inboxWorkItemKindLabels: Record<InboxWorkItem["kind"], string> = {
-  issue: "Issues",
+  task: "Tasks",
   approval: "Approvals",
   failed_run: "Failed runs",
   join_request: "Join requests",
@@ -817,8 +834,8 @@ export function groupInboxWorkItems(
   if (groupBy === "workspace") {
     const groups = new Map<string, { label: string; items: InboxWorkItem[]; latestTimestamp: number }>();
     for (const item of items) {
-      const resolvedGroup = item.kind === "issue"
-        ? resolveIssueWorkspaceGroup(item.issue, options)
+      const resolvedGroup = item.kind === "task"
+        ? resolveTaskWorkspaceGroup(item.task, options)
         : { key: `kind:${item.kind}`, label: inboxWorkItemKindLabels[item.kind] };
       const existing = groups.get(resolvedGroup.key);
       if (existing) {
@@ -873,65 +890,65 @@ export function groupInboxWorkItems(
 }
 
 /**
- * Groups parent-child issues in a flat InboxWorkItem list.
+ * Groups parent-child tasks in a flat InboxWorkItem list.
  *
  * - Children whose parent is also in the list are removed from the top level
- *   and stored in `childrenByIssueId`.
+ *   and stored in `childrenByTaskId`.
  * - The parent's sort timestamp becomes max(parent, children) so that a group
  *   with a recently-updated child floats to the top.
  * - If a parent is absent (e.g. archived), children remain as independent roots.
  */
 export function buildInboxNesting(items: InboxWorkItem[]): {
   displayItems: InboxWorkItem[];
-  childrenByIssueId: Map<string, Issue[]>;
+  childrenByTaskId: Map<string, Task[]>;
 } {
-  const issueItems: (InboxWorkItem & { kind: "issue" })[] = [];
-  const nonIssueItems: InboxWorkItem[] = [];
+  const taskItems: (InboxWorkItem & { kind: "task" })[] = [];
+  const nonTaskItems: InboxWorkItem[] = [];
   for (const item of items) {
-    if (item.kind === "issue") issueItems.push(item as InboxWorkItem & { kind: "issue" });
-    else nonIssueItems.push(item);
+    if (item.kind === "task") taskItems.push(item as InboxWorkItem & { kind: "task" });
+    else nonTaskItems.push(item);
   }
 
-  const issueIdSet = new Set(issueItems.map((i) => i.issue.id));
-  const childrenByIssueId = new Map<string, Issue[]>();
+  const taskIdSet = new Set(taskItems.map((i) => i.task.id));
+  const childrenByTaskId = new Map<string, Task[]>();
   const childIds = new Set<string>();
 
-  for (const item of issueItems) {
-    const { issue } = item;
-    if (issue.parentId && issueIdSet.has(issue.parentId)) {
-      childIds.add(issue.id);
-      const arr = childrenByIssueId.get(issue.parentId) ?? [];
-      arr.push(issue);
-      childrenByIssueId.set(issue.parentId, arr);
+  for (const item of taskItems) {
+    const { task } = item;
+    if (task.parentId && taskIdSet.has(task.parentId)) {
+      childIds.add(task.id);
+      const arr = childrenByTaskId.get(task.parentId) ?? [];
+      arr.push(task);
+      childrenByTaskId.set(task.parentId, arr);
     }
   }
 
   // Sort each child list by most recent activity
-  for (const children of childrenByIssueId.values()) {
-    children.sort(sortIssuesByMostRecentActivity);
+  for (const children of childrenByTaskId.values()) {
+    children.sort(sortTasksByMostRecentActivity);
   }
 
-  // Build root issue items with group-adjusted timestamps
-  const rootIssueItems: InboxWorkItem[] = issueItems
-    .filter((item) => !childIds.has(item.issue.id))
+  // Build root task items with group-adjusted timestamps
+  const rootTaskItems: InboxWorkItem[] = taskItems
+    .filter((item) => !childIds.has(item.task.id))
     .map((item) => {
-      const children = childrenByIssueId.get(item.issue.id);
+      const children = childrenByTaskId.get(item.task.id);
       if (!children?.length) return item;
-      const maxChildTs = Math.max(...children.map(issueLastActivityTimestamp));
+      const maxChildTs = Math.max(...children.map(taskLastActivityTimestamp));
       return { ...item, timestamp: Math.max(item.timestamp, maxChildTs) };
     });
 
   // Merge and re-sort
-  const displayItems = [...rootIssueItems, ...nonIssueItems].sort((a, b) => {
+  const displayItems = [...rootTaskItems, ...nonTaskItems].sort((a, b) => {
     const diff = b.timestamp - a.timestamp;
     if (diff !== 0) return diff;
-    if (a.kind === "issue" && b.kind === "issue") {
-      return sortIssuesByMostRecentActivity(a.issue, b.issue);
+    if (a.kind === "task" && b.kind === "task") {
+      return sortTasksByMostRecentActivity(a.task, b.task);
     }
     return 0;
   });
 
-  return { displayItems, childrenByIssueId };
+  return { displayItems, childrenByTaskId };
 }
 
 export function buildGroupedInboxSections(
@@ -945,22 +962,22 @@ export function buildGroupedInboxSections(
   const nestingEnabled = options?.nestingEnabled ?? false;
 
   return groupInboxWorkItems(items, groupBy, workspaceGrouping).map((group) => {
-    const nestedGroup = nestingEnabled && group.items.some((item) => item.kind === "issue")
+    const nestedGroup = nestingEnabled && group.items.some((item) => item.kind === "task")
       ? buildInboxNesting(group.items)
-      : { displayItems: group.items, childrenByIssueId: new Map<string, Issue[]>() };
+      : { displayItems: group.items, childrenByTaskId: new Map<string, Task[]>() };
 
     return {
       key: `${keyPrefix}${group.key}`,
       label: group.label,
       displayItems: nestedGroup.displayItems,
-      childrenByIssueId: nestedGroup.childrenByIssueId,
+      childrenByTaskId: nestedGroup.childrenByTaskId,
       searchSection,
     };
   });
 }
 
 export function getInboxWorkItemKey(item: InboxWorkItem): string {
-  if (item.kind === "issue") return `issue:${item.issue.id}`;
+  if (item.kind === "task") return `task:${item.task.id}`;
   if (item.kind === "approval") return `approval:${item.approval.id}`;
   if (item.kind === "failed_run") return `run:${item.run.id}`;
   return `join:${item.joinRequest.id}`;
@@ -992,16 +1009,16 @@ export function buildInboxKeyboardNavEntries(
         item,
       });
 
-      if (item.kind !== "issue") continue;
+      if (item.kind !== "task") continue;
 
-      const children = group.childrenByIssueId.get(item.issue.id);
-      if (!children?.length || collapsedInboxParents.has(item.issue.id)) continue;
+      const children = group.childrenByTaskId.get(item.task.id);
+      if (!children?.length || collapsedInboxParents.has(item.task.id)) continue;
 
       for (const child of children) {
         entries.push({
           type: "child",
-          issueId: child.id,
-          issue: child,
+          taskId: child.id,
+          task: child,
         });
       }
     }
@@ -1037,7 +1054,7 @@ export function computeInboxBadgeData({
   joinRequests,
   dashboard,
   heartbeatRuns,
-  mineIssues,
+  mineTasks,
   dismissedAlerts,
   dismissedAtByKey,
   currentUserId,
@@ -1046,7 +1063,7 @@ export function computeInboxBadgeData({
   joinRequests: JoinRequest[];
   dashboard: DashboardSummary | undefined;
   heartbeatRuns: HeartbeatRun[];
-  mineIssues: Issue[];
+  mineTasks: Task[];
   dismissedAlerts: Set<string>;
   dismissedAtByKey: ReadonlyMap<string, number>;
   currentUserId?: string | null;
@@ -1063,7 +1080,7 @@ export function computeInboxBadgeData({
   const visibleJoinRequests = joinRequests.filter(
     (jr) => !isInboxEntityDismissed(dismissedAtByKey, `join:${jr.id}`, jr.updatedAt ?? jr.createdAt),
   ).length;
-  const visibleMineIssues = mineIssues.filter((issue) => issue.isUnreadForMe).length;
+  const visibleMineTasks = mineTasks.filter((task) => task.isUnreadForMe).length;
   const agentErrorCount = dashboard?.agents.error ?? 0;
   const monthBudgetCents = dashboard?.costs.monthBudgetCents ?? 0;
   const monthUtilizationPercent = dashboard?.costs.monthUtilizationPercent ?? 0;
@@ -1079,11 +1096,11 @@ export function computeInboxBadgeData({
 
   return {
     // The inbox badge reflects personal/actionable work, not company-wide health alerts.
-    inbox: actionableApprovals + visibleJoinRequests + failedRuns + visibleMineIssues,
+    inbox: actionableApprovals + visibleJoinRequests + failedRuns + visibleMineTasks,
     approvals: actionableApprovals,
     failedRuns,
     joinRequests: visibleJoinRequests,
-    mineIssues: visibleMineIssues,
+    mineTasks: visibleMineTasks,
     alerts,
   };
 }

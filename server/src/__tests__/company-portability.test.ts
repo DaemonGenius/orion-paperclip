@@ -33,7 +33,7 @@ const projectSvc = {
   listWorkspaces: vi.fn(),
 };
 
-const issueSvc = {
+const taskSvc = {
   list: vi.fn(),
   getById: vi.fn(),
   getByIdentifier: vi.fn(),
@@ -85,8 +85,8 @@ vi.mock("../services/projects.js", () => ({
   projectService: () => projectSvc,
 }));
 
-vi.mock("../services/issues.js", () => ({
-  issueService: () => issueSvc,
+vi.mock("../services/tasks.js", () => ({
+  taskService: () => taskSvc,
 }));
 
 vi.mock("../services/routines.js", () => ({
@@ -135,7 +135,7 @@ describe("company portability", () => {
       id: "company-1",
       name: "Paperclip",
       description: null,
-      issuePrefix: "PAP",
+      taskPrefix: "PAP",
       brandColor: "#5c5fff",
       logoAssetId: null,
       logoUrl: null,
@@ -222,9 +222,9 @@ describe("company portability", () => {
     projectSvc.list.mockResolvedValue([]);
     projectSvc.createWorkspace.mockResolvedValue(null);
     projectSvc.listWorkspaces.mockResolvedValue([]);
-    issueSvc.list.mockResolvedValue([]);
-    issueSvc.getById.mockResolvedValue(null);
-    issueSvc.getByIdentifier.mockResolvedValue(null);
+    taskSvc.list.mockResolvedValue([]);
+    taskSvc.getById.mockResolvedValue(null);
+    taskSvc.getByIdentifier.mockResolvedValue(null);
     routineSvc.list.mockResolvedValue([]);
     routineSvc.getDetail.mockImplementation(async (id: string) => {
       const rows = await routineSvc.list();
@@ -235,7 +235,7 @@ describe("company portability", () => {
       companyId: "company-1",
       projectId: input.projectId,
       goalId: null,
-      parentIssueId: null,
+      parentTaskId: null,
       title: input.title,
       description: input.description ?? null,
       assigneeAgentId: input.assigneeAgentId,
@@ -426,7 +426,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
     });
 
@@ -500,7 +500,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: true,
-        issues: false,
+        tasks: false,
       },
     });
 
@@ -527,7 +527,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
       expandReferencedSkills: true,
     });
@@ -545,7 +545,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
       skills: ["company-playbook"],
     });
@@ -563,7 +563,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
       skills: ["nonexistent-skill"],
     });
@@ -583,7 +583,7 @@ describe("company portability", () => {
       id: "company-1",
       name: "Paperclip",
       description: null,
-      issuePrefix: "PAP",
+      taskPrefix: "PAP",
       brandColor: "#5c5fff",
       logoAssetId: "logo-1",
       logoUrl: "/api/assets/logo-1/content",
@@ -604,7 +604,7 @@ describe("company portability", () => {
         company: true,
         agents: false,
         projects: false,
-        issues: false,
+        tasks: false,
       },
     });
 
@@ -693,7 +693,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
     });
 
@@ -719,9 +719,9 @@ describe("company portability", () => {
         archivedAt: null,
       },
     ]);
-    issueSvc.list.mockResolvedValue([
+    taskSvc.list.mockResolvedValue([
       {
-        id: "issue-1",
+        id: "task-1",
         identifier: "PAP-1",
         title: "Write launch task",
         description: "Task body",
@@ -744,7 +744,7 @@ describe("company portability", () => {
       },
     });
 
-    expect(preview.counts.issues).toBe(0);
+    expect(preview.counts.tasks).toBe(0);
     expect(preview.fileInventory.some((entry) => entry.path.startsWith("tasks/"))).toBe(false);
   });
 
@@ -818,9 +818,9 @@ describe("company portability", () => {
         archivedAt: null,
       },
     ]);
-    issueSvc.list.mockResolvedValue([
+    taskSvc.list.mockResolvedValue([
       {
-        id: "issue-1",
+        id: "task-1",
         identifier: "PAP-1",
         title: "Write launch task",
         description: "Task body",
@@ -843,7 +843,7 @@ describe("company portability", () => {
         company: true,
         agents: false,
         projects: true,
-        issues: true,
+        tasks: true,
       },
     });
 
@@ -896,8 +896,8 @@ describe("company portability", () => {
       createdAt: new Date("2026-03-02T00:00:00Z"),
       updatedAt: new Date("2026-03-02T00:00:00Z"),
     }));
-    issueSvc.create.mockResolvedValue({
-      id: "issue-imported",
+    taskSvc.create.mockResolvedValue({
+      id: "task-imported",
       title: "Write launch task",
     });
 
@@ -911,7 +911,7 @@ describe("company portability", () => {
         company: true,
         agents: false,
         projects: true,
-        issues: true,
+        tasks: true,
       },
       target: {
         mode: "new_company",
@@ -935,7 +935,7 @@ describe("company portability", () => {
         defaultProjectWorkspaceId: "workspace-imported",
       }),
     }));
-    expect(issueSvc.create).toHaveBeenCalledWith("company-imported", expect.objectContaining({
+    expect(taskSvc.create).toHaveBeenCalledWith("company-imported", expect.objectContaining({
       projectId: "project-imported",
       projectWorkspaceId: "workspace-imported",
       title: "Write launch task",
@@ -993,9 +993,9 @@ describe("company portability", () => {
         archivedAt: null,
       },
     ]);
-    issueSvc.list.mockResolvedValue([
+    taskSvc.list.mockResolvedValue([
       {
-        id: "issue-1",
+        id: "task-1",
         identifier: "PAP-1",
         title: "Task one",
         description: "Task body",
@@ -1016,7 +1016,7 @@ describe("company portability", () => {
         company: false,
         agents: false,
         projects: true,
-        issues: true,
+        tasks: true,
       },
     });
 
@@ -1067,9 +1067,9 @@ describe("company portability", () => {
         archivedAt: null,
       },
     ]);
-    issueSvc.list.mockResolvedValue([
+    taskSvc.list.mockResolvedValue([
       {
-        id: "issue-1",
+        id: "task-1",
         identifier: "PAP-1",
         title: "Task one",
         description: null,
@@ -1084,7 +1084,7 @@ describe("company portability", () => {
         assigneeAdapterOverrides: null,
       },
       {
-        id: "issue-2",
+        id: "task-2",
         identifier: "PAP-2",
         title: "Task two",
         description: null,
@@ -1099,7 +1099,7 @@ describe("company portability", () => {
         assigneeAdapterOverrides: null,
       },
       {
-        id: "issue-3",
+        id: "task-3",
         identifier: "PAP-3",
         title: "Task three",
         description: null,
@@ -1120,7 +1120,7 @@ describe("company portability", () => {
         company: false,
         agents: false,
         projects: true,
-        issues: true,
+        tasks: true,
       },
     });
 
@@ -1138,7 +1138,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
     });
 
@@ -1152,7 +1152,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
       target: {
         mode: "new_company",
@@ -1226,7 +1226,7 @@ describe("company portability", () => {
         company: false,
         agents: false,
         projects: true,
-        issues: false,
+        tasks: false,
       },
     });
 
@@ -1272,7 +1272,7 @@ describe("company portability", () => {
         company: false,
         agents: false,
         projects: true,
-        issues: false,
+        tasks: false,
       },
     });
 
@@ -1286,7 +1286,7 @@ describe("company portability", () => {
         company: false,
         agents: false,
         projects: true,
-        issues: false,
+        tasks: false,
       },
       target: {
         mode: "new_company",
@@ -1332,7 +1332,7 @@ describe("company portability", () => {
         companyId: "company-1",
         projectId: "project-1",
         goalId: null,
-        parentIssueId: null,
+        parentTaskId: null,
         title: "Monday Review",
         description: "Review pipeline health",
         assigneeAgentId: "agent-1",
@@ -1399,7 +1399,7 @@ describe("company portability", () => {
           },
         ],
         lastRun: null,
-        activeIssue: null,
+        activeTask: null,
       },
     ]);
 
@@ -1408,7 +1408,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: true,
-        issues: true,
+        tasks: true,
         skills: false,
       },
     });
@@ -1421,7 +1421,7 @@ describe("company portability", () => {
     expect(extension).toContain('signingMode: "hmac_sha256"');
     expect(extension).not.toContain("secretId");
     expect(extension).not.toContain("publicId");
-    expect(exported.manifest.issues).toEqual([
+    expect(exported.manifest.tasks).toEqual([
       expect.objectContaining({
         slug: "monday-review",
         recurring: true,
@@ -1439,7 +1439,7 @@ describe("company portability", () => {
     ]);
   });
 
-  it("imports recurring task packages as routines instead of one-time issues", async () => {
+  it("imports recurring task packages as routines instead of one-time tasks", async () => {
     const portability = companyPortabilityService({} as any);
 
     companySvc.create.mockResolvedValue({
@@ -1514,14 +1514,14 @@ describe("company portability", () => {
 
     const preview = await portability.previewImport({
       source: { type: "inline", rootPath: "paperclip-demo", files },
-      include: { company: true, agents: true, projects: true, issues: true, skills: false },
+      include: { company: true, agents: true, projects: true, tasks: true, skills: false },
       target: { mode: "new_company", newCompanyName: "Imported Paperclip" },
       agents: "all",
       collisionStrategy: "rename",
     });
 
     expect(preview.errors).toEqual([]);
-    expect(preview.plan.issuePlans).toEqual([
+    expect(preview.plan.taskPlans).toEqual([
       expect.objectContaining({
         slug: "monday-review",
         reason: "Recurring task will be imported as a routine.",
@@ -1530,7 +1530,7 @@ describe("company portability", () => {
 
     const result = await portability.importBundle({
       source: { type: "inline", rootPath: "paperclip-demo", files },
-      include: { company: true, agents: true, projects: true, issues: true, skills: false },
+      include: { company: true, agents: true, projects: true, tasks: true, skills: false },
       target: { mode: "new_company", newCompanyName: "Imported Paperclip" },
       agents: "all",
       collisionStrategy: "rename",
@@ -1560,7 +1560,7 @@ describe("company portability", () => {
       signingMode: "hmac_sha256",
       replayWindowSec: 120,
     }), expect.any(Object));
-    expect(issueSvc.create).not.toHaveBeenCalled();
+    expect(taskSvc.create).not.toHaveBeenCalled();
   });
 
   it("migrates legacy schedule.recurrence imports into routine triggers", async () => {
@@ -1609,21 +1609,21 @@ describe("company portability", () => {
 
     const preview = await portability.previewImport({
       source: { type: "inline", rootPath: "paperclip-demo", files },
-      include: { company: true, agents: true, projects: true, issues: true, skills: false },
+      include: { company: true, agents: true, projects: true, tasks: true, skills: false },
       target: { mode: "new_company", newCompanyName: "Imported Paperclip" },
       agents: "all",
       collisionStrategy: "rename",
     });
 
     expect(preview.errors).toEqual([]);
-    expect(preview.manifest.issues[0]).toEqual(expect.objectContaining({
+    expect(preview.manifest.tasks[0]).toEqual(expect.objectContaining({
       recurring: true,
       legacyRecurrence: expect.objectContaining({ frequency: "weekly" }),
     }));
 
     await portability.importBundle({
       source: { type: "inline", rootPath: "paperclip-demo", files },
-      include: { company: true, agents: true, projects: true, issues: true, skills: false },
+      include: { company: true, agents: true, projects: true, tasks: true, skills: false },
       target: { mode: "new_company", newCompanyName: "Imported Paperclip" },
       agents: "all",
       collisionStrategy: "rename",
@@ -1634,7 +1634,7 @@ describe("company portability", () => {
       cronExpression: "0 9 * * 1",
       timezone: "America/Chicago",
     }), expect.any(Object));
-    expect(issueSvc.create).not.toHaveBeenCalled();
+    expect(taskSvc.create).not.toHaveBeenCalled();
   });
 
   it("flags recurring task imports that are missing routine-required fields", async () => {
@@ -1657,7 +1657,7 @@ describe("company portability", () => {
           ].join("\n"),
         },
       },
-      include: { company: true, agents: false, projects: false, issues: true, skills: false },
+      include: { company: true, agents: false, projects: false, tasks: true, skills: false },
       target: { mode: "new_company", newCompanyName: "Imported Paperclip" },
       collisionStrategy: "rename",
     });
@@ -1711,7 +1711,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
       target: {
         mode: "new_company",
@@ -1764,7 +1764,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
       target: {
         mode: "new_company",
@@ -1812,7 +1812,7 @@ describe("company portability", () => {
           ].join("\n"),
         },
       },
-      include: { company: true, agents: true, projects: false, issues: false },
+      include: { company: true, agents: true, projects: false, tasks: false },
       target: { mode: "new_company", newCompanyName: "CEO Role Test" },
       agents: "all",
       collisionStrategy: "rename",
@@ -1871,7 +1871,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
     });
 
@@ -1903,7 +1903,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
     });
 
@@ -1919,7 +1919,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
       target: {
         mode: "new_company",
@@ -1974,7 +1974,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
     });
 
@@ -2000,7 +2000,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
       target: {
         mode: "new_company",
@@ -2044,7 +2044,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
     });
 
@@ -2060,7 +2060,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
       target: {
         mode: "new_company",
@@ -2101,7 +2101,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
     });
 
@@ -2117,7 +2117,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
       target: {
         mode: "new_company",
@@ -2146,7 +2146,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
     });
 
@@ -2174,7 +2174,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: true,
-        issues: true,
+        tasks: true,
       },
       selectedFiles: ["agents/cmo/AGENTS.md"],
       target: {
@@ -2245,7 +2245,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
     });
 
@@ -2261,7 +2261,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
       target: {
         mode: "new_company",
@@ -2307,7 +2307,7 @@ describe("company portability", () => {
     expect(materializedFiles["AGENTS.md"]).not.toContain('name: "ClaudeCoder"');
   });
 
-  it("preserves issue labelIds through export and import round-trip", async () => {
+  it("preserves task labelIds through export and import round-trip", async () => {
     const portability = companyPortabilityService({} as any);
 
     projectSvc.list.mockResolvedValue([
@@ -2323,9 +2323,9 @@ describe("company portability", () => {
       },
     ]);
     projectSvc.listWorkspaces.mockResolvedValue([]);
-    issueSvc.list.mockResolvedValue([
+    taskSvc.list.mockResolvedValue([
       {
-        id: "issue-1",
+        id: "task-1",
         identifier: "PAP-1",
         title: "Labelled task",
         description: "Has labels",
@@ -2342,7 +2342,7 @@ describe("company portability", () => {
     ]);
 
     const exported = await portability.exportBundle("company-1", {
-      include: { company: true, agents: false, projects: true, issues: true },
+      include: { company: true, agents: false, projects: true, tasks: true },
     });
 
     const extension = asTextFile(exported.files[".paperclip.yaml"]);
@@ -2355,17 +2355,17 @@ describe("company portability", () => {
     agentSvc.list.mockResolvedValue([]);
     projectSvc.list.mockResolvedValue([]);
     projectSvc.create.mockResolvedValue({ id: "project-imported", name: "Launch", urlKey: "launch" });
-    issueSvc.create.mockResolvedValue({ id: "issue-imported", title: "Labelled task" });
+    taskSvc.create.mockResolvedValue({ id: "task-imported", title: "Labelled task" });
 
     await portability.importBundle({
       source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
-      include: { company: true, agents: false, projects: true, issues: true },
+      include: { company: true, agents: false, projects: true, tasks: true },
       target: { mode: "new_company", newCompanyName: "Imported" },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
 
-    expect(issueSvc.create).toHaveBeenCalledWith(
+    expect(taskSvc.create).toHaveBeenCalledWith(
       "company-imported",
       expect.objectContaining({
         labelIds: ["label-a", "label-b"],
@@ -2391,7 +2391,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
     });
     const originalAgentsMarkdown = exported.files["agents/claudecoder/AGENTS.md"];
@@ -2414,7 +2414,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
       target: {
         mode: "new_company",
@@ -2450,7 +2450,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
     });
 
@@ -2466,7 +2466,7 @@ describe("company portability", () => {
         company: false,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
       target: {
         mode: "existing_company",
@@ -2498,7 +2498,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
     });
 
@@ -2531,7 +2531,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
       target: {
         mode: "new_company",
@@ -2565,7 +2565,7 @@ describe("company portability", () => {
         company: true,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
     });
 
@@ -2589,7 +2589,7 @@ describe("company portability", () => {
         company: false,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
       },
       target: {
         mode: "existing_company",
@@ -2624,7 +2624,7 @@ describe("company portability", () => {
     const portability = companyPortabilityService({} as any);
 
     const exported = await portability.exportBundle("company-1", {
-      include: { company: false, agents: true, projects: false, issues: false },
+      include: { company: false, agents: true, projects: false, tasks: false },
     });
 
     // Simulate existing agents so collision detection triggers rename
@@ -2634,7 +2634,7 @@ describe("company portability", () => {
 
     const preview = await portability.previewImport({
       source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
-      include: { company: false, agents: true, projects: false, issues: false },
+      include: { company: false, agents: true, projects: false, tasks: false },
       target: { mode: "existing_company", companyId: "company-1" },
       agents: ["claudecoder"],
       collisionStrategy: "rename",
@@ -2670,7 +2670,7 @@ describe("company portability", () => {
 
     // Export should complete without infinite recursion in org chart building
     const exported = await portability.exportBundle("company-1", {
-      include: { company: true, agents: true, projects: false, issues: false },
+      include: { company: true, agents: true, projects: false, tasks: false },
     });
 
     expect(exported.manifest.agents).toHaveLength(2);
@@ -2680,7 +2680,7 @@ describe("company portability", () => {
     expect(slugs).toContain("agentb");
   });
 
-  it("resolves issue assignee to existing agent when agent is skipped", async () => {
+  it("resolves task assignee to existing agent when agent is skipped", async () => {
     const portability = companyPortabilityService({} as any);
 
     projectSvc.list.mockResolvedValue([{
@@ -2688,8 +2688,8 @@ describe("company portability", () => {
       description: null, leadAgentId: null, targetDate: null, color: null, status: "planned",
       executionWorkspacePolicy: null, archivedAt: null, workspaces: [],
     }]);
-    issueSvc.list.mockResolvedValue([{
-      id: "issue-1", companyId: "company-1", title: "Test task", identifier: "PAP-1",
+    taskSvc.list.mockResolvedValue([{
+      id: "task-1", companyId: "company-1", title: "Test task", identifier: "PAP-1",
       description: "A test task", status: "todo", priority: "medium",
       assigneeAgentId: "agent-1", projectId: "project-1", projectWorkspaceId: null,
       goalId: null, parentId: null, billingCode: null, labelIds: [],
@@ -2697,23 +2697,23 @@ describe("company portability", () => {
     }]);
 
     const exported = await portability.exportBundle("company-1", {
-      include: { company: false, agents: true, projects: true, issues: true },
+      include: { company: false, agents: true, projects: true, tasks: true },
     });
 
     // Re-import into same company with skip collision strategy
-    // Both agents exist so both will be skipped; the existing agent should resolve for issue assignment
+    // Both agents exist so both will be skipped; the existing agent should resolve for task assignment
     agentSvc.list.mockResolvedValue([
       { id: "agent-1", name: "ClaudeCoder", status: "idle", role: "engineer", adapterType: "claude_local", adapterConfig: {}, runtimeConfig: {}, budgetMonthlyCents: 0, permissions: {}, metadata: null },
       { id: "agent-2", name: "CMO", status: "idle", role: "cmo", adapterType: "claude_local", adapterConfig: {}, runtimeConfig: {}, budgetMonthlyCents: 0, permissions: {}, metadata: null },
     ]);
     projectSvc.list.mockResolvedValue([]);
-    issueSvc.list.mockResolvedValue([]);
+    taskSvc.list.mockResolvedValue([]);
     projectSvc.create.mockResolvedValue({ id: "project-new", companyId: "company-1", urlKey: "testproject" });
-    issueSvc.create.mockResolvedValue({ id: "issue-new", identifier: "PAP-100" });
+    taskSvc.create.mockResolvedValue({ id: "task-new", identifier: "PAP-100" });
 
     const result = await portability.importBundle({
       source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
-      include: { company: false, agents: true, projects: true, issues: true },
+      include: { company: false, agents: true, projects: true, tasks: true },
       target: { mode: "existing_company", companyId: "company-1" },
       agents: "all",
       collisionStrategy: "skip",
@@ -2724,11 +2724,11 @@ describe("company portability", () => {
     expect(agentResult).toBeDefined();
     expect(agentResult!.action).toBe("skipped");
 
-    // Issue should still be created and reference the existing agent
-    expect(issueSvc.create).toHaveBeenCalled();
-    const issueCreateCall = issueSvc.create.mock.calls[0];
+    // Task should still be created and reference the existing agent
+    expect(taskSvc.create).toHaveBeenCalled();
+    const taskCreateCall = taskSvc.create.mock.calls[0];
     // The assigneeAgentId should resolve to the existing agent via existingSlugToAgentId
-    expect(issueCreateCall[1]).toEqual(expect.objectContaining({
+    expect(taskCreateCall[1]).toEqual(expect.objectContaining({
       assigneeAgentId: "agent-1",
     }));
   });
@@ -2737,13 +2737,13 @@ describe("company portability", () => {
     const portability = companyPortabilityService({} as any);
 
     const exported = await portability.exportBundle("company-1", {
-      include: { company: false, agents: false, projects: false, issues: false, skills: true },
+      include: { company: false, agents: false, projects: false, tasks: false, skills: true },
       expandReferencedSkills: true,
     });
 
     expect(exported.manifest.agents).toHaveLength(0);
     expect(exported.manifest.projects).toHaveLength(0);
-    expect(exported.manifest.issues).toHaveLength(0);
+    expect(exported.manifest.tasks).toHaveLength(0);
     // Skills should still be exported
     expect(exported.manifest.skills.length).toBeGreaterThanOrEqual(0);
   });
@@ -2752,14 +2752,14 @@ describe("company portability", () => {
     const portability = companyPortabilityService({} as any);
 
     const exported = await portability.exportBundle("company-1", {
-      include: { company: true, agents: true, projects: false, issues: false },
+      include: { company: true, agents: true, projects: false, tasks: false },
     });
 
     agentSvc.list.mockResolvedValue([]);
 
     const preview = await portability.previewImport({
       source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
-      include: { company: false, agents: false, projects: false, issues: false },
+      include: { company: false, agents: false, projects: false, tasks: false },
       target: { mode: "existing_company", companyId: "company-1" },
       agents: "all",
       collisionStrategy: "rename",
@@ -2767,6 +2767,6 @@ describe("company portability", () => {
 
     expect(preview.plan.agentPlans).toHaveLength(0);
     expect(preview.plan.projectPlans).toHaveLength(0);
-    expect(preview.plan.issuePlans).toHaveLength(0);
+    expect(preview.plan.taskPlans).toHaveLength(0);
   });
 });

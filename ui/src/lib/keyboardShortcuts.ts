@@ -13,7 +13,7 @@ const MODIFIER_ONLY_KEYS = new Set(["Shift", "Meta", "Control", "Alt"]);
 
 export type InboxQuickArchiveKeyAction = "ignore" | "archive" | "disarm";
 export type InboxUndoArchiveKeyAction = "ignore" | "undo_archive";
-export type IssueDetailGoKeyAction = "ignore" | "arm" | "navigate_inbox" | "focus_comment" | "disarm";
+export type TaskDetailGoKeyAction = "ignore" | "arm" | "navigate_inbox" | "focus_comment" | "disarm";
 
 export function isKeyboardShortcutTextInputTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -133,7 +133,7 @@ export function resolveInboxUndoArchiveKeyAction({
   return "ignore";
 }
 
-export function resolveIssueDetailGoKeyAction({
+export function resolveTaskDetailGoKeyAction({
   armed,
   defaultPrevented,
   key,
@@ -151,7 +151,7 @@ export function resolveIssueDetailGoKeyAction({
   altKey: boolean;
   target: EventTarget | null;
   hasOpenDialog: boolean;
-}): IssueDetailGoKeyAction {
+}): TaskDetailGoKeyAction {
   if (defaultPrevented) return armed ? "disarm" : "ignore";
   if (metaKey || ctrlKey || altKey || isModifierOnlyKey(key)) return "ignore";
   if (hasOpenDialog || isKeyboardShortcutTextInputTarget(target)) {

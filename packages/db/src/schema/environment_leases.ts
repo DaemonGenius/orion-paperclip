@@ -3,7 +3,7 @@ import { companies } from "./companies.js";
 import { environments } from "./environments.js";
 import { executionWorkspaces } from "./execution_workspaces.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
-import { issues } from "./issues.js";
+import { tasks } from "./tasks.js";
 
 export const environmentLeases = pgTable(
   "environment_leases",
@@ -12,7 +12,7 @@ export const environmentLeases = pgTable(
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     environmentId: uuid("environment_id").notNull().references(() => environments.id, { onDelete: "cascade" }),
     executionWorkspaceId: uuid("execution_workspace_id").references(() => executionWorkspaces.id, { onDelete: "set null" }),
-    issueId: uuid("issue_id").references(() => issues.id, { onDelete: "set null" }),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
     heartbeatRunId: uuid("heartbeat_run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),
     status: text("status").notNull().default("active"),
     leasePolicy: text("lease_policy").notNull().default("ephemeral"),
@@ -38,7 +38,7 @@ export const environmentLeases = pgTable(
       table.companyId,
       table.executionWorkspaceId,
     ),
-    companyIssueIdx: index("environment_leases_company_issue_idx").on(table.companyId, table.issueId),
+    companyTaskIdx: index("environment_leases_company_task_idx").on(table.companyId, table.taskId),
     heartbeatRunIdx: index("environment_leases_heartbeat_run_idx").on(table.heartbeatRunId),
     companyLastUsedIdx: index("environment_leases_company_last_used_idx").on(table.companyId, table.lastUsedAt),
     providerLeaseIdx: index("environment_leases_provider_lease_idx").on(table.providerLeaseId),

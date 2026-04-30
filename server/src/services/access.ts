@@ -4,7 +4,7 @@ import {
   agents,
   companyMemberships,
   instanceUserRoles,
-  issues,
+  tasks,
   principalPermissionGrants,
 } from "@paperclipai/db";
 import type { PermissionKey, PrincipalType } from "@paperclipai/shared";
@@ -347,7 +347,7 @@ export function accessService(db: Db) {
         throw conflict("Only human company members can be archived");
       }
       if (existing.status === "archived") {
-        return { member: existing, reassignedIssueCount: 0 };
+        return { member: existing, reassignedTaskCount: 0 };
       }
       if (input.reassignment?.assigneeUserId === existing.principalId) {
         throw conflict("Replacement user cannot be the archived member");
@@ -368,13 +368,13 @@ export function accessService(db: Db) {
         assigneeUserId: input.reassignment?.assigneeUserId ?? null,
         updatedAt: now,
       };
-      const assignedOpenIssueWhere = and(
-        eq(issues.companyId, companyId),
-        eq(issues.assigneeUserId, existing.principalId),
-        sql`${issues.status} not in ('done', 'cancelled')`,
+      const assignedOpenTaskWhere = and(
+        eq(tasks.companyId, companyId),
+        eq(tasks.assigneeUserId, existing.principalId),
+        sql`${tasks.status} not in ('done', 'cancelled')`,
       );
       const resetInProgress = await tx
-        .update(issues)
+        .update(tasks)
         .set({
           ...assignmentPatch,
           status: "todo",
@@ -383,13 +383,13 @@ export function accessService(db: Db) {
           executionRunId: null,
           executionLockedAt: null,
         })
-        .where(and(assignedOpenIssueWhere, eq(issues.status, "in_progress")))
-        .returning({ id: issues.id });
+        .where(and(assignedOpenTaskWhere, eq(tasks.status, "in_progress")))
+        .returning({ id: tasks.id });
       const reassigned = await tx
-        .update(issues)
+        .update(tasks)
         .set(assignmentPatch)
-        .where(and(assignedOpenIssueWhere, ne(issues.status, "in_progress")))
-        .returning({ id: issues.id });
+        .where(and(assignedOpenTaskWhere, ne(tasks.status, "in_progress")))
+        .returning({ id: tasks.id });
 
       await tx
         .delete(principalPermissionGrants)
@@ -413,7 +413,7 @@ export function accessService(db: Db) {
 
       return {
         member: archived,
-        reassignedIssueCount: resetInProgress.length + reassigned.length,
+        reassignedTaskCount: resetInProgress.length + reassigned.length,
       };
     });
   }

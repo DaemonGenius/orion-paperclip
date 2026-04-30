@@ -75,10 +75,10 @@ JOIN_REQUEST_ID=""
 INVITE_ID=""
 RUN_ID=""
 
-CASE_A_ISSUE_ID=""
-CASE_B_ISSUE_ID=""
-CASE_C_ISSUE_ID=""
-CASE_C_CREATED_ISSUE_ID=""
+CASE_A_TASK_ID=""
+CASE_B_TASK_ID=""
+CASE_C_TASK_ID=""
+CASE_C_CREATED_TASK_ID=""
 
 api_request() {
   local method="$1"
@@ -137,20 +137,20 @@ capture_run_diagnostics() {
   fi
 }
 
-capture_issue_diagnostics() {
-  local issue_id="$1"
-  local label="${2:-issue}"
-  [[ -n "$issue_id" ]] || return 0
+capture_task_diagnostics() {
+  local task_id="$1"
+  local label="${2:-task}"
+  [[ -n "$task_id" ]] || return 0
   mkdir -p "$OPENCLAW_DIAG_DIR"
 
-  api_request "GET" "/issues/${issue_id}"
+  api_request "GET" "/tasks/${task_id}"
   if [[ "$RESPONSE_CODE" == "200" ]]; then
-    printf "%s\n" "$RESPONSE_BODY" > "${OPENCLAW_DIAG_DIR}/${label}-${issue_id}.json"
+    printf "%s\n" "$RESPONSE_BODY" > "${OPENCLAW_DIAG_DIR}/${label}-${task_id}.json"
   fi
 
-  api_request "GET" "/issues/${issue_id}/comments"
+  api_request "GET" "/tasks/${task_id}/comments"
   if [[ "$RESPONSE_CODE" == "200" ]]; then
-    printf "%s\n" "$RESPONSE_BODY" > "${OPENCLAW_DIAG_DIR}/${label}-${issue_id}-comments.json"
+    printf "%s\n" "$RESPONSE_BODY" > "${OPENCLAW_DIAG_DIR}/${label}-${task_id}-comments.json"
   fi
 }
 
@@ -324,14 +324,14 @@ resolve_company_id() {
     map(select(
       ((.id // "") | ascii_upcase) == $sel or
       ((.name // "") | ascii_upcase) == $sel or
-      ((.issuePrefix // "") | ascii_upcase) == $sel
+      ((.taskPrefix // "") | ascii_upcase) == $sel
     ))
     | .[0].id // empty
   ' <<<"$RESPONSE_BODY")"
 
   if [[ -z "$COMPANY_ID" ]]; then
     local available
-    available="$(jq -r '.[] | "- id=\(.id) issuePrefix=\(.issuePrefix // "") name=\(.name // "")"' <<<"$RESPONSE_BODY")"
+    available="$(jq -r '.[] | "- id=\(.id) taskPrefix=\(.taskPrefix // "") name=\(.name // "")"' <<<"$RESPONSE_BODY")"
     echo "$available" >&2
     fail "could not find company for selector '${COMPANY_SELECTOR}'"
   fi
@@ -593,11 +593,11 @@ approve_latest_pairing_request() {
 
 trigger_wakeup() {
   local reason="$1"
-  local issue_id="${2:-}"
+  local task_id="${2:-}"
 
   local payload
-  if [[ -n "$issue_id" ]]; then
-    payload="$(jq -nc --arg issueId "$issue_id" --arg reason "$reason" '{source:"on_demand",triggerDetail:"manual",reason:$reason,payload:{issueId:$issueId,taskId:$issueId}}')"
+  if [[ -n "$task_id" ]]; then
+    payload="$(jq -nc --arg taskId "$task_id" --arg reason "$reason" '{source:"on_demand",triggerDetail:"manual",reason:$reason,payload:{taskId:$taskId,taskId:$taskId}}')"
   else
     payload="$(jq -nc --arg reason "$reason" '{source:"on_demand",triggerDetail:"manual",reason:$reason}')"
   fi
@@ -654,9 +654,9 @@ wait_for_run_terminal() {
   done
 }
 
-get_issue_status() {
-  local issue_id="$1"
-  api_request "GET" "/issues/${issue_id}"
+get_task_status() {
+  local task_id="$1"
+  api_request "GET" "/tasks/${task_id}"
   if [[ "$RESPONSE_CODE" != "200" ]]; then
     echo ""
     return 0
@@ -664,14 +664,14 @@ get_issue_status() {
   jq -r '.status // empty' <<<"$RESPONSE_BODY"
 }
 
-wait_for_issue_terminal() {
-  local issue_id="$1"
+wait_for_task_terminal() {
+  local task_id="$1"
   local timeout_sec="$2"
   local started now status
   started="$(date +%s)"
 
   while true; do
-    status="$(get_issue_status "$issue_id")"
+    status="$(get_task_status "$task_id")"
     if [[ "$status" == "done" || "$status" == "blocked" || "$status" == "cancelled" ]]; then
       echo "$status"
       return 0
@@ -686,10 +686,10 @@ wait_for_issue_terminal() {
   done
 }
 
-issue_comments_contain() {
-  local issue_id="$1"
+task_comments_contain() {
+  local task_id="$1"
   local marker="$2"
-  api_request "GET" "/issues/${issue_id}/comments"
+  api_request "GET" "/tasks/${task_id}/comments"
   if [[ "$RESPONSE_CODE" != "200" ]]; then
     echo "false"
     return 0
@@ -697,7 +697,7 @@ issue_comments_contain() {
   jq -r --arg marker "$marker" '[.[] | (.body // "") | contains($marker)] | any' <<<"$RESPONSE_BODY"
 }
 
-create_issue_for_case() {
+create_task_for_case() {
   local title="$1"
   local description="$2"
   local priority="${3:-high}"
@@ -710,15 +710,15 @@ create_issue_for_case() {
     --arg priority "$priority" \
     '{title:$title,description:$description,status:"todo",priority:$priority,assigneeAgentId:$assignee}')"
 
-  api_request "POST" "/companies/${COMPANY_ID}/issues" "$payload"
+  api_request "POST" "/companies/${COMPANY_ID}/tasks" "$payload"
   assert_status "201"
 
-  local issue_id issue_identifier
-  issue_id="$(jq -r '.id // empty' <<<"$RESPONSE_BODY")"
-  issue_identifier="$(jq -r '.identifier // empty' <<<"$RESPONSE_BODY")"
-  [[ -n "$issue_id" ]] || fail "issue create missing id"
+  local task_id task_identifier
+  task_id="$(jq -r '.id // empty' <<<"$RESPONSE_BODY")"
+  task_identifier="$(jq -r '.identifier // empty' <<<"$RESPONSE_BODY")"
+  [[ -n "$task_id" ]] || fail "task create missing id"
 
-  echo "${issue_id}|${issue_identifier}"
+  echo "${task_id}|${task_identifier}"
 }
 
 patch_agent_session_strategy_run() {
@@ -731,11 +731,11 @@ patch_agent_session_strategy_run() {
   assert_status "200"
 }
 
-find_issue_by_query() {
+find_task_by_query() {
   local query="$1"
   local encoded_query
   encoded_query="$(jq -rn --arg q "$query" '$q|@uri')"
-  api_request "GET" "/companies/${COMPANY_ID}/issues?q=${encoded_query}"
+  api_request "GET" "/companies/${COMPANY_ID}/tasks?q=${encoded_query}"
   if [[ "$RESPONSE_CODE" != "200" ]]; then
     echo ""
     return 0
@@ -746,17 +746,17 @@ find_issue_by_query() {
 run_case_a() {
   local marker="OPENCLAW_CASE_A_OK_$(date +%s)"
   local description
-  description="Case A validation.\n\n1) Read this issue.\n2) Post a comment containing exactly: ${marker}\n3) Mark this issue done."
+  description="Case A validation.\n\n1) Read this task.\n2) Post a comment containing exactly: ${marker}\n3) Mark this task done."
 
   local created
-  created="$(create_issue_for_case "[OpenClaw Gateway Smoke] Case A" "$description")"
-  CASE_A_ISSUE_ID="${created%%|*}"
+  created="$(create_task_for_case "[OpenClaw Gateway Smoke] Case A" "$description")"
+  CASE_A_TASK_ID="${created%%|*}"
   local case_identifier="${created##*|}"
 
-  log "case A issue ${CASE_A_ISSUE_ID} (${case_identifier})"
-  trigger_wakeup "openclaw_gateway_smoke_case_a" "$CASE_A_ISSUE_ID"
+  log "case A task ${CASE_A_TASK_ID} (${case_identifier})"
+  trigger_wakeup "openclaw_gateway_smoke_case_a" "$CASE_A_TASK_ID"
 
-  local run_status issue_status marker_found
+  local run_status task_status marker_found
   if [[ -n "$RUN_ID" ]]; then
     run_status="$(wait_for_run_terminal "$RUN_ID" "$RUN_TIMEOUT_SEC")"
     log "case A run ${RUN_ID} status=${run_status}"
@@ -764,12 +764,12 @@ run_case_a() {
     run_status="unknown"
   fi
 
-  issue_status="$(wait_for_issue_terminal "$CASE_A_ISSUE_ID" "$CASE_TIMEOUT_SEC")"
-  marker_found="$(issue_comments_contain "$CASE_A_ISSUE_ID" "$marker")"
-  log "case A issue_status=${issue_status} marker_found=${marker_found}"
+  task_status="$(wait_for_task_terminal "$CASE_A_TASK_ID" "$CASE_TIMEOUT_SEC")"
+  marker_found="$(task_comments_contain "$CASE_A_TASK_ID" "$marker")"
+  log "case A task_status=${task_status} marker_found=${marker_found}"
 
-  if [[ "$issue_status" != "done" || "$marker_found" != "true" ]]; then
-    capture_issue_diagnostics "$CASE_A_ISSUE_ID" "case-a"
+  if [[ "$task_status" != "done" || "$marker_found" != "true" ]]; then
+    capture_task_diagnostics "$CASE_A_TASK_ID" "case-a"
     if [[ -n "$RUN_ID" ]]; then
       capture_run_diagnostics "$RUN_ID" "case-a"
     fi
@@ -778,7 +778,7 @@ run_case_a() {
 
   if [[ "$STRICT_CASES" == "1" ]]; then
     [[ "$run_status" == "succeeded" ]] || fail "case A run did not succeed"
-    [[ "$issue_status" == "done" ]] || fail "case A issue did not reach done"
+    [[ "$task_status" == "done" ]] || fail "case A task did not reach done"
     [[ "$marker_found" == "true" ]] || fail "case A marker not found in comments"
   fi
 }
@@ -787,17 +787,17 @@ run_case_b() {
   local marker="OPENCLAW_CASE_B_OK_$(date +%s)"
   local message_text="${marker}"
   local description
-  description="Case B validation.\n\nUse the message tool to send this exact text to the user's main chat session in webchat:\n${message_text}\n\nAfter sending, post a Paperclip issue comment containing exactly: ${marker}\nThen mark this issue done."
+  description="Case B validation.\n\nUse the message tool to send this exact text to the user's main chat session in webchat:\n${message_text}\n\nAfter sending, post a Paperclip task comment containing exactly: ${marker}\nThen mark this task done."
 
   local created
-  created="$(create_issue_for_case "[OpenClaw Gateway Smoke] Case B" "$description")"
-  CASE_B_ISSUE_ID="${created%%|*}"
+  created="$(create_task_for_case "[OpenClaw Gateway Smoke] Case B" "$description")"
+  CASE_B_TASK_ID="${created%%|*}"
   local case_identifier="${created##*|}"
 
-  log "case B issue ${CASE_B_ISSUE_ID} (${case_identifier})"
-  trigger_wakeup "openclaw_gateway_smoke_case_b" "$CASE_B_ISSUE_ID"
+  log "case B task ${CASE_B_TASK_ID} (${case_identifier})"
+  trigger_wakeup "openclaw_gateway_smoke_case_b" "$CASE_B_TASK_ID"
 
-  local run_status issue_status marker_found
+  local run_status task_status marker_found
   if [[ -n "$RUN_ID" ]]; then
     run_status="$(wait_for_run_terminal "$RUN_ID" "$RUN_TIMEOUT_SEC")"
     log "case B run ${RUN_ID} status=${run_status}"
@@ -805,12 +805,12 @@ run_case_b() {
     run_status="unknown"
   fi
 
-  issue_status="$(wait_for_issue_terminal "$CASE_B_ISSUE_ID" "$CASE_TIMEOUT_SEC")"
-  marker_found="$(issue_comments_contain "$CASE_B_ISSUE_ID" "$marker")"
-  log "case B issue_status=${issue_status} marker_found=${marker_found}"
+  task_status="$(wait_for_task_terminal "$CASE_B_TASK_ID" "$CASE_TIMEOUT_SEC")"
+  marker_found="$(task_comments_contain "$CASE_B_TASK_ID" "$marker")"
+  log "case B task_status=${task_status} marker_found=${marker_found}"
 
-  if [[ "$issue_status" != "done" || "$marker_found" != "true" ]]; then
-    capture_issue_diagnostics "$CASE_B_ISSUE_ID" "case-b"
+  if [[ "$task_status" != "done" || "$marker_found" != "true" ]]; then
+    capture_task_diagnostics "$CASE_B_TASK_ID" "case-b"
     if [[ -n "$RUN_ID" ]]; then
       capture_run_diagnostics "$RUN_ID" "case-b"
     fi
@@ -821,7 +821,7 @@ run_case_b() {
 
   if [[ "$STRICT_CASES" == "1" ]]; then
     [[ "$run_status" == "succeeded" ]] || fail "case B run did not succeed"
-    [[ "$issue_status" == "done" ]] || fail "case B issue did not reach done"
+    [[ "$task_status" == "done" ]] || fail "case B task did not reach done"
     [[ "$marker_found" == "true" ]] || fail "case B marker not found in comments"
   fi
 }
@@ -831,19 +831,19 @@ run_case_c() {
 
   local marker="OPENCLAW_CASE_C_CREATED_$(date +%s)"
   local ack_marker="OPENCLAW_CASE_C_ACK_$(date +%s)"
-  local original_issue_reference="the original case issue you are currently reading"
+  local original_task_reference="the original case task you are currently reading"
   local description
-  description="Case C validation.\n\nTreat this run as a fresh/new session.\nCreate a NEW Paperclip issue in this same company with title exactly:\n${marker}\nUse description: 'created by case C smoke'.\n\nThen post a comment on ${original_issue_reference} containing exactly: ${ack_marker}\nDo NOT post the ACK comment on the newly created issue.\nThen mark the original case issue done."
+  description="Case C validation.\n\nTreat this run as a fresh/new session.\nCreate a NEW Paperclip task in this same company with title exactly:\n${marker}\nUse description: 'created by case C smoke'.\n\nThen post a comment on ${original_task_reference} containing exactly: ${ack_marker}\nDo NOT post the ACK comment on the newly created task.\nThen mark the original case task done."
 
   local created
-  created="$(create_issue_for_case "[OpenClaw Gateway Smoke] Case C" "$description")"
-  CASE_C_ISSUE_ID="${created%%|*}"
+  created="$(create_task_for_case "[OpenClaw Gateway Smoke] Case C" "$description")"
+  CASE_C_TASK_ID="${created%%|*}"
   local case_identifier="${created##*|}"
 
-  log "case C issue ${CASE_C_ISSUE_ID} (${case_identifier})"
-  trigger_wakeup "openclaw_gateway_smoke_case_c" "$CASE_C_ISSUE_ID"
+  log "case C task ${CASE_C_TASK_ID} (${case_identifier})"
+  trigger_wakeup "openclaw_gateway_smoke_case_c" "$CASE_C_TASK_ID"
 
-  local run_status issue_status marker_found created_issue
+  local run_status task_status marker_found created_task
   if [[ -n "$RUN_ID" ]]; then
     run_status="$(wait_for_run_terminal "$RUN_ID" "$RUN_TIMEOUT_SEC")"
     log "case C run ${RUN_ID} status=${run_status}"
@@ -851,19 +851,19 @@ run_case_c() {
     run_status="unknown"
   fi
 
-  issue_status="$(wait_for_issue_terminal "$CASE_C_ISSUE_ID" "$CASE_TIMEOUT_SEC")"
-  marker_found="$(issue_comments_contain "$CASE_C_ISSUE_ID" "$ack_marker")"
-  created_issue="$(find_issue_by_query "$marker")"
-  if [[ "$created_issue" == "$CASE_C_ISSUE_ID" ]]; then
-    created_issue=""
+  task_status="$(wait_for_task_terminal "$CASE_C_TASK_ID" "$CASE_TIMEOUT_SEC")"
+  marker_found="$(task_comments_contain "$CASE_C_TASK_ID" "$ack_marker")"
+  created_task="$(find_task_by_query "$marker")"
+  if [[ "$created_task" == "$CASE_C_TASK_ID" ]]; then
+    created_task=""
   fi
-  CASE_C_CREATED_ISSUE_ID="$created_issue"
-  log "case C issue_status=${issue_status} marker_found=${marker_found} created_issue_id=${CASE_C_CREATED_ISSUE_ID:-none}"
+  CASE_C_CREATED_TASK_ID="$created_task"
+  log "case C task_status=${task_status} marker_found=${marker_found} created_task_id=${CASE_C_CREATED_TASK_ID:-none}"
 
-  if [[ "$issue_status" != "done" || "$marker_found" != "true" || -z "$CASE_C_CREATED_ISSUE_ID" ]]; then
-    capture_issue_diagnostics "$CASE_C_ISSUE_ID" "case-c"
-    if [[ -n "$CASE_C_CREATED_ISSUE_ID" ]]; then
-      capture_issue_diagnostics "$CASE_C_CREATED_ISSUE_ID" "case-c-created"
+  if [[ "$task_status" != "done" || "$marker_found" != "true" || -z "$CASE_C_CREATED_TASK_ID" ]]; then
+    capture_task_diagnostics "$CASE_C_TASK_ID" "case-c"
+    if [[ -n "$CASE_C_CREATED_TASK_ID" ]]; then
+      capture_task_diagnostics "$CASE_C_CREATED_TASK_ID" "case-c-created"
     fi
     if [[ -n "$RUN_ID" ]]; then
       capture_run_diagnostics "$RUN_ID" "case-c"
@@ -873,9 +873,9 @@ run_case_c() {
 
   if [[ "$STRICT_CASES" == "1" ]]; then
     [[ "$run_status" == "succeeded" ]] || fail "case C run did not succeed"
-    [[ "$issue_status" == "done" ]] || fail "case C issue did not reach done"
+    [[ "$task_status" == "done" ]] || fail "case C task did not reach done"
     [[ "$marker_found" == "true" ]] || fail "case C ack marker not found in comments"
-    [[ -n "$CASE_C_CREATED_ISSUE_ID" ]] || fail "case C did not create the expected new issue"
+    [[ -n "$CASE_C_CREATED_TASK_ID" ]] || fail "case C did not create the expected new task"
   fi
 }
 
@@ -944,10 +944,10 @@ main() {
   log "agentId=${AGENT_ID}"
   log "inviteId=${INVITE_ID}"
   log "joinRequestId=${JOIN_REQUEST_ID}"
-  log "caseA_issueId=${CASE_A_ISSUE_ID}"
-  log "caseB_issueId=${CASE_B_ISSUE_ID}"
-  log "caseC_issueId=${CASE_C_ISSUE_ID}"
-  log "caseC_createdIssueId=${CASE_C_CREATED_ISSUE_ID:-none}"
+  log "caseA_taskId=${CASE_A_TASK_ID}"
+  log "caseB_taskId=${CASE_B_TASK_ID}"
+  log "caseC_taskId=${CASE_C_TASK_ID}"
+  log "caseC_createdTaskId=${CASE_C_CREATED_TASK_ID:-none}"
   log "agentApiKeyPrefix=${AGENT_API_KEY:0:12}..."
 }
 

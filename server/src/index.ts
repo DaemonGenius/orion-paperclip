@@ -679,7 +679,7 @@ export async function startServer(): Promise<StartedServer> {
       .then(() => heartbeat.promoteDueScheduledRetries())
       .then(async (promotion) => {
         await heartbeat.resumeQueuedRuns();
-        const reconciled = await heartbeat.reconcileStrandedAssignedIssues();
+        const reconciled = await heartbeat.reconcileStrandedAssignedTasks();
         if (
           promotion.promoted > 0 ||
           reconciled.dispatchRequeued > 0 ||
@@ -688,14 +688,14 @@ export async function startServer(): Promise<StartedServer> {
         ) {
           logger.warn(
             { promotedScheduledRetries: promotion.promoted, promotedScheduledRetryRunIds: promotion.runIds, ...reconciled },
-            "startup heartbeat recovery changed assigned issue state",
+            "startup heartbeat recovery changed assigned task state",
           );
         }
       })
       .then(async () => {
-        const reconciled = await heartbeat.reconcileIssueGraphLiveness();
+        const reconciled = await heartbeat.reconcileTaskGraphLiveness();
         if (reconciled.escalationsCreated > 0) {
-          logger.warn({ ...reconciled }, "startup issue-graph liveness reconciliation created escalations");
+          logger.warn({ ...reconciled }, "startup task-graph liveness reconciliation created escalations");
         }
       })
       .then(async () => {
@@ -737,7 +737,7 @@ export async function startServer(): Promise<StartedServer> {
         .then(() => heartbeat.promoteDueScheduledRetries())
         .then(async (promotion) => {
           await heartbeat.resumeQueuedRuns();
-          const reconciled = await heartbeat.reconcileStrandedAssignedIssues();
+          const reconciled = await heartbeat.reconcileStrandedAssignedTasks();
           if (
             promotion.promoted > 0 ||
             reconciled.dispatchRequeued > 0 ||
@@ -746,14 +746,14 @@ export async function startServer(): Promise<StartedServer> {
           ) {
             logger.warn(
               { promotedScheduledRetries: promotion.promoted, promotedScheduledRetryRunIds: promotion.runIds, ...reconciled },
-              "periodic heartbeat recovery changed assigned issue state",
+              "periodic heartbeat recovery changed assigned task state",
             );
           }
         })
         .then(async () => {
-          const reconciled = await heartbeat.reconcileIssueGraphLiveness();
+          const reconciled = await heartbeat.reconcileTaskGraphLiveness();
           if (reconciled.escalationsCreated > 0) {
-            logger.warn({ ...reconciled }, "periodic issue-graph liveness reconciliation created escalations");
+            logger.warn({ ...reconciled }, "periodic task-graph liveness reconciliation created escalations");
           }
         })
         .then(async () => {

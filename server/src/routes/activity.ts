@@ -4,8 +4,9 @@ import type { Db } from "@paperclipai/db";
 import { validate } from "../middleware/validate.js";
 import { activityService, normalizeActivityLimit } from "../services/activity.js";
 import { assertAuthenticated, assertBoard, assertCompanyAccess } from "./authz.js";
-import { heartbeatService, issueService } from "../services/index.js";
+import { heartbeatService, taskService } from "../services/index.js";
 import { sanitizeRecord } from "../redaction.js";
+import { isTaskIdentifier } from "../utils/task-identifiers.js";
 
 const createActivitySchema = z.object({
   actorType: z.enum(["agent", "user", "system", "plugin"]).optional().default("system"),
@@ -21,13 +22,13 @@ export function activityRoutes(db: Db) {
   const router = Router();
   const svc = activityService(db);
   const heartbeat = heartbeatService(db);
-  const issueSvc = issueService(db);
+  const taskSvc = taskService(db);
 
-  async function resolveIssueByRef(rawId: string) {
-    if (/^[A-Z]+-\d+$/i.test(rawId)) {
-      return issueSvc.getByIdentifier(rawId);
+  async function resolveTaskByRef(rawId: string) {
+    if (isTaskIdentifier(rawId)) {
+      return taskSvc.getByIdentifier(rawId);
     }
-    return issueSvc.getById(rawId);
+    return taskSvc.getById(rawId);
   }
 
   router.get("/companies/:companyId/activity", async (req, res) => {
@@ -57,31 +58,31 @@ export function activityRoutes(db: Db) {
     res.status(201).json(event);
   });
 
-  router.get("/issues/:id/activity", async (req, res) => {
+  router.get("/tasks/:id/activity", async (req, res) => {
     const rawId = req.params.id as string;
-    const issue = await resolveIssueByRef(rawId);
-    if (!issue) {
-      res.status(404).json({ error: "Issue not found" });
+    const task = await resolveTaskByRef(rawId);
+    if (!task) {
+      res.status(404).json({ error: "Task not found" });
       return;
     }
-    assertCompanyAccess(req, issue.companyId);
-    const result = await svc.forIssue(issue.id);
+    assertCompanyAccess(req, task.companyId);
+    const result = await svc.forTask(task.id);
     res.json(result);
   });
 
-  router.get("/issues/:id/runs", async (req, res) => {
+  router.get("/tasks/:id/runs", async (req, res) => {
     const rawId = req.params.id as string;
-    const issue = await resolveIssueByRef(rawId);
-    if (!issue) {
-      res.status(404).json({ error: "Issue not found" });
+    const task = await resolveTaskByRef(rawId);
+    if (!task) {
+      res.status(404).json({ error: "Task not found" });
       return;
     }
-    assertCompanyAccess(req, issue.companyId);
-    const result = await svc.runsForIssue(issue.companyId, issue.id);
+    assertCompanyAccess(req, task.companyId);
+    const result = await svc.runsForTask(task.companyId, task.id);
     res.json(result);
   });
 
-  router.get("/heartbeat-runs/:runId/issues", async (req, res) => {
+  router.get("/heartbeat-runs/:runId/tasks", async (req, res) => {
     assertAuthenticated(req);
     const runId = req.params.runId as string;
     const run = await heartbeat.getRun(runId);
@@ -90,7 +91,7 @@ export function activityRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, run.companyId);
-    const result = await svc.issuesForRun(runId);
+    const result = await svc.tasksForRun(runId);
     res.json(result);
   });
 

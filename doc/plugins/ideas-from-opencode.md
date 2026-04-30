@@ -25,7 +25,7 @@ The main conclusion is:
 - Paperclip should not copy `opencode`'s trust model, project-local plugin loading, "override by name collision" behavior, or arbitrary in-process mutation hooks for core business logic.
 - Paperclip should use multiple extension classes instead of one generic plugin bag:
   - trusted in-process modules for low-level platform concerns like agent adapters, storage providers, secret providers, and possibly run-log backends
-  - out-of-process plugins for most third-party integrations like Linear, GitHub Issues, Grafana, Stripe, and schedulers
+  - out-of-process plugins for most third-party integrations like Linear, GitHub Tasks, Grafana, Stripe, and schedulers
   - plugin-contributed agent tools (namespaced, not override-by-collision)
   - plugin-shipped React UI loaded into host extension slots via a typed bridge
   - a typed event bus with server-side filtering and plugin-to-plugin events, plus scheduled jobs for automation
@@ -325,7 +325,7 @@ make sense in `opencode`.
 For Paperclip, equivalent hooks into:
 
 - approval decisions
-- issue checkout semantics
+- task checkout semantics
 - activity log behavior
 - budget enforcement
 
@@ -402,7 +402,7 @@ Use distinct plugin classes with different trust models.
 | Extension class | Examples | Runtime model | Trust level | Why |
 |---|---|---|---|---|
 | Platform module | agent adapters, storage providers, secret providers, run-log backends | in-process | highly trusted | tight integration, performance, low-level APIs |
-| Connector plugin | Linear, GitHub Issues, Grafana, Stripe | out-of-process worker or sidecar | medium | external sync, safer isolation, clearer failure boundary |
+| Connector plugin | Linear, GitHub Tasks, Grafana, Stripe | out-of-process worker or sidecar | medium | external sync, safer isolation, clearer failure boundary |
 | Workspace plugin | file browser, terminal, git workflow, child process/server tracking | out-of-process, direct OS access | medium | resolves workspace paths from host, owns filesystem/git/PTY/process logic directly |
 | UI contribution | dashboard widgets, settings forms, company panels | plugin-shipped React bundles in host extension slots via bridge | medium | plugins own their rendering; host controls slot placement and bridge access |
 | Automation plugin | alerts, schedulers, sync jobs, webhook processors | out-of-process | medium | event-driven automation is a natural plugin fit |
@@ -443,7 +443,7 @@ For third-party plugins, the primary API should be:
 Do not make third-party plugins responsible for:
 
 - deciding whether an approval passes
-- intercepting issue checkout semantics
+- intercepting task checkout semantics
 - rewriting activity log behavior
 - overriding budget hard-stops
 
@@ -455,7 +455,7 @@ Plugins ship their own React UI as a bundled module inside `dist/ui/`. The host 
 
 **How it works:**
 
-1. The plugin's UI exports named components for each slot it fills (e.g. `DashboardWidget`, `IssueDetailTab`, `SettingsPage`).
+1. The plugin's UI exports named components for each slot it fills (e.g. `DashboardWidget`, `TaskDetailTab`, `SettingsPage`).
 2. The host mounts the plugin component into the correct slot, passing a bridge object with hooks like `usePluginData(key, params)` and `usePluginAction(key)`.
 3. The plugin component fetches data from its own worker via the bridge and renders it however it wants.
 4. The host enforces capability gates through the bridge — if the worker doesn't have a capability, the bridge rejects the call.
@@ -468,7 +468,7 @@ First version extension slots:
 
 - dashboard widgets
 - settings pages
-- detail-page tabs (project, issue, agent, goal, run)
+- detail-page tabs (project, task, agent, goal, run)
 - sidebar entries
 - company-context plugin pages
 
@@ -504,7 +504,7 @@ Practical guidance:
 - terminal sessions should be launchable from a project workspace
 - git should treat the project workspace as the repo root anchor
 - dev server and child-process tracking should attach to project workspaces
-- issue and agent views can still deep-link into the relevant project workspace context
+- task and agent views can still deep-link into the relevant project workspace context
 
 In other words:
 
@@ -516,11 +516,11 @@ In other words:
 
 `opencode` makes tools a first-class extension point. This is one of the highest-value surfaces for Paperclip too.
 
-A Linear plugin should be able to contribute a `search-linear-issues` tool that agents use during runs. A git plugin should contribute `create-branch` and `get-diff`. A file browser plugin should contribute `read-file` and `list-directory`.
+A Linear plugin should be able to contribute a `search-linear-tasks` tool that agents use during runs. A git plugin should contribute `create-branch` and `get-diff`. A file browser plugin should contribute `read-file` and `list-directory`.
 
 The key constraints:
 
-- plugin tools are namespaced by plugin ID (e.g. `linear:search-issues`) so they cannot shadow core tools
+- plugin tools are namespaced by plugin ID (e.g. `linear:search-tasks`) so they cannot shadow core tools
 - plugin tools require the `agent.tools.register` capability
 - tool execution goes through the same worker RPC boundary as everything else
 - tool results appear in run logs
@@ -529,7 +529,7 @@ This is a natural fit — the plugin already has the SDK context, the external A
 
 ## 8. Support plugin-to-plugin events
 
-Plugins should be able to emit custom events that other plugins can subscribe to. For example, the git plugin detects a push and emits `plugin.@paperclip/plugin-git.push-detected`. The GitHub Issues plugin subscribes to that event and updates PR links.
+Plugins should be able to emit custom events that other plugins can subscribe to. For example, the git plugin detects a push and emits `plugin.@paperclip/plugin-git.push-detected`. The GitHub Tasks plugin subscribes to that event and updates PR links.
 
 This avoids plugins needing to coordinate through shared state or external channels. The host routes plugin events through the same event bus with the same delivery semantics as core events.
 
@@ -568,7 +568,7 @@ Plugin logs via `ctx.logger` should be stored and queryable from the plugin sett
 
 The plugin health dashboard should show: worker status, uptime, recent logs, job success/failure rates, webhook delivery rates, and resource usage. The host should emit internal events (`plugin.health.degraded`, `plugin.worker.crashed`) that other plugins or dashboards can consume.
 
-This is critical for operators. Without observability, debugging plugin issues requires SSH access and manual log tailing.
+This is critical for operators. Without observability, debugging plugin tasks requires SSH access and manual log tailing.
 
 ## 13. Ship a test harness and starter template
 
@@ -639,12 +639,12 @@ export default definePlugin({
   }),
   async register(ctx) {
     ctx.jobs.register("linear-pull", { cron: "*/5 * * * *" }, async (job) => {
-      // sync Linear issues into plugin-owned state or explicit Paperclip entities
+      // sync Linear tasks into plugin-owned state or explicit Paperclip entities
     });
 
     // subscribe with optional server-side filter
-    ctx.events.on("issue.created", { projectId: "proj-1" }, async (event) => {
-      // only receives issue.created events for project proj-1
+    ctx.events.on("task.created", { projectId: "proj-1" }, async (event) => {
+      // only receives task.created events for project proj-1
     });
 
     // subscribe to events from another plugin
@@ -653,9 +653,9 @@ export default definePlugin({
     });
 
     // contribute a tool that agents can use during runs
-    ctx.tools.register("search-linear-issues", {
-      displayName: "Search Linear Issues",
-      description: "Search for Linear issues by query",
+    ctx.tools.register("search-linear-tasks", {
+      displayName: "Search Linear Tasks",
+      description: "Search for Linear tasks by query",
       parametersSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
     }, async (params, runCtx) => {
       // search Linear API and return results
@@ -690,7 +690,7 @@ export function DashboardWidget({ context }: PluginWidgetProps) {
 
   return (
     <ErrorBoundary fallback={<div>Widget failed to render</div>}>
-      <MetricCard label="Synced Issues" value={data.syncedCount} trend={data.trend} />
+      <MetricCard label="Synced Tasks" value={data.syncedCount} trend={data.trend} />
       <button onClick={() => resync({ companyId: context.companyId })}>Resync Now</button>
     </ErrorBoundary>
   );
@@ -741,8 +741,8 @@ Capabilities:
 
 Examples:
 
-- Linear issue sync
-- GitHub issue sync
+- Linear task sync
+- GitHub task sync
 - Grafana dashboard cards
 - Stripe MRR / subscription rollups
 
@@ -780,8 +780,8 @@ I would require the following for every plugin:
 Every plugin declares a static capability set such as:
 
 - `companies.read`
-- `issues.read`
-- `issues.write`
+- `tasks.read`
+- `tasks.write`
 - `events.subscribe`
 - `events.emit`
 - `jobs.schedule`
@@ -874,7 +874,7 @@ This keeps the system manageable:
 A lot of plugin data naturally hangs off existing Paperclip objects:
 
 - project workspace plugin state should often scope to `project` or `project_workspace`
-- issue sync state should scope to `issue`
+- task sync state should scope to `task`
 - metrics widgets may scope to `company`, `project`, or `goal`
 - process tracking may scope to `project_workspace`, `agent`, or `run`
 
@@ -929,7 +929,7 @@ Suggested fields:
 
 - `id`
 - `plugin_id`
-- `scope_kind` (`instance | company | project | project_workspace | agent | issue | goal | run`)
+- `scope_kind` (`instance | company | project | project_workspace | agent | task | goal | run`)
 - `scope_id` nullable
 - `namespace`
 - `state_key`
@@ -940,7 +940,7 @@ This is enough for many connectors before allowing custom tables.
 
 Examples:
 
-- Linear external IDs keyed by `issue`
+- Linear external IDs keyed by `task`
 - GitHub sync cursors keyed by `project`
 - file browser preferences keyed by `project_workspace`
 - git branch metadata keyed by `project_workspace`
@@ -1007,8 +1007,8 @@ This is a useful middle ground:
 | File browser | workspace plugin | project workspace metadata | plugin owns filesystem ops directly |
 | Terminal | workspace plugin | project workspace metadata | plugin spawns PTY sessions directly |
 | Git workflow | workspace plugin | project workspace metadata | plugin shells out to git directly |
-| Linear issue tracking | connector plugin | jobs, webhooks, secret refs, issue sync API | very strong plugin candidate |
-| GitHub issue tracking | connector plugin | jobs, webhooks, secret refs | very strong plugin candidate |
+| Linear task tracking | connector plugin | jobs, webhooks, secret refs, task sync API | very strong plugin candidate |
+| GitHub task tracking | connector plugin | jobs, webhooks, secret refs | very strong plugin candidate |
 | Grafana metrics | connector plugin + dashboard widget | outbound HTTP | probably read-only first |
 | Child process/server tracking | workspace plugin | project workspace metadata | plugin manages processes directly |
 | Stripe revenue tracking | connector plugin | secret refs, scheduled sync, company metrics API | strong plugin candidate |
@@ -1019,12 +1019,12 @@ This is a useful middle ground:
 
 Package idea: `@paperclip/plugin-workspace-files`
 
-This plugin lets the board inspect project workspaces, agent workspaces, generated artifacts, and issue-related files without dropping to the shell. It is useful for:
+This plugin lets the board inspect project workspaces, agent workspaces, generated artifacts, and task-related files without dropping to the shell. It is useful for:
 
 - browsing files inside project workspaces
 - debugging what an agent changed
 - reviewing generated outputs before approval
-- attaching files from a workspace to issues
+- attaching files from a workspace to tasks
 - understanding repo layout for a company
 - inspecting agent home workspaces in local-trusted mode
 
@@ -1033,7 +1033,7 @@ This plugin lets the board inspect project workspaces, agent workspaces, generat
 - Settings page: `/settings/plugins/workspace-files`
 - Main page: `/:companyPrefix/plugins/workspace-files`
 - Project tab: `/:companyPrefix/projects/:projectId?tab=files`
-- Optional issue tab: `/:companyPrefix/issues/:issueId?tab=files`
+- Optional task tab: `/:companyPrefix/tasks/:taskId?tab=files`
 - Optional agent tab: `/:companyPrefix/agents/:agentId?tab=workspace`
 
 Main screens and interactions:
@@ -1049,15 +1049,15 @@ Main screens and interactions:
   - tree view on the left
   - file preview pane on the right
   - search box for filename/path search
-  - actions: copy path, download file, attach to issue, open diff
+  - actions: copy path, download file, attach to task, open diff
 - Project tab:
   - opens directly into the project's primary workspace
   - lets the board switch among all project workspaces
   - shows workspace metadata like `cwd`, `repoUrl`, and `repoRef`
-- Issue tab:
-  - resolves the issue's project and opens that project's workspace context
-  - shows files linked to the issue
-  - lets the board pull files from the project workspace into issue attachments
+- Task tab:
+  - resolves the task's project and opens that project's workspace context
+  - shows files linked to the task
+  - lets the board pull files from the project workspace into task attachments
   - shows the path and last modified info for each linked file
 - Agent tab:
   - shows the agent's current resolved workspace
@@ -1068,7 +1068,7 @@ Core workflows:
 
 - Board opens a project and browses its primary workspace files.
 - Board switches from one project workspace to another when a project has multiple checkouts or repo references.
-- Board opens an issue, attaches a generated artifact from the file browser, and leaves a review comment.
+- Board opens an task, attaches a generated artifact from the file browser, and leaves a review comment.
 - Board opens an agent detail page to inspect the exact files behind a failing run.
 
 ### Hooks needed
@@ -1078,7 +1078,7 @@ Recommended capabilities and extension points:
 - `instance.settings.register`
 - `ui.sidebar.register`
 - `ui.page.register`
-- `ui.detailTab.register` for `project`, `issue`, and `agent`
+- `ui.detailTab.register` for `project`, `task`, and `agent`
 - `projects.read`
 - `project.workspaces.read`
 - optional `assets.write`
@@ -1090,7 +1090,7 @@ Optional event subscriptions:
 
 - `events.subscribe(agent.run.started)`
 - `events.subscribe(agent.run.finished)`
-- `events.subscribe(issue.attachment.created)`
+- `events.subscribe(task.attachment.created)`
 
 ## Workspace Terminal
 
@@ -1167,9 +1167,9 @@ Optional event subscriptions:
 
 Package idea: `@paperclip/plugin-git`
 
-This plugin adds repo-aware workflow tooling around issues and workspaces. It is useful for:
+This plugin adds repo-aware workflow tooling around tasks and workspaces. It is useful for:
 
-- branch creation tied to issues
+- branch creation tied to tasks
 - quick diff review
 - commit and worktree visibility
 - PR preparation
@@ -1181,7 +1181,7 @@ This plugin adds repo-aware workflow tooling around issues and workspaces. It is
 - Settings page: `/settings/plugins/git`
 - Main page: `/:companyPrefix/plugins/git`
 - Project tab: `/:companyPrefix/projects/:projectId?tab=git`
-- Optional issue tab: `/:companyPrefix/issues/:issueId?tab=git`
+- Optional task tab: `/:companyPrefix/tasks/:taskId?tab=git`
 - Optional agent tab: `/:companyPrefix/agents/:agentId?tab=git`
 
 Main screens and interactions:
@@ -1203,11 +1203,11 @@ Main screens and interactions:
   - opens in the project's primary workspace
   - shows workspace metadata and repo binding (`cwd`, `repoUrl`, `repoRef`)
   - shows branch, diff, and commit history for that project workspace
-- Issue tab:
-  - resolves the issue's project and uses that project's workspace context
-  - "create branch from issue" action
+- Task tab:
+  - resolves the task's project and uses that project's workspace context
+  - "create branch from task" action
   - diff view scoped to the project's selected workspace
-  - link branch/worktree metadata to the issue
+  - link branch/worktree metadata to the task
 - Agent tab:
   - shows the agent's branch, worktree, and dirty state
   - shows recent commits produced by that agent
@@ -1215,7 +1215,7 @@ Main screens and interactions:
 
 Core workflows:
 
-- Board creates a branch from an issue and ties it to the project's primary workspace.
+- Board creates a branch from an task and ties it to the project's primary workspace.
 - Board opens a project page and reviews the diff for that project's workspace without leaving Paperclip.
 - Board reviews the diff after a run without leaving Paperclip.
 - Board opens a worktree list to understand parallel branches across agents.
@@ -1227,7 +1227,7 @@ Recommended capabilities and extension points:
 - `instance.settings.register`
 - `ui.sidebar.register`
 - `ui.page.register`
-- `ui.detailTab.register` for `project`, `issue`, and `agent`
+- `ui.detailTab.register` for `project`, `task`, and `agent`
 - `ui.action.register`
 - `projects.read`
 - `project.workspaces.read`
@@ -1239,22 +1239,22 @@ The plugin resolves workspace paths through `ctx.projects` and handles all git o
 
 Optional event subscriptions:
 
-- `events.subscribe(issue.created)`
-- `events.subscribe(issue.updated)`
+- `events.subscribe(task.created)`
+- `events.subscribe(task.updated)`
 - `events.subscribe(agent.run.finished)`
 
-The git plugin can emit `plugin.@paperclip/plugin-git.push-detected` events that other plugins (e.g. GitHub Issues) subscribe to for cross-plugin coordination.
+The git plugin can emit `plugin.@paperclip/plugin-git.push-detected` events that other plugins (e.g. GitHub Tasks) subscribe to for cross-plugin coordination.
 
 Note: GitHub/GitLab PR creation should likely live in a separate connector plugin rather than overloading the local git plugin.
 
-## Linear Issue Tracking
+## Linear Task Tracking
 
 Package idea: `@paperclip/plugin-linear`
 
 This plugin syncs Paperclip work with Linear. It is useful for:
 
 - importing backlog from Linear
-- linking Paperclip issues to Linear issues
+- linking Paperclip tasks to Linear tasks
 - syncing status, comments, and assignees
 - mapping company goals/projects to external product planning
 - giving board operators a single place to see sync health
@@ -1264,7 +1264,7 @@ This plugin syncs Paperclip work with Linear. It is useful for:
 - Settings page: `/settings/plugins/linear`
 - Main page: `/:companyPrefix/plugins/linear`
 - Dashboard widget: `/:companyPrefix/dashboard`
-- Optional issue tab: `/:companyPrefix/issues/:issueId?tab=linear`
+- Optional task tab: `/:companyPrefix/tasks/:taskId?tab=linear`
 - Optional project tab: `/:companyPrefix/projects/:projectId?tab=linear`
 
 Main screens and interactions:
@@ -1280,21 +1280,21 @@ Main screens and interactions:
   - recent sync jobs
   - mapped projects and teams
   - unresolved conflicts queue
-  - import actions for teams, projects, and issues
-- Issue tab:
-  - linked Linear issue key and URL
+  - import actions for teams, projects, and tasks
+- Task tab:
+  - linked Linear task key and URL
   - sync status and last synced time
   - actions: link existing, create in Linear, resync now, unlink
   - timeline of synced comments/status changes
 - Dashboard widget:
   - open sync errors
-  - imported vs linked issues count
+  - imported vs linked tasks count
   - recent webhook/job failures
 
 Core workflows:
 
 - Board enables the plugin, maps a Linear team, and imports a backlog into Paperclip.
-- Paperclip issue status changes push to Linear and Linear comments arrive back through webhooks.
+- Paperclip task status changes push to Linear and Linear comments arrive back through webhooks.
 - Board resolves mapping conflicts from the plugin page instead of silently drifting state.
 
 ### Hooks needed
@@ -1305,10 +1305,10 @@ Recommended capabilities and extension points:
 - `ui.sidebar.register`
 - `ui.page.register`
 - `ui.dashboardWidget.register`
-- `ui.detailTab.register` for `issue` and `project`
-- `events.subscribe(issue.created)`
-- `events.subscribe(issue.updated)`
-- `events.subscribe(issue.comment.created)`
+- `ui.detailTab.register` for `task` and `project`
+- `events.subscribe(task.created)`
+- `events.subscribe(task.updated)`
+- `events.subscribe(task.comment.created)`
 - `events.subscribe(project.updated)`
 - `jobs.schedule`
 - `webhooks.receive`
@@ -1316,35 +1316,35 @@ Recommended capabilities and extension points:
 - `secrets.read-ref`
 - `plugin.state.read`
 - `plugin.state.write`
-- optional `issues.create`
-- optional `issues.update`
-- optional `issue.comments.create`
-- optional `agent.tools.register` (e.g. `search-linear-issues`, `get-linear-issue`)
+- optional `tasks.create`
+- optional `tasks.update`
+- optional `task.comments.create`
+- optional `agent.tools.register` (e.g. `search-linear-tasks`, `get-linear-task`)
 - `activity.log.write`
 
 Important constraint:
 
 - webhook processing should be idempotent and conflict-aware
-- external IDs and sync cursors belong in plugin-owned state, not inline on core issue rows in the first version
+- external IDs and sync cursors belong in plugin-owned state, not inline on core task rows in the first version
 
-## GitHub Issue Tracking
+## GitHub Task Tracking
 
-Package idea: `@paperclip/plugin-github-issues`
+Package idea: `@paperclip/plugin-github-tasks`
 
-This plugin syncs Paperclip issues with GitHub Issues and optionally links PRs. It is useful for:
+This plugin syncs Paperclip tasks with GitHub Tasks and optionally links PRs. It is useful for:
 
 - importing repo backlogs
-- mirroring issue status and comments
-- linking PRs to Paperclip issues
+- mirroring task status and comments
+- linking PRs to Paperclip tasks
 - tracking cross-repo work from inside one company view
 - bridging engineering workflow with Paperclip task governance
 
 ### UX
 
-- Settings page: `/settings/plugins/github-issues`
-- Main page: `/:companyPrefix/plugins/github-issues`
+- Settings page: `/settings/plugins/github-tasks`
+- Main page: `/:companyPrefix/plugins/github-tasks`
 - Dashboard widget: `/:companyPrefix/dashboard`
-- Optional issue tab: `/:companyPrefix/issues/:issueId?tab=github`
+- Optional task tab: `/:companyPrefix/tasks/:taskId?tab=github`
 - Optional project tab: `/:companyPrefix/projects/:projectId?tab=github`
 
 Main screens and interactions:
@@ -1354,26 +1354,26 @@ Main screens and interactions:
   - org/repo mappings
   - label/status mapping
   - whether PR linking is enabled
-  - whether new Paperclip issues should create GitHub issues automatically
+  - whether new Paperclip tasks should create GitHub tasks automatically
 - GitHub overview page:
   - repo mapping list
   - sync health and recent webhook events
   - import backlog action
-  - queue of unlinked GitHub issues
-- Issue tab:
-  - linked GitHub issue and optional linked PRs
-  - actions: create GitHub issue, link existing issue, unlink, resync
+  - queue of unlinked GitHub tasks
+- Task tab:
+  - linked GitHub task and optional linked PRs
+  - actions: create GitHub task, link existing task, unlink, resync
   - comment/status sync timeline
 - Dashboard widget:
-  - open PRs linked to active Paperclip issues
+  - open PRs linked to active Paperclip tasks
   - webhook failures
   - sync lag metrics
 
 Core workflows:
 
-- Board imports GitHub Issues for a repo into Paperclip.
+- Board imports GitHub Tasks for a repo into Paperclip.
 - GitHub webhooks update status/comment state in Paperclip.
-- A PR is linked back to the Paperclip issue so the board can follow delivery status.
+- A PR is linked back to the Paperclip task so the board can follow delivery status.
 
 ### Hooks needed
 
@@ -1383,10 +1383,10 @@ Recommended capabilities and extension points:
 - `ui.sidebar.register`
 - `ui.page.register`
 - `ui.dashboardWidget.register`
-- `ui.detailTab.register` for `issue` and `project`
-- `events.subscribe(issue.created)`
-- `events.subscribe(issue.updated)`
-- `events.subscribe(issue.comment.created)`
+- `ui.detailTab.register` for `task` and `project`
+- `events.subscribe(task.created)`
+- `events.subscribe(task.updated)`
+- `events.subscribe(task.comment.created)`
 - `events.subscribe(plugin.@paperclip/plugin-git.push-detected)` (cross-plugin coordination)
 - `jobs.schedule`
 - `webhooks.receive`
@@ -1394,14 +1394,14 @@ Recommended capabilities and extension points:
 - `secrets.read-ref`
 - `plugin.state.read`
 - `plugin.state.write`
-- optional `issues.create`
-- optional `issues.update`
-- optional `issue.comments.create`
+- optional `tasks.create`
+- optional `tasks.update`
+- optional `task.comments.create`
 - `activity.log.write`
 
 Important constraint:
 
-- keep "local git state" and "remote GitHub issue state" in separate plugins even if they work together — cross-plugin events handle coordination
+- keep "local git state" and "remote GitHub task state" in separate plugins even if they work together — cross-plugin events handle coordination
 
 ## Grafana Metrics
 
@@ -1412,7 +1412,7 @@ This plugin surfaces external metrics and dashboards inside Paperclip. It is use
 - company KPI visibility
 - infrastructure/incident monitoring
 - showing deploy, traffic, latency, or revenue charts next to work
-- creating Paperclip issues from anomalous metrics
+- creating Paperclip tasks from anomalous metrics
 
 ### UX
 
@@ -1437,7 +1437,7 @@ Main screens and interactions:
   - selected dashboard panels embedded or proxied
   - metric selector
   - time range selector
-  - "create issue from anomaly" action
+  - "create task from anomaly" action
 - Goal tab:
   - metric cards relevant to a specific goal or project
 
@@ -1445,7 +1445,7 @@ Core workflows:
 
 - Board sees service degradation or business KPI movement directly on the Paperclip dashboard.
 - Board clicks into the full metrics page to inspect the relevant Grafana panels.
-- Board creates a Paperclip issue from a threshold breach with a metric snapshot attached.
+- Board creates a Paperclip task from a threshold breach with a metric snapshot attached.
 
 ### Hooks needed
 
@@ -1460,7 +1460,7 @@ Recommended capabilities and extension points:
 - `secrets.read-ref`
 - `plugin.state.read`
 - `plugin.state.write`
-- optional `issues.create`
+- optional `tasks.create`
 - optional `assets.write`
 - `activity.log.write`
 
@@ -1472,7 +1472,7 @@ Optional event subscriptions:
 Important constraint:
 
 - start read-only first
-- do not make Grafana alerting logic part of Paperclip core; keep it as additive signal and issue creation
+- do not make Grafana alerting logic part of Paperclip core; keep it as additive signal and task creation
 
 ## Child Process / Server Tracking
 
@@ -1483,7 +1483,7 @@ This plugin tracks long-lived local processes and dev servers started in project
 - seeing which agent started which local service
 - tracking ports, health, and uptime
 - restarting failed dev servers
-- exposing process state alongside issue and run state
+- exposing process state alongside task and run state
 - making local development workflows visible to the board
 
 ### UX
@@ -1514,7 +1514,7 @@ Main screens and interactions:
   - process metadata
   - live log tail
   - health check history
-  - links to associated issue or run
+  - links to associated task or run
 - Agent tab:
   - shows processes started by or assigned to that agent
 
@@ -1523,7 +1523,7 @@ Core workflows:
 - An agent starts a dev server; the plugin detects and tracks it.
 - Board opens a project and immediately sees the processes attached to that project's workspace.
 - Board sees a crashed process on the dashboard and restarts it from the plugin page.
-- Board attaches process logs to an issue when debugging a failure.
+- Board attaches process logs to an task when debugging a failure.
 
 ### Hooks needed
 
@@ -1583,14 +1583,14 @@ Main screens and interactions:
   - recent customer/subscription events
   - webhook health
   - sync history
-  - action: create issue from billing anomaly
+  - action: create task from billing anomaly
 
 Core workflows:
 
 - Board enables the plugin and connects a Stripe account.
 - Webhooks and scheduled reconciliation keep plugin state current.
 - Revenue widgets appear on the main dashboard and can be linked to company goals.
-- Failed payment spikes or churn events can generate Paperclip issues for follow-up.
+- Failed payment spikes or churn events can generate Paperclip tasks for follow-up.
 
 ### Hooks needed
 
@@ -1606,7 +1606,7 @@ Recommended capabilities and extension points:
 - `plugin.state.read`
 - `plugin.state.write`
 - `metrics.write`
-- optional `issues.create`
+- optional `tasks.create`
 - `activity.log.write`
 
 Important constraint:

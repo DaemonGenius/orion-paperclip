@@ -75,16 +75,16 @@ export interface HeartbeatRunOutputSilence {
   suspicionThresholdMs: number;
   criticalThresholdMs: number;
   snoozedUntil: Date | string | null;
-  evaluationIssueId: string | null;
-  evaluationIssueIdentifier: string | null;
-  evaluationIssueAssigneeAgentId: string | null;
+  evaluationTaskId: string | null;
+  evaluationTaskIdentifier: string | null;
+  evaluationTaskAssigneeAgentId: string | null;
 }
 
 export interface AgentWakeupSkipped {
   status: "skipped";
   reason: string;
   message: string | null;
-  issueId: string | null;
+  taskId: string | null;
   executionRunId: string | null;
   executionAgentId: string | null;
   executionAgentName: string | null;
@@ -166,7 +166,7 @@ export interface InstanceSchedulerHeartbeatAgent {
   id: string;
   companyId: string;
   companyName: string;
-  companyIssuePrefix: string;
+  companyTaskPrefix: string;
   agentName: string;
   agentUrlKey: string;
   role: AgentRole;

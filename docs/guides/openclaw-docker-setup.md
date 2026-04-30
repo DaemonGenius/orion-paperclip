@@ -250,7 +250,7 @@ OPENCLAW_HOME_VOLUME=
 OPENCLAW_DOCKER_APT_PACKAGES=
 EOF
 
-# 7. Add tmpfs to docker-compose.yml (required — see Known Issues)
+# 7. Add tmpfs to docker-compose.yml (required — see Known Tasks)
 # Add to BOTH openclaw-gateway and openclaw-cli services:
 #   tmpfs:
 #     - /tmp:exec,size=512M
@@ -286,7 +286,7 @@ docker compose run --rm openclaw-cli status
 docker compose run --rm openclaw-cli dashboard --no-open
 ```
 
-## Known Issues and Fixes
+## Known Tasks and Fixes
 
 ### "no space left on device" when starting containers
 
@@ -312,7 +312,7 @@ services:
       - /tmp:exec,size=512M
 ```
 
-This issue does not affect the Docker Sandbox approach.
+This task does not affect the Docker Sandbox approach.
 
 ### Node version mismatch in community template images
 

@@ -13,7 +13,7 @@ const mockLifecycle = vi.hoisted(() => ({
   upgrade: vi.fn(),
 }));
 
-const mockIssueService = vi.hoisted(() => ({
+const mockTaskService = vi.hoisted(() => ({
   getById: vi.fn(),
   assertCheckoutOwner: vi.fn(),
 }));
@@ -26,8 +26,8 @@ vi.mock("../services/plugin-lifecycle.js", () => ({
   pluginLifecycleManager: () => mockLifecycle,
 }));
 
-vi.mock("../services/issues.js", () => ({
-  issueService: () => mockIssueService,
+vi.mock("../services/tasks.js", () => ({
+  taskService: () => mockTaskService,
 }));
 
 vi.mock("../services/activity-log.js", () => ({
@@ -99,13 +99,13 @@ describe.sequential("plugin scoped API routes", () => {
   const companyId = "22222222-2222-4222-8222-222222222222";
   const agentId = "33333333-3333-4333-8333-333333333333";
   const runId = "44444444-4444-4444-8444-444444444444";
-  const issueId = "55555555-5555-4555-8555-555555555555";
+  const taskId = "55555555-5555-4555-8555-555555555555";
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockIssueService.getById.mockResolvedValue(null);
-    mockIssueService.assertCheckoutOwner.mockResolvedValue({
-      id: issueId,
+    mockTaskService.getById.mockResolvedValue(null);
+    mockTaskService.assertCheckoutOwner.mockResolvedValue({
+      id: taskId,
       status: "in_progress",
       assigneeAgentId: agentId,
       checkoutRunId: runId,
@@ -203,20 +203,20 @@ describe.sequential("plugin scoped API routes", () => {
     expect(res.headers.location).toBeUndefined();
   });
 
-  it("enforces agent checkout ownership before dispatching issue-scoped POST routes", async () => {
+  it("enforces agent checkout ownership before dispatching task-scoped POST routes", async () => {
     const apiRoutes = manifest([
       {
-        routeKey: "issue.advance",
+        routeKey: "task.advance",
         method: "POST",
-        path: "/issues/:issueId/advance",
+        path: "/tasks/:taskId/advance",
         auth: "agent",
         capability: "api.routes.register",
         checkoutPolicy: "required-for-agent-in-progress",
-        companyResolution: { from: "issue", param: "issueId" },
+        companyResolution: { from: "task", param: "taskId" },
       },
     ]);
-    mockIssueService.getById.mockResolvedValue({
-      id: issueId,
+    mockTaskService.getById.mockResolvedValue({
+      id: taskId,
       companyId,
       status: "in_progress",
       assigneeAgentId: agentId,
@@ -238,14 +238,14 @@ describe.sequential("plugin scoped API routes", () => {
     });
 
     const res = await request(app)
-      .post(`/api/plugins/${pluginId}/api/issues/${issueId}/advance`)
+      .post(`/api/plugins/${pluginId}/api/tasks/${taskId}/advance`)
       .send({ step: "next" });
 
     expect(res.status).toBe(200);
-    expect(mockIssueService.assertCheckoutOwner).toHaveBeenCalledWith(issueId, agentId, runId);
+    expect(mockTaskService.assertCheckoutOwner).toHaveBeenCalledWith(taskId, agentId, runId);
     expect(workerManager.call).toHaveBeenCalledWith(pluginId, "handleApiRequest", expect.objectContaining({
-      routeKey: "issue.advance",
-      params: { issueId },
+      routeKey: "task.advance",
+      params: { taskId },
       body: { step: "next" },
       actor: expect.objectContaining({ actorType: "agent", agentId, runId }),
       companyId,
@@ -255,17 +255,17 @@ describe.sequential("plugin scoped API routes", () => {
   it("rejects checkout-protected agent routes without a run id before worker dispatch", async () => {
     const apiRoutes = manifest([
       {
-        routeKey: "issue.advance",
+        routeKey: "task.advance",
         method: "POST",
-        path: "/issues/:issueId/advance",
+        path: "/tasks/:taskId/advance",
         auth: "agent",
         capability: "api.routes.register",
         checkoutPolicy: "required-for-agent-in-progress",
-        companyResolution: { from: "issue", param: "issueId" },
+        companyResolution: { from: "task", param: "taskId" },
       },
     ]);
-    mockIssueService.getById.mockResolvedValue({
-      id: issueId,
+    mockTaskService.getById.mockResolvedValue({
+      id: taskId,
       companyId,
       status: "in_progress",
       assigneeAgentId: agentId,
@@ -286,7 +286,7 @@ describe.sequential("plugin scoped API routes", () => {
     });
 
     const res = await request(app)
-      .post(`/api/plugins/${pluginId}/api/issues/${issueId}/advance`)
+      .post(`/api/plugins/${pluginId}/api/tasks/${taskId}/advance`)
       .send({});
 
     expect(res.status).toBe(401);
@@ -296,24 +296,24 @@ describe.sequential("plugin scoped API routes", () => {
   it("rejects checkout-protected agent routes when the active checkout belongs to another run", async () => {
     const apiRoutes = manifest([
       {
-        routeKey: "issue.advance",
+        routeKey: "task.advance",
         method: "POST",
-        path: "/issues/:issueId/advance",
+        path: "/tasks/:taskId/advance",
         auth: "agent",
         capability: "api.routes.register",
         checkoutPolicy: "always-for-agent",
-        companyResolution: { from: "issue", param: "issueId" },
+        companyResolution: { from: "task", param: "taskId" },
       },
     ]);
-    mockIssueService.getById.mockResolvedValue({
-      id: issueId,
+    mockTaskService.getById.mockResolvedValue({
+      id: taskId,
       companyId,
       status: "in_progress",
       assigneeAgentId: agentId,
     });
-    const conflict = new Error("Issue run ownership conflict") as Error & { status?: number };
+    const conflict = new Error("Task run ownership conflict") as Error & { status?: number };
     conflict.status = 409;
-    mockIssueService.assertCheckoutOwner.mockRejectedValue(conflict);
+    mockTaskService.assertCheckoutOwner.mockRejectedValue(conflict);
     const { app, workerManager } = await createApp({
       actor: {
         type: "agent",
@@ -331,7 +331,7 @@ describe.sequential("plugin scoped API routes", () => {
     });
 
     const res = await request(app)
-      .post(`/api/plugins/${pluginId}/api/issues/${issueId}/advance`)
+      .post(`/api/plugins/${pluginId}/api/tasks/${taskId}/advance`)
       .send({});
 
     expect(res.status).toBe(409);
@@ -412,7 +412,7 @@ describe.sequential("plugin scoped API routes", () => {
       {
         routeKey: "bad.shadow",
         method: "POST",
-        path: "/api/issues/:issueId",
+        path: "/api/tasks/:taskId",
         auth: "board",
         capability: "api.routes.register",
       },
@@ -420,7 +420,7 @@ describe.sequential("plugin scoped API routes", () => {
 
     expect(result.success).toBe(false);
     if (result.success) throw new Error("Expected manifest validation to fail");
-    expect(result.error.issues.map((issue) => issue.message).join("\n")).toContain(
+    expect(result.error.issues.map((task) => task.message).join("\n")).toContain(
       "path must stay inside the plugin api namespace",
     );
   });

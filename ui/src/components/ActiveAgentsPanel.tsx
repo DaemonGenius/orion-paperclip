@@ -1,10 +1,10 @@
 import { memo, useMemo } from "react";
 import { Link } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
-import type { Issue } from "@paperclipai/shared";
-import { heartbeatsApi, type LiveRunForIssue } from "../api/heartbeats";
+import type { Task } from "@paperclipai/shared";
+import { heartbeatsApi, type LiveRunForTask } from "../api/heartbeats";
 import type { TranscriptEntry } from "../adapters";
-import { issuesApi } from "../api/issues";
+import { tasksApi } from "../api/tasks";
 import { queryKeys } from "../lib/queryKeys";
 import { cn, relativeTime } from "../lib/utils";
 import { ExternalLink } from "lucide-react";
@@ -19,7 +19,7 @@ const DASHBOARD_LOG_READ_LIMIT_BYTES = 64_000;
 const DASHBOARD_MAX_CHUNKS_PER_RUN = 40;
 const EMPTY_TRANSCRIPT: TranscriptEntry[] = [];
 
-function isRunActive(run: LiveRunForIssue): boolean {
+function isRunActive(run: LiveRunForTask): boolean {
   return run.status === "queued" || run.status === "running";
 }
 
@@ -56,19 +56,19 @@ export function ActiveAgentsPanel({
   const runs = liveRuns ?? [];
   const visibleRuns = useMemo(() => runs.slice(0, cardLimit), [cardLimit, runs]);
   const hiddenRunCount = Math.max(0, runs.length - visibleRuns.length);
-  const { data: issues } = useQuery({
-    queryKey: [...queryKeys.issues.list(companyId), "with-routine-executions"],
-    queryFn: () => issuesApi.list(companyId, { includeRoutineExecutions: true }),
+  const { data: tasks } = useQuery({
+    queryKey: [...queryKeys.tasks.list(companyId), "with-routine-executions"],
+    queryFn: () => tasksApi.list(companyId, { includeRoutineExecutions: true }),
     enabled: visibleRuns.length > 0,
   });
 
-  const issueById = useMemo(() => {
-    const map = new Map<string, Issue>();
-    for (const issue of issues ?? []) {
-      map.set(issue.id, issue);
+  const taskById = useMemo(() => {
+    const map = new Map<string, Task>();
+    for (const task of tasks ?? []) {
+      map.set(task.id, task);
     }
     return map;
-  }, [issues]);
+  }, [tasks]);
 
   const { transcriptByRun, hasOutputForRun } = useLiveRunTranscripts({
     runs: visibleRuns,
@@ -95,7 +95,7 @@ export function ActiveAgentsPanel({
               key={run.id}
               companyId={companyId}
               run={run}
-              issue={run.issueId ? issueById.get(run.issueId) : undefined}
+              task={run.taskId ? taskById.get(run.taskId) : undefined}
               transcript={transcriptByRun.get(run.id) ?? EMPTY_TRANSCRIPT}
               hasOutput={hasOutputForRun(run.id)}
               isActive={isRunActive(run)}
@@ -118,15 +118,15 @@ export function ActiveAgentsPanel({
 const AgentRunCard = memo(function AgentRunCard({
   companyId,
   run,
-  issue,
+  task,
   transcript,
   hasOutput,
   isActive,
   className,
 }: {
   companyId: string;
-  run: LiveRunForIssue;
-  issue?: Issue;
+  run: LiveRunForTask;
+  task?: Task;
   transcript: TranscriptEntry[];
   hasOutput: boolean;
   isActive: boolean;
@@ -167,18 +167,18 @@ const AgentRunCard = memo(function AgentRunCard({
           </Link>
         </div>
 
-        {run.issueId && (
+        {run.taskId && (
           <div className="mt-3 rounded-lg border border-border/60 bg-background/60 px-2.5 py-2 text-xs">
             <Link
-              to={`/issues/${issue?.identifier ?? run.issueId}`}
+              to={`/tasks/${task?.identifier ?? run.taskId}`}
               className={cn(
                 "line-clamp-2 hover:underline",
                 isActive ? "text-cyan-700 dark:text-cyan-300" : "text-muted-foreground hover:text-foreground",
               )}
-              title={issue?.title ? `${issue?.identifier ?? run.issueId.slice(0, 8)} - ${issue.title}` : issue?.identifier ?? run.issueId.slice(0, 8)}
+              title={task?.title ? `${task?.identifier ?? run.taskId.slice(0, 8)} - ${task.title}` : task?.identifier ?? run.taskId.slice(0, 8)}
             >
-              {issue?.identifier ?? run.issueId.slice(0, 8)}
-              {issue?.title ? ` - ${issue.title}` : ""}
+              {task?.identifier ?? run.taskId.slice(0, 8)}
+              {task?.title ? ` - ${task.title}` : ""}
             </Link>
           </div>
         )}

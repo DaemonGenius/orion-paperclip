@@ -9,21 +9,21 @@ describe("resolveSessionKey", () => {
         configuredSessionKey: null,
         agentId: "meridian",
         runId: "run-123",
-        issueId: null,
+        taskId: null,
       }),
     ).toBe("agent:meridian:paperclip:run:run-123");
   });
 
-  it("prefixes issue-scoped session keys with the configured agent", () => {
+  it("prefixes task-scoped session keys with the configured agent", () => {
     expect(
       resolveSessionKey({
-        strategy: "issue",
+        strategy: "task",
         configuredSessionKey: null,
         agentId: "meridian",
         runId: "run-123",
-        issueId: "issue-456",
+        taskId: "task-456",
       }),
-    ).toBe("agent:meridian:paperclip:issue:issue-456");
+    ).toBe("agent:meridian:paperclip:task:task-456");
   });
 
   it("prefixes fixed session keys with the configured agent", () => {
@@ -33,7 +33,7 @@ describe("resolveSessionKey", () => {
         configuredSessionKey: "paperclip",
         agentId: "meridian",
         runId: "run-123",
-        issueId: null,
+        taskId: null,
       }),
     ).toBe("agent:meridian:paperclip");
   });
@@ -45,7 +45,7 @@ describe("resolveSessionKey", () => {
         configuredSessionKey: "agent:meridian:paperclip",
         agentId: "meridian",
         runId: "run-123",
-        issueId: null,
+        taskId: null,
       }),
     ).toBe("agent:meridian:paperclip");
   });

@@ -11,7 +11,7 @@ Paperclip is not trying to become a single opinionated memory engine. The more u
 - stays company-scoped
 - lets each company choose a default memory provider
 - lets specific agents override that default
-- keeps provenance back to Paperclip runs, issues, comments, and documents
+- keeps provenance back to Paperclip runs, tasks, comments, and documents
 - records memory-related cost and latency the same way the rest of the control plane records work
 - works with plugin-provided providers, not only built-ins
 
@@ -54,7 +54,7 @@ These emphasize local persistence, inspectability, and low operational overhead.
 | [MemOS](https://github.com/MemTensor/MemOS) | memory OS / framework | unified add-retrieve-edit-delete, memory cubes, multimodal memory, tool memory, async scheduler, feedback/correction | strong source for optional capabilities beyond plain search | much broader than the minimal contract Paperclip should standardize first |
 | [supermemory](https://github.com/supermemoryai/supermemory) | hosted memory + context API | `add`, `profile`, `search.memories`, `search.documents`, document upload, settings; automatic profile building and forgetting | strong example of "context bundle" rather than raw search results | heavily productized around its own ontology and hosted flow |
 | [memU](https://github.com/NevaMind-AI/memU) | proactive agent memory framework | file-system metaphor, proactive loop, intent prediction, always-on companion model | good source for when memory should trigger agent behavior, not just retrieval | proactive assistant framing is broader than Paperclip's task-centric control plane |
-| [Memori](https://github.com/MemoriLabs/Memori) | hosted memory fabric + SDK wrappers | registers against LLM SDKs, attribution via `entity_id` + `process_id`, sessions, cloud + BYODB | strong example of automatic capture around model clients | wrapper-centric design does not map 1:1 to Paperclip's run / issue / comment lifecycle |
+| [Memori](https://github.com/MemoriLabs/Memori) | hosted memory fabric + SDK wrappers | registers against LLM SDKs, attribution via `entity_id` + `process_id`, sessions, cloud + BYODB | strong example of automatic capture around model clients | wrapper-centric design does not map 1:1 to Paperclip's run / task / comment lifecycle |
 | [EverMemOS](https://github.com/EverMind-AI/EverMemOS) | conversational long-term memory system | MemCell extraction, structured narratives, user profiles, hybrid retrieval / reranking | useful model for provenance-rich structured memories and evolving profiles | focused on conversational memory rather than generalized control-plane events |
 | [memsearch](https://github.com/zilliztech/memsearch) | markdown-first local memory index | markdown as source of truth, `index`, `search`, `watch`, transcript parsing, plugin hooks | excellent baseline for a local built-in provider and inspectable provenance | intentionally simple; no hosted service semantics or rich correction workflow |
 | [OpenViking](https://github.com/volcengine/OpenViking) | context database | filesystem-style organization of memories/resources/skills, tiered loading, visualized retrieval trajectories | strong source for browse/inspect UX and context provenance | treats "context database" as a larger product surface than Paperclip should own |
@@ -118,7 +118,7 @@ Paperclip needs both direct request/response operations and background maintenan
 
 - binding a provider to a company and optionally overriding it per agent
 - mapping Paperclip entities into provider scopes
-- provenance back to issue comments, documents, runs, and activity
+- provenance back to task comments, documents, runs, and activity
 - cost / token / latency reporting for memory work
 - browse and inspect surfaces in the Paperclip UI
 - governance on destructive operations

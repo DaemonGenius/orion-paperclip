@@ -18,7 +18,7 @@
  *     ctx.logger.info("Linear sync plugin starting");
  *
  *     // Subscribe to events
- *     ctx.events.on("issue.created", async (event) => {
+ *     ctx.events.on("task.created", async (event) => {
  *       const config = await ctx.config.get();
  *       await ctx.http.fetch(`https://api.linear.app/...`, {
  *         method: "POST",
@@ -325,7 +325,7 @@ export interface PaperclipPlugin {
  * export default definePlugin({
  *   async setup(ctx) {
  *     ctx.logger.info("Plugin started");
- *     ctx.events.on("issue.created", async (event) => {
+ *     ctx.events.on("task.created", async (event) => {
  *       // handle event
  *     });
  *   },

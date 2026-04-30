@@ -23,12 +23,12 @@ import type {
   PluginStateScopeKind,
   Company,
   Project,
-  Issue,
-  IssueComment,
-  IssueDocument,
-  IssueDocumentSummary,
-  IssueThreadInteraction,
-  CreateIssueThreadInteraction,
+  Task,
+  TaskComment,
+  TaskDocument,
+  TaskDocumentSummary,
+  TaskThreadInteraction,
+  CreateTaskThreadInteraction,
   Agent,
   Goal,
 } from "@paperclipai/shared";
@@ -36,12 +36,12 @@ export type { PluginLauncherRenderContextSnapshot } from "@paperclipai/shared";
 
 import type {
   PluginEvent,
-  PluginIssueCheckoutOwnership,
-  PluginIssueOrchestrationSummary,
-  PluginIssueRelationSummary,
-  PluginIssueSubtree,
-  PluginIssueWakeupBatchResult,
-  PluginIssueWakeupResult,
+  PluginTaskCheckoutOwnership,
+  PluginTaskOrchestrationSummary,
+  PluginTaskRelationSummary,
+  PluginTaskSubtree,
+  PluginTaskWakeupBatchResult,
+  PluginTaskWakeupResult,
   PluginJobContext,
   PluginWorkspace,
   ToolRunContext,
@@ -423,7 +423,7 @@ export interface PluginEnvironmentExecuteResult {
 // ---------------------------------------------------------------------------
 
 /**
- * Bounds request issued by a plugin UI running inside a host-managed launcher
+ * Bounds request taskd by a plugin UI running inside a host-managed launcher
  * container such as a modal, drawer, or popover.
  */
 export interface PluginModalBoundsRequest {
@@ -720,13 +720,13 @@ export interface WorkerToHostMethods {
     params: { projectId: string; companyId: string },
     result: PluginWorkspace | null,
   ];
-  "projects.getWorkspaceForIssue": [
-    params: { issueId: string; companyId: string },
+  "projects.getWorkspaceForTask": [
+    params: { taskId: string; companyId: string },
     result: PluginWorkspace | null,
   ];
 
-  // Issues
-  "issues.list": [
+  // Tasks
+  "tasks.list": [
     params: {
       companyId: string;
       projectId?: string;
@@ -737,19 +737,19 @@ export interface WorkerToHostMethods {
       limit?: number;
       offset?: number;
     },
-    result: Issue[],
+    result: Task[],
   ];
-  "issues.get": [
-    params: { issueId: string; companyId: string },
-    result: Issue | null,
+  "tasks.get": [
+    params: { taskId: string; companyId: string },
+    result: Task | null,
   ];
-  "issues.create": [
+  "tasks.create": [
     params: {
       companyId: string;
       projectId?: string;
       goalId?: string;
       parentId?: string;
-      inheritExecutionWorkspaceFromIssueId?: string;
+      inheritExecutionWorkspaceFromTaskId?: string;
       title: string;
       description?: string;
       status?: string;
@@ -761,7 +761,7 @@ export interface WorkerToHostMethods {
       originKind?: string | null;
       originId?: string | null;
       originRunId?: string | null;
-      blockedByIssueIds?: string[];
+      blockedByTaskIds?: string[];
       labelIds?: string[];
       executionWorkspaceId?: string | null;
       executionWorkspacePreference?: string | null;
@@ -770,65 +770,65 @@ export interface WorkerToHostMethods {
       actorUserId?: string | null;
       actorRunId?: string | null;
     },
-    result: Issue,
+    result: Task,
   ];
-  "issues.update": [
+  "tasks.update": [
     params: {
-      issueId: string;
+      taskId: string;
       patch: Record<string, unknown>;
       companyId: string;
     },
-    result: Issue,
+    result: Task,
   ];
-  "issues.relations.get": [
-    params: { issueId: string; companyId: string },
-    result: PluginIssueRelationSummary,
+  "tasks.relations.get": [
+    params: { taskId: string; companyId: string },
+    result: PluginTaskRelationSummary,
   ];
-  "issues.relations.setBlockedBy": [
+  "tasks.relations.setBlockedBy": [
     params: {
-      issueId: string;
+      taskId: string;
       companyId: string;
-      blockedByIssueIds: string[];
+      blockedByTaskIds: string[];
       actorAgentId?: string | null;
       actorUserId?: string | null;
       actorRunId?: string | null;
     },
-    result: PluginIssueRelationSummary,
+    result: PluginTaskRelationSummary,
   ];
-  "issues.relations.addBlockers": [
+  "tasks.relations.addBlockers": [
     params: {
-      issueId: string;
+      taskId: string;
       companyId: string;
-      blockerIssueIds: string[];
+      blockerTaskIds: string[];
       actorAgentId?: string | null;
       actorUserId?: string | null;
       actorRunId?: string | null;
     },
-    result: PluginIssueRelationSummary,
+    result: PluginTaskRelationSummary,
   ];
-  "issues.relations.removeBlockers": [
+  "tasks.relations.removeBlockers": [
     params: {
-      issueId: string;
+      taskId: string;
       companyId: string;
-      blockerIssueIds: string[];
+      blockerTaskIds: string[];
       actorAgentId?: string | null;
       actorUserId?: string | null;
       actorRunId?: string | null;
     },
-    result: PluginIssueRelationSummary,
+    result: PluginTaskRelationSummary,
   ];
-  "issues.assertCheckoutOwner": [
+  "tasks.assertCheckoutOwner": [
     params: {
-      issueId: string;
+      taskId: string;
       companyId: string;
       actorAgentId: string;
       actorRunId: string;
     },
-    result: PluginIssueCheckoutOwnership,
+    result: PluginTaskCheckoutOwnership,
   ];
-  "issues.getSubtree": [
+  "tasks.getSubtree": [
     params: {
-      issueId: string;
+      taskId: string;
       companyId: string;
       includeRoot?: boolean;
       includeRelations?: boolean;
@@ -836,11 +836,11 @@ export interface WorkerToHostMethods {
       includeActiveRuns?: boolean;
       includeAssignees?: boolean;
     },
-    result: PluginIssueSubtree,
+    result: PluginTaskSubtree,
   ];
-  "issues.requestWakeup": [
+  "tasks.requestWakeup": [
     params: {
-      issueId: string;
+      taskId: string;
       companyId: string;
       reason?: string;
       contextSource?: string;
@@ -849,11 +849,11 @@ export interface WorkerToHostMethods {
       actorUserId?: string | null;
       actorRunId?: string | null;
     },
-    result: PluginIssueWakeupResult,
+    result: PluginTaskWakeupResult,
   ];
-  "issues.requestWakeups": [
+  "tasks.requestWakeups": [
     params: {
-      issueIds: string[];
+      taskIds: string[];
       companyId: string;
       reason?: string;
       contextSource?: string;
@@ -862,47 +862,47 @@ export interface WorkerToHostMethods {
       actorUserId?: string | null;
       actorRunId?: string | null;
     },
-    result: PluginIssueWakeupBatchResult[],
+    result: PluginTaskWakeupBatchResult[],
   ];
-  "issues.summaries.getOrchestration": [
+  "tasks.summaries.getOrchestration": [
     params: {
-      issueId: string;
+      taskId: string;
       companyId: string;
       includeSubtree?: boolean;
       billingCode?: string | null;
     },
-    result: PluginIssueOrchestrationSummary,
+    result: PluginTaskOrchestrationSummary,
   ];
-  "issues.listComments": [
-    params: { issueId: string; companyId: string },
-    result: IssueComment[],
+  "tasks.listComments": [
+    params: { taskId: string; companyId: string },
+    result: TaskComment[],
   ];
-  "issues.createComment": [
-    params: { issueId: string; body: string; companyId: string; authorAgentId?: string },
-    result: IssueComment,
+  "tasks.createComment": [
+    params: { taskId: string; body: string; companyId: string; authorAgentId?: string },
+    result: TaskComment,
   ];
-  "issues.createInteraction": [
+  "tasks.createInteraction": [
     params: {
-      issueId: string;
+      taskId: string;
       companyId: string;
-      interaction: CreateIssueThreadInteraction;
+      interaction: CreateTaskThreadInteraction;
       authorAgentId?: string | null;
     },
-    result: IssueThreadInteraction,
+    result: TaskThreadInteraction,
   ];
 
-  // Issue Documents
-  "issues.documents.list": [
-    params: { issueId: string; companyId: string },
-    result: IssueDocumentSummary[],
+  // Task Documents
+  "tasks.documents.list": [
+    params: { taskId: string; companyId: string },
+    result: TaskDocumentSummary[],
   ];
-  "issues.documents.get": [
-    params: { issueId: string; key: string; companyId: string },
-    result: IssueDocument | null,
+  "tasks.documents.get": [
+    params: { taskId: string; key: string; companyId: string },
+    result: TaskDocument | null,
   ];
-  "issues.documents.upsert": [
+  "tasks.documents.upsert": [
     params: {
-      issueId: string;
+      taskId: string;
       key: string;
       body: string;
       companyId: string;
@@ -910,10 +910,10 @@ export interface WorkerToHostMethods {
       format?: string;
       changeSummary?: string;
     },
-    result: IssueDocument,
+    result: TaskDocument,
   ];
-  "issues.documents.delete": [
-    params: { issueId: string; key: string; companyId: string },
+  "tasks.documents.delete": [
+    params: { taskId: string; key: string; companyId: string },
     result: void,
   ];
 

@@ -108,7 +108,7 @@ export function Companies() {
           const isConfirmingDelete = confirmDeleteId === company.id;
           const companyStats = stats?.[company.id];
           const agentCount = companyStats?.agentCount ?? 0;
-          const issueCount = companyStats?.issueCount ?? 0;
+          const taskCount = companyStats?.taskCount ?? 0;
           const budgetPct =
             company.budgetMonthlyCents > 0
               ? Math.round(
@@ -241,7 +241,7 @@ export function Companies() {
                 <div className="flex items-center gap-1.5">
                   <CircleDot className="h-3.5 w-3.5" />
                   <span>
-                    {issueCount} {issueCount === 1 ? "issue" : "issues"}
+                    {taskCount} {taskCount === 1 ? "task" : "tasks"}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5 tabular-nums">

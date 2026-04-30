@@ -47,7 +47,7 @@ interface Subscription {
  * Returns true if the event type matches the subscription pattern.
  *
  * Matching rules:
- * - Exact match: `"issue.created"` matches `"issue.created"`.
+ * - Exact match: `"task.created"` matches `"task.created"`.
  * - Wildcard suffix: `"plugin.acme.*"` matches any event type that starts with
  *   `"plugin.acme."`. The wildcard `*` is only supported as a trailing token.
  *
@@ -74,7 +74,7 @@ function matchesPattern(eventType: string, pattern: string): boolean {
  * - `projectId` — checked against `event.entityId` when `entityType === "project"`,
  *   otherwise against `payload.projectId`. This covers both direct project events
  *   (e.g. `project.created`) and secondary events that embed a project reference in
- *   their payload (e.g. `issue.created` with `payload.projectId`).
+ *   their payload (e.g. `task.created` with `payload.projectId`).
  *
  * - `companyId` — always resolved from `payload.companyId`. Core domain events that
  *   belong to a company embed the company ID in their payload.
@@ -131,17 +131,17 @@ function passesFilter(event: PluginEvent, filter: EventFilter | null): boolean {
  * const linearBus = bus.forPlugin("acme.linear");
  *
  * // Subscribe from the plugin's perspective
- * linearBus.subscribe("issue.created", async (event) => {
+ * linearBus.subscribe("task.created", async (event) => {
  *   // handle event
  * });
  *
  * // Emit a core domain event (called by the host, not the plugin)
  * await bus.emit({
  *   eventId: "evt-1",
- *   eventType: "issue.created",
+ *   eventType: "task.created",
  *   occurredAt: new Date().toISOString(),
  *   entityId: "iss-1",
- *   entityType: "issue",
+ *   entityType: "task",
  *   payload: { title: "Fix login bug", projectId: "proj-1" },
  * });
  * ```
@@ -367,7 +367,7 @@ export interface ScopedPluginEventBus {
    * Subscribe to a core domain event or a plugin-namespaced event.
    *
    * **Pattern syntax:**
-   * - Exact match: `"issue.created"` — receives only that event type.
+   * - Exact match: `"task.created"` — receives only that event type.
    * - Wildcard suffix: `"plugin.acme.linear.*"` — receives all events emitted by
    *   the `acme.linear` plugin. The `*` is supported only as a trailing token after
    *   a `.` separator; no other glob syntax is supported.
@@ -375,7 +375,7 @@ export interface ScopedPluginEventBus {
    *   regardless of which plugin emitted them.
    *
    * Wildcards apply only to the `plugin.*` namespace. Core domain events must be
-   * subscribed to by exact name (e.g. `"issue.created"`, not `"issue.*"`).
+   * subscribed to by exact name (e.g. `"task.created"`, not `"task.*"`).
    *
    * An optional `EventFilter` can be passed as the second argument to perform
    * server-side pre-filtering; filtered-out events are never delivered to the handler.

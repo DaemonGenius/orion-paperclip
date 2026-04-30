@@ -561,10 +561,10 @@ export default manifest;
 
 const plugin = definePlugin({
   async setup(ctx) {
-    ctx.events.on("issue.created", async (event) => {
-      const issueId = event.entityId ?? "unknown";
-      await ctx.state.set({ scopeKind: "issue", scopeId: issueId, stateKey: "seen" }, true);
-      ctx.logger.info("Observed issue.created", { issueId });
+    ctx.events.on("task.created", async (event) => {
+      const taskId = event.entityId ?? "unknown";
+      await ctx.state.set({ scopeKind: "task", scopeId: taskId, stateKey: "seen" }, true);
+      ctx.logger.info("Observed task.created", { taskId });
     });
 
     ctx.data.register("health", async () => {
@@ -627,8 +627,8 @@ describe("plugin scaffold", () => {
     const harness = createTestHarness({ manifest, capabilities: [...manifest.capabilities, "events.emit"] });
     await plugin.definition.setup(harness.ctx);
 
-    await harness.emit("issue.created", { issueId: "iss_1" }, { entityId: "iss_1", entityType: "issue" });
-    expect(harness.getState({ scopeKind: "issue", scopeId: "iss_1", stateKey: "seen" })).toBe(true);
+    await harness.emit("task.created", { taskId: "iss_1" }, { entityId: "iss_1", entityType: "task" });
+    expect(harness.getState({ scopeKind: "task", scopeId: "iss_1", stateKey: "seen" })).toBe(true);
 
     const data = await harness.getData<{ status: string }>("health");
     expect(data.status).toBe("ok");

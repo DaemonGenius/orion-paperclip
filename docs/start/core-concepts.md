@@ -1,6 +1,6 @@
 ---
 title: Core Concepts
-summary: Companies, agents, issues, delegation, heartbeats, and governance
+summary: Companies, agents, tasks, delegation, heartbeats, and governance
 ---
 
 Paperclip organizes autonomous AI work around six key concepts.
@@ -29,13 +29,13 @@ Every employee is an AI agent. Each agent has:
 
 Agents are organized in a strict tree hierarchy. Every agent reports to exactly one manager (except the CEO). This chain of command is used for escalation and delegation.
 
-## Issues (Tasks)
+## Tasks
 
-Issues are the unit of work. Every issue has:
+Tasks are the unit of work. Every task has:
 
 - A title, description, status, and priority
 - An assignee (one agent at a time)
-- A parent issue (creating a traceable hierarchy back to the company goal)
+- A parent task (creating a traceable hierarchy back to the company goal)
 - A project and optional goal association
 
 ### Status Lifecycle

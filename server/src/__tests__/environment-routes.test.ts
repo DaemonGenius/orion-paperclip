@@ -14,7 +14,7 @@ const mockAgentService = vi.hoisted(() => ({
   getById: vi.fn(),
 }));
 
-const mockIssueService = vi.hoisted(() => ({
+const mockTaskService = vi.hoisted(() => ({
   getById: vi.fn(),
 }));
 
@@ -45,7 +45,7 @@ const mockExecutionWorkspaceService = vi.hoisted(() => ({}));
 vi.mock("../services/index.js", () => ({
   accessService: () => mockAccessService,
   agentService: () => mockAgentService,
-  issueService: () => mockIssueService,
+  taskService: () => mockTaskService,
   environmentService: () => mockEnvironmentService,
   logActivity: mockLogActivity,
   projectService: () => mockProjectService,
@@ -133,7 +133,7 @@ describe("environment routes", () => {
     mockAccessService.canUser.mockReset();
     mockAccessService.hasPermission.mockReset();
     mockAgentService.getById.mockReset();
-    mockIssueService.getById.mockReset();
+    mockTaskService.getById.mockReset();
     mockProjectService.getById.mockReset();
     mockEnvironmentService.list.mockReset();
     mockEnvironmentService.getById.mockReset();
@@ -823,7 +823,7 @@ describe("environment routes", () => {
         companyId: "company-1",
         environmentId: environment.id,
         executionWorkspaceId: "workspace-1",
-        issueId: null,
+        taskId: null,
         heartbeatRunId: null,
         status: "active",
         providerLeaseId: "provider-lease-1",
@@ -856,7 +856,7 @@ describe("environment routes", () => {
       companyId: "company-1",
       environmentId: "env-1",
       executionWorkspaceId: "workspace-1",
-      issueId: null,
+      taskId: null,
       heartbeatRunId: "run-1",
       status: "active",
       leasePolicy: "ephemeral",

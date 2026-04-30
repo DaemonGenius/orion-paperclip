@@ -355,7 +355,7 @@ describeEmbeddedPostgres("paperclipai company import/export e2e", () => {
     rmSync(expectedContextPath, { force: true });
     expect(existsSync(expectedContextPath)).toBe(false);
 
-    const sourceCompany = await api<{ id: string; name: string; issuePrefix: string }>(apiBase, "/api/companies", {
+    const sourceCompany = await api<{ id: string; name: string; taskPrefix: string }>(apiBase, "/api/companies", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: `CLI Export Source ${Date.now()}` }),
@@ -396,17 +396,17 @@ describeEmbeddedPostgres("paperclipai company import/export e2e", () => {
       },
     );
 
-    const largeIssueDescription = `Round-trip the company package through the CLI.\n\n${"portable-data ".repeat(12_000)}`;
+    const largeTaskDescription = `Round-trip the company package through the CLI.\n\n${"portable-data ".repeat(12_000)}`;
 
-    const sourceIssue = await api<{ id: string; title: string; identifier: string }>(
+    const sourceTask = await api<{ id: string; title: string; identifier: string }>(
       apiBase,
-      `/api/companies/${sourceCompany.id}/issues`,
+      `/api/companies/${sourceCompany.id}/tasks`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           title: "Validate company import/export",
-          description: largeIssueDescription,
+          description: largeTaskDescription,
           status: "todo",
           projectId: sourceProject.id,
           assigneeAgentId: sourceAgent.id,
@@ -426,7 +426,7 @@ describeEmbeddedPostgres("paperclipai company import/export e2e", () => {
         "--out",
         exportDir,
         "--include",
-        "company,agents,projects,issues",
+        "company,agents,projects,tasks",
       ],
       {
         apiBase,
@@ -455,7 +455,7 @@ describeEmbeddedPostgres("paperclipai company import/export e2e", () => {
         "--new-company-name",
         `Imported ${sourceCompany.name}`,
         "--include",
-        "company,agents,projects,issues",
+        "company,agents,projects,tasks",
         "--yes",
       ],
       {
@@ -479,15 +479,15 @@ describeEmbeddedPostgres("paperclipai company import/export e2e", () => {
       apiBase,
       `/api/companies/${importedNew.company.id}/projects`,
     );
-    const importedIssues = await api<Array<{ id: string; title: string; identifier: string }>>(
+    const importedTasks = await api<Array<{ id: string; title: string; identifier: string }>>(
       apiBase,
-      `/api/companies/${importedNew.company.id}/issues`,
+      `/api/companies/${importedNew.company.id}/tasks`,
     );
-    const importedMatchingIssues = importedIssues.filter((issue) => issue.title === sourceIssue.title);
+    const importedMatchingTasks = importedTasks.filter((task) => task.title === sourceTask.title);
 
     expect(importedAgents.map((agent) => agent.name)).toContain(sourceAgent.name);
     expect(importedProjects.map((project) => project.name)).toContain(sourceProject.name);
-    expect(importedMatchingIssues).toHaveLength(1);
+    expect(importedMatchingTasks).toHaveLength(1);
 
     const previewExisting = await runCliJson<{
       errors: string[];
@@ -495,7 +495,7 @@ describeEmbeddedPostgres("paperclipai company import/export e2e", () => {
         companyAction: string;
         agentPlans: Array<{ action: string }>;
         projectPlans: Array<{ action: string }>;
-        issuePlans: Array<{ action: string }>;
+        taskPlans: Array<{ action: string }>;
       };
     }>(
       [
@@ -507,7 +507,7 @@ describeEmbeddedPostgres("paperclipai company import/export e2e", () => {
         "--company-id",
         importedNew.company.id,
         "--include",
-        "company,agents,projects,issues",
+        "company,agents,projects,tasks",
         "--collision",
         "rename",
         "--dry-run",
@@ -525,7 +525,7 @@ describeEmbeddedPostgres("paperclipai company import/export e2e", () => {
     expect(previewExisting.plan.companyAction).toBe("none");
     expect(previewExisting.plan.agentPlans.some((plan) => plan.action === "create")).toBe(true);
     expect(previewExisting.plan.projectPlans.some((plan) => plan.action === "create")).toBe(true);
-    expect(previewExisting.plan.issuePlans.some((plan) => plan.action === "create")).toBe(true);
+    expect(previewExisting.plan.taskPlans.some((plan) => plan.action === "create")).toBe(true);
 
     const importedExisting = await runCliJson<{
       company: { id: string; action: string };
@@ -540,7 +540,7 @@ describeEmbeddedPostgres("paperclipai company import/export e2e", () => {
         "--company-id",
         importedNew.company.id,
         "--include",
-        "company,agents,projects,issues",
+        "company,agents,projects,tasks",
         "--collision",
         "rename",
         "--yes",
@@ -565,17 +565,17 @@ describeEmbeddedPostgres("paperclipai company import/export e2e", () => {
       apiBase,
       `/api/companies/${importedNew.company.id}/projects`,
     );
-    const twiceImportedIssues = await api<Array<{ id: string; title: string; identifier: string }>>(
+    const twiceImportedTasks = await api<Array<{ id: string; title: string; identifier: string }>>(
       apiBase,
-      `/api/companies/${importedNew.company.id}/issues`,
+      `/api/companies/${importedNew.company.id}/tasks`,
     );
-    const twiceImportedMatchingIssues = twiceImportedIssues.filter((issue) => issue.title === sourceIssue.title);
+    const twiceImportedMatchingTasks = twiceImportedTasks.filter((task) => task.title === sourceTask.title);
 
     expect(twiceImportedAgents).toHaveLength(2);
     expect(new Set(twiceImportedAgents.map((agent) => agent.name)).size).toBe(2);
     expect(twiceImportedProjects).toHaveLength(2);
-    expect(twiceImportedMatchingIssues).toHaveLength(2);
-    expect(new Set(twiceImportedMatchingIssues.map((issue) => issue.identifier)).size).toBe(2);
+    expect(twiceImportedMatchingTasks).toHaveLength(2);
+    expect(new Set(twiceImportedMatchingTasks.map((task) => task.identifier)).size).toBe(2);
 
     const zipPath = path.join(tempRoot, "exported-company.zip");
     const portableFiles: Record<string, string> = {};
@@ -595,7 +595,7 @@ describeEmbeddedPostgres("paperclipai company import/export e2e", () => {
         "--new-company-name",
         `Zip Imported ${sourceCompany.name}`,
         "--include",
-        "company,agents,projects,issues",
+        "company,agents,projects,tasks",
         "--yes",
       ],
       {

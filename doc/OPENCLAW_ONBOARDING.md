@@ -62,22 +62,22 @@ docker exec openclaw-docker-openclaw-gateway-1 sh -lc 'openclaw devices approve 
 docker exec openclaw-docker-openclaw-gateway-1 sh -lc 'TOK="$(node -e \"const fs=require(\\\"fs\\\");const c=JSON.parse(fs.readFileSync(\\\"/home/node/.openclaw/openclaw.json\\\",\\\"utf8\\\"));process.stdout.write(c.gateway?.auth?.token||\\\"\\\");\")\"; openclaw devices list --json --url \"ws://127.0.0.1:18789\" --token \"$TOK\"'
 ```
 
-7. Case A (manual issue test).
-- Create an issue assigned to the OpenClaw agent.
+7. Case A (manual task test).
+- Create an task assigned to the OpenClaw agent.
 - Put instructions: “post comment `OPENCLAW_CASE_A_OK_<timestamp>` and mark done.”
-- Verify in UI: issue status becomes `done` and comment exists.
+- Verify in UI: task status becomes `done` and comment exists.
 
 8. Case B (message tool test).
-- Create another issue assigned to OpenClaw.
-- Instructions: “send `OPENCLAW_CASE_B_OK_<timestamp>` to main webchat via message tool, then comment same marker on issue, then mark done.”
+- Create another task assigned to OpenClaw.
+- Instructions: “send `OPENCLAW_CASE_B_OK_<timestamp>` to main webchat via message tool, then comment same marker on task, then mark done.”
 - Verify both:
-  - marker comment on issue
+  - marker comment on task
   - marker text appears in OpenClaw main chat
 
 9. Case C (new session memory/skills test).
 - In OpenClaw, start `/new` session.
-- Ask it to create a new CLA issue in Paperclip with unique title `OPENCLAW_CASE_C_CREATED_<timestamp>`.
-- Verify in Paperclip UI that new issue exists.
+- Ask it to create a new CLA task in Paperclip with unique title `OPENCLAW_CASE_C_CREATED_<timestamp>`.
+- Verify in Paperclip UI that new task exists.
 
 10. Watch logs during test (optional but helpful):
 ```bash
@@ -89,6 +89,6 @@ docker compose -f /tmp/openclaw-docker/docker-compose.yml -f /tmp/openclaw-docke
 - Pairing mode: stable `devicePrivateKeyPem` configured with device auth enabled (default path).
 - Case A: `done` + marker comment.
 - Case B: `done` + marker comment + main-chat message visible.
-- Case C: original task done and new issue created from `/new` session.
+- Case C: original task done and new task created from `/new` session.
 
 If you want, I can also give you a single “observer mode” command that runs the stock smoke harness while you watch the same steps live in UI.

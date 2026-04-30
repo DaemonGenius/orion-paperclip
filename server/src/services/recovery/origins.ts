@@ -1,6 +1,6 @@
 export const RECOVERY_ORIGIN_KINDS = {
-  issueGraphLivenessEscalation: "harness_liveness_escalation",
-  strandedIssueRecovery: "stranded_issue_recovery",
+  taskGraphLivenessEscalation: "harness_liveness_escalation",
+  strandedTaskRecovery: "stranded_task_recovery",
   staleActiveRunEvaluation: "stale_active_run_evaluation",
 } as const;
 
@@ -9,48 +9,48 @@ export const RECOVERY_REASON_KINDS = {
 } as const;
 
 export const RECOVERY_KEY_PREFIXES = {
-  issueGraphLivenessIncident: "harness_liveness",
-  issueGraphLivenessLeaf: "harness_liveness_leaf",
+  taskGraphLivenessIncident: "harness_liveness",
+  taskGraphLivenessLeaf: "harness_liveness_leaf",
 } as const;
 
 export type RecoveryOriginKind = typeof RECOVERY_ORIGIN_KINDS[keyof typeof RECOVERY_ORIGIN_KINDS];
 export type RecoveryReasonKind = typeof RECOVERY_REASON_KINDS[keyof typeof RECOVERY_REASON_KINDS];
 export type RecoveryKeyPrefix = typeof RECOVERY_KEY_PREFIXES[keyof typeof RECOVERY_KEY_PREFIXES];
 
-export function buildIssueGraphLivenessIncidentKey(input: {
+export function buildTaskGraphLivenessIncidentKey(input: {
   companyId: string;
-  issueId: string;
+  taskId: string;
   state: string;
-  blockerIssueId?: string | null;
+  blockerTaskId?: string | null;
   participantAgentId?: string | null;
 }) {
   return [
-    RECOVERY_KEY_PREFIXES.issueGraphLivenessIncident,
+    RECOVERY_KEY_PREFIXES.taskGraphLivenessIncident,
     input.companyId,
-    input.issueId,
+    input.taskId,
     input.state,
-    input.blockerIssueId ?? input.participantAgentId ?? "none",
+    input.blockerTaskId ?? input.participantAgentId ?? "none",
   ].join(":");
 }
 
-export function parseIssueGraphLivenessIncidentKey(incidentKey: string | null | undefined) {
+export function parseTaskGraphLivenessIncidentKey(incidentKey: string | null | undefined) {
   if (!incidentKey) return null;
   const parts = incidentKey.split(":");
-  if (parts.length !== 5 || parts[0] !== RECOVERY_KEY_PREFIXES.issueGraphLivenessIncident) return null;
-  const [, companyId, issueId, state, leafIssueId] = parts;
-  if (!companyId || !issueId || !state || !leafIssueId) return null;
-  return { companyId, issueId, state, leafIssueId };
+  if (parts.length !== 5 || parts[0] !== RECOVERY_KEY_PREFIXES.taskGraphLivenessIncident) return null;
+  const [, companyId, taskId, state, leafTaskId] = parts;
+  if (!companyId || !taskId || !state || !leafTaskId) return null;
+  return { companyId, taskId, state, leafTaskId };
 }
 
-export function buildIssueGraphLivenessLeafKey(input: {
+export function buildTaskGraphLivenessLeafKey(input: {
   companyId: string;
   state: string;
-  leafIssueId: string;
+  leafTaskId: string;
 }) {
   return [
-    RECOVERY_KEY_PREFIXES.issueGraphLivenessLeaf,
+    RECOVERY_KEY_PREFIXES.taskGraphLivenessLeaf,
     input.companyId,
     input.state,
-    input.leafIssueId,
+    input.leafTaskId,
   ].join(":");
 }

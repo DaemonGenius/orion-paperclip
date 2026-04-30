@@ -2,7 +2,7 @@
 
 Status: Proposed
 Date: 2026-04-08
-Related issue: `PAP-1231`
+Related task: `PAP-1231`
 Audience: Engineering
 
 ## Goal
@@ -111,7 +111,7 @@ Work:
 
 Deliverable:
 
-- one short repro note attached to the implementation issue or child issue
+- one short repro note attached to the implementation task or child task
 
 ### Phase 1: give heartbeat-run local adapters process-group ownership
 

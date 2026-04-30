@@ -3,26 +3,26 @@ import {
   assets,
   documentRevisions,
   goals,
-  issueAttachments,
-  issueComments,
-  issueDocuments,
-  issues,
+  taskAttachments,
+  taskComments,
+  taskDocuments,
+  tasks,
   projects,
   projectWorkspaces,
 } from "@paperclipai/db";
 
-type IssueRow = typeof issues.$inferSelect;
-type CommentRow = typeof issueComments.$inferSelect;
+type TaskRow = typeof tasks.$inferSelect;
+type CommentRow = typeof taskComments.$inferSelect;
 type AgentRow = typeof agents.$inferSelect;
 type ProjectRow = typeof projects.$inferSelect;
 type ProjectWorkspaceRow = typeof projectWorkspaces.$inferSelect;
 type GoalRow = typeof goals.$inferSelect;
-type IssueDocumentLinkRow = typeof issueDocuments.$inferSelect;
+type TaskDocumentLinkRow = typeof taskDocuments.$inferSelect;
 type DocumentRevisionTableRow = typeof documentRevisions.$inferSelect;
-type IssueAttachmentTableRow = typeof issueAttachments.$inferSelect;
+type TaskAttachmentTableRow = typeof taskAttachments.$inferSelect;
 type AssetRow = typeof assets.$inferSelect;
 
-export const WORKTREE_MERGE_SCOPES = ["issues", "comments"] as const;
+export const WORKTREE_MERGE_SCOPES = ["tasks", "comments"] as const;
 export type WorktreeMergeScope = (typeof WORKTREE_MERGE_SCOPES)[number];
 
 export type ImportAdjustment =
@@ -36,13 +36,13 @@ export type ImportAdjustment =
   | "clear_document_revision_agent"
   | "clear_attachment_agent";
 
-export type IssueMergeAction = "skip_existing" | "insert";
+export type TaskMergeAction = "skip_existing" | "insert";
 export type CommentMergeAction = "skip_existing" | "skip_missing_parent" | "insert";
 
-export type PlannedIssueInsert = {
-  source: IssueRow;
+export type PlannedTaskInsert = {
+  source: TaskRow;
   action: "insert";
-  previewIssueNumber: number;
+  previewTaskNumber: number;
   previewIdentifier: string;
   targetStatus: string;
   targetAssigneeAgentId: string | null;
@@ -55,8 +55,8 @@ export type PlannedIssueInsert = {
   adjustments: ImportAdjustment[];
 };
 
-export type PlannedIssueSkip = {
-  source: IssueRow;
+export type PlannedTaskSkip = {
+  source: TaskRow;
   action: "skip_existing";
   driftKeys: string[];
 };
@@ -73,14 +73,14 @@ export type PlannedCommentSkip = {
   action: "skip_existing" | "skip_missing_parent";
 };
 
-export type IssueDocumentRow = {
-  id: IssueDocumentLinkRow["id"];
-  companyId: IssueDocumentLinkRow["companyId"];
-  issueId: IssueDocumentLinkRow["issueId"];
-  documentId: IssueDocumentLinkRow["documentId"];
-  key: IssueDocumentLinkRow["key"];
-  linkCreatedAt: IssueDocumentLinkRow["createdAt"];
-  linkUpdatedAt: IssueDocumentLinkRow["updatedAt"];
+export type TaskDocumentRow = {
+  id: TaskDocumentLinkRow["id"];
+  companyId: TaskDocumentLinkRow["companyId"];
+  taskId: TaskDocumentLinkRow["taskId"];
+  documentId: TaskDocumentLinkRow["documentId"];
+  key: TaskDocumentLinkRow["key"];
+  linkCreatedAt: TaskDocumentLinkRow["createdAt"];
+  linkUpdatedAt: TaskDocumentLinkRow["updatedAt"];
   title: string | null;
   format: string;
   latestBody: string;
@@ -106,12 +106,12 @@ export type DocumentRevisionRow = {
   createdAt: Date;
 };
 
-export type IssueAttachmentRow = {
-  id: IssueAttachmentTableRow["id"];
-  companyId: IssueAttachmentTableRow["companyId"];
-  issueId: IssueAttachmentTableRow["issueId"];
-  issueCommentId: IssueAttachmentTableRow["issueCommentId"];
-  assetId: IssueAttachmentTableRow["assetId"];
+export type TaskAttachmentRow = {
+  id: TaskAttachmentTableRow["id"];
+  companyId: TaskAttachmentTableRow["companyId"];
+  taskId: TaskAttachmentTableRow["taskId"];
+  taskCommentId: TaskAttachmentTableRow["taskCommentId"];
+  assetId: TaskAttachmentTableRow["assetId"];
   provider: AssetRow["provider"];
   objectKey: AssetRow["objectKey"];
   contentType: AssetRow["contentType"];
@@ -133,8 +133,8 @@ export type PlannedDocumentRevisionInsert = {
   adjustments: ImportAdjustment[];
 };
 
-export type PlannedIssueDocumentInsert = {
-  source: IssueDocumentRow;
+export type PlannedTaskDocumentInsert = {
+  source: TaskDocumentRow;
   action: "insert";
   targetCreatedByAgentId: string | null;
   targetUpdatedByAgentId: string | null;
@@ -144,8 +144,8 @@ export type PlannedIssueDocumentInsert = {
   adjustments: ImportAdjustment[];
 };
 
-export type PlannedIssueDocumentMerge = {
-  source: IssueDocumentRow;
+export type PlannedTaskDocumentMerge = {
+  source: TaskDocumentRow;
   action: "merge_existing";
   targetCreatedByAgentId: string | null;
   targetUpdatedByAgentId: string | null;
@@ -155,21 +155,21 @@ export type PlannedIssueDocumentMerge = {
   adjustments: ImportAdjustment[];
 };
 
-export type PlannedIssueDocumentSkip = {
-  source: IssueDocumentRow;
+export type PlannedTaskDocumentSkip = {
+  source: TaskDocumentRow;
   action: "skip_existing" | "skip_missing_parent" | "skip_conflicting_key";
 };
 
 export type PlannedAttachmentInsert = {
-  source: IssueAttachmentRow;
+  source: TaskAttachmentRow;
   action: "insert";
-  targetIssueCommentId: string | null;
+  targetTaskCommentId: string | null;
   targetCreatedByAgentId: string | null;
   adjustments: ImportAdjustment[];
 };
 
 export type PlannedAttachmentSkip = {
-  source: IssueAttachmentRow;
+  source: TaskAttachmentRow;
   action: "skip_existing" | "skip_missing_parent";
 };
 
@@ -183,19 +183,19 @@ export type PlannedProjectImport = {
 export type WorktreeMergePlan = {
   companyId: string;
   companyName: string;
-  issuePrefix: string;
-  previewIssueCounterStart: number;
+  taskPrefix: string;
+  previewTaskCounterStart: number;
   scopes: WorktreeMergeScope[];
   projectImports: PlannedProjectImport[];
-  issuePlans: Array<PlannedIssueInsert | PlannedIssueSkip>;
+  taskPlans: Array<PlannedTaskInsert | PlannedTaskSkip>;
   commentPlans: Array<PlannedCommentInsert | PlannedCommentSkip>;
-  documentPlans: Array<PlannedIssueDocumentInsert | PlannedIssueDocumentMerge | PlannedIssueDocumentSkip>;
+  documentPlans: Array<PlannedTaskDocumentInsert | PlannedTaskDocumentMerge | PlannedTaskDocumentSkip>;
   attachmentPlans: Array<PlannedAttachmentInsert | PlannedAttachmentSkip>;
   counts: {
     projectsToImport: number;
-    issuesToInsert: number;
-    issuesExisting: number;
-    issueDrift: number;
+    tasksToInsert: number;
+    tasksExisting: number;
+    taskDrift: number;
     commentsToInsert: number;
     commentsExisting: number;
     commentsMissingParent: number;
@@ -212,7 +212,7 @@ export type WorktreeMergePlan = {
   adjustments: Record<ImportAdjustment, number>;
 };
 
-function compareIssueCoreFields(source: IssueRow, target: IssueRow): string[] {
+function compareTaskCoreFields(source: TaskRow, target: TaskRow): string[] {
   const driftKeys: string[] = [];
   if (source.title !== target.title) driftKeys.push("title");
   if ((source.description ?? null) !== (target.description ?? null)) driftKeys.push("description");
@@ -252,7 +252,7 @@ function sameDate(left: Date, right: Date): boolean {
   return left.getTime() === right.getTime();
 }
 
-function sortDocumentRows(rows: IssueDocumentRow[]): IssueDocumentRow[] {
+function sortDocumentRows(rows: TaskDocumentRow[]): TaskDocumentRow[] {
   return [...rows].sort((left, right) => {
     const createdDelta = left.documentCreatedAt.getTime() - right.documentCreatedAt.getTime();
     if (createdDelta !== 0) return createdDelta;
@@ -272,7 +272,7 @@ function sortDocumentRevisions(rows: DocumentRevisionRow[]): DocumentRevisionRow
   });
 }
 
-function sortAttachments(rows: IssueAttachmentRow[]): IssueAttachmentRow[] {
+function sortAttachments(rows: TaskAttachmentRow[]): TaskAttachmentRow[] {
   return [...rows].sort((left, right) => {
     const createdDelta = left.attachmentCreatedAt.getTime() - right.attachmentCreatedAt.getTime();
     if (createdDelta !== 0) return createdDelta;
@@ -280,34 +280,34 @@ function sortAttachments(rows: IssueAttachmentRow[]): IssueAttachmentRow[] {
   });
 }
 
-function sortIssuesForImport(sourceIssues: IssueRow[]): IssueRow[] {
-  const byId = new Map(sourceIssues.map((issue) => [issue.id, issue]));
+function sortTasksForImport(sourceTasks: TaskRow[]): TaskRow[] {
+  const byId = new Map(sourceTasks.map((task) => [task.id, task]));
   const memoDepth = new Map<string, number>();
 
-  const depthFor = (issue: IssueRow, stack = new Set<string>()): number => {
-    const memoized = memoDepth.get(issue.id);
+  const depthFor = (task: TaskRow, stack = new Set<string>()): number => {
+    const memoized = memoDepth.get(task.id);
     if (memoized !== undefined) return memoized;
-    if (!issue.parentId) {
-      memoDepth.set(issue.id, 0);
+    if (!task.parentId) {
+      memoDepth.set(task.id, 0);
       return 0;
     }
-    if (stack.has(issue.id)) {
-      memoDepth.set(issue.id, 0);
+    if (stack.has(task.id)) {
+      memoDepth.set(task.id, 0);
       return 0;
     }
-    const parent = byId.get(issue.parentId);
+    const parent = byId.get(task.parentId);
     if (!parent) {
-      memoDepth.set(issue.id, 0);
+      memoDepth.set(task.id, 0);
       return 0;
     }
-    stack.add(issue.id);
+    stack.add(task.id);
     const depth = depthFor(parent, stack) + 1;
-    stack.delete(issue.id);
-    memoDepth.set(issue.id, depth);
+    stack.delete(task.id);
+    memoDepth.set(task.id, depth);
     return depth;
   };
 
-  return [...sourceIssues].sort((left, right) => {
+  return [...sourceTasks].sort((left, right) => {
     const depthDelta = depthFor(left) - depthFor(right);
     if (depthDelta !== 0) return depthDelta;
     const createdDelta = left.createdAt.getTime() - right.createdAt.getTime();
@@ -318,7 +318,7 @@ function sortIssuesForImport(sourceIssues: IssueRow[]): IssueRow[] {
 
 export function parseWorktreeMergeScopes(rawValue: string | undefined): WorktreeMergeScope[] {
   if (!rawValue || rawValue.trim().length === 0) {
-    return ["issues", "comments"];
+    return ["tasks", "comments"];
   }
 
   const parsed = rawValue
@@ -340,21 +340,21 @@ export function parseWorktreeMergeScopes(rawValue: string | undefined): Worktree
 export function buildWorktreeMergePlan(input: {
   companyId: string;
   companyName: string;
-  issuePrefix: string;
-  previewIssueCounterStart: number;
+  taskPrefix: string;
+  previewTaskCounterStart: number;
   scopes: WorktreeMergeScope[];
-  sourceIssues: IssueRow[];
-  targetIssues: IssueRow[];
+  sourceTasks: TaskRow[];
+  targetTasks: TaskRow[];
   sourceComments: CommentRow[];
   targetComments: CommentRow[];
   sourceProjects?: ProjectRow[];
   sourceProjectWorkspaces?: ProjectWorkspaceRow[];
-  sourceDocuments?: IssueDocumentRow[];
-  targetDocuments?: IssueDocumentRow[];
+  sourceDocuments?: TaskDocumentRow[];
+  targetDocuments?: TaskDocumentRow[];
   sourceDocumentRevisions?: DocumentRevisionRow[];
   targetDocumentRevisions?: DocumentRevisionRow[];
-  sourceAttachments?: IssueAttachmentRow[];
-  targetAttachments?: IssueAttachmentRow[];
+  sourceAttachments?: TaskAttachmentRow[];
+  targetAttachments?: TaskAttachmentRow[];
   targetAgents: AgentRow[];
   targetProjects: ProjectRow[];
   targetProjectWorkspaces: ProjectWorkspaceRow[];
@@ -362,7 +362,7 @@ export function buildWorktreeMergePlan(input: {
   importProjectIds?: Iterable<string>;
   projectIdOverrides?: Record<string, string | null | undefined>;
 }): WorktreeMergePlan {
-  const targetIssuesById = new Map(input.targetIssues.map((issue) => [issue.id, issue]));
+  const targetTasksById = new Map(input.targetTasks.map((task) => [task.id, task]));
   const targetCommentIds = new Set(input.targetComments.map((comment) => comment.id));
   const targetAgentIds = new Set(input.targetAgents.map((agent) => agent.id));
   const targetProjectIds = new Set(input.targetProjects.map((project) => project.id));
@@ -415,93 +415,93 @@ export function buildWorktreeMergePlan(input: {
     projectImports.flatMap((project) => project.workspaces.map((workspace) => workspace.id)),
   );
 
-  const issuePlans: Array<PlannedIssueInsert | PlannedIssueSkip> = [];
-  let nextPreviewIssueNumber = input.previewIssueCounterStart;
-  for (const issue of sortIssuesForImport(input.sourceIssues)) {
-    const existing = targetIssuesById.get(issue.id);
+  const taskPlans: Array<PlannedTaskInsert | PlannedTaskSkip> = [];
+  let nextPreviewTaskNumber = input.previewTaskCounterStart;
+  for (const task of sortTasksForImport(input.sourceTasks)) {
+    const existing = targetTasksById.get(task.id);
     if (existing) {
-      issuePlans.push({
-        source: issue,
+      taskPlans.push({
+        source: task,
         action: "skip_existing",
-        driftKeys: compareIssueCoreFields(issue, existing),
+        driftKeys: compareTaskCoreFields(task, existing),
       });
       continue;
     }
 
-    nextPreviewIssueNumber += 1;
+    nextPreviewTaskNumber += 1;
     const adjustments: ImportAdjustment[] = [];
     const targetAssigneeAgentId =
-      issue.assigneeAgentId && targetAgentIds.has(issue.assigneeAgentId) ? issue.assigneeAgentId : null;
-    if (issue.assigneeAgentId && !targetAssigneeAgentId) {
+      task.assigneeAgentId && targetAgentIds.has(task.assigneeAgentId) ? task.assigneeAgentId : null;
+    if (task.assigneeAgentId && !targetAssigneeAgentId) {
       adjustments.push("clear_assignee_agent");
       incrementAdjustment(adjustmentCounts, "clear_assignee_agent");
     }
 
     const targetCreatedByAgentId =
-      issue.createdByAgentId && targetAgentIds.has(issue.createdByAgentId) ? issue.createdByAgentId : null;
+      task.createdByAgentId && targetAgentIds.has(task.createdByAgentId) ? task.createdByAgentId : null;
 
     let targetProjectId =
-      issue.projectId && targetProjectIds.has(issue.projectId) ? issue.projectId : null;
-    let projectResolution: PlannedIssueInsert["projectResolution"] = targetProjectId ? "preserved" : "cleared";
+      task.projectId && targetProjectIds.has(task.projectId) ? task.projectId : null;
+    let projectResolution: PlannedTaskInsert["projectResolution"] = targetProjectId ? "preserved" : "cleared";
     let mappedProjectName: string | null = null;
     const overrideProjectId =
-      issue.projectId && input.projectIdOverrides
-        ? input.projectIdOverrides[issue.projectId] ?? null
+      task.projectId && input.projectIdOverrides
+        ? input.projectIdOverrides[task.projectId] ?? null
         : null;
     if (!targetProjectId && overrideProjectId && targetProjectIds.has(overrideProjectId)) {
       targetProjectId = overrideProjectId;
       projectResolution = "mapped";
       mappedProjectName = targetProjectsById.get(overrideProjectId)?.name ?? null;
     }
-    if (!targetProjectId && issue.projectId && importProjectIds.has(issue.projectId)) {
-      const sourceProject = sourceProjectsById.get(issue.projectId);
+    if (!targetProjectId && task.projectId && importProjectIds.has(task.projectId)) {
+      const sourceProject = sourceProjectsById.get(task.projectId);
       if (sourceProject) {
         targetProjectId = sourceProject.id;
         projectResolution = "imported";
         mappedProjectName = sourceProject.name;
       }
     }
-    if (issue.projectId && !targetProjectId) {
+    if (task.projectId && !targetProjectId) {
       adjustments.push("clear_project");
       incrementAdjustment(adjustmentCounts, "clear_project");
     }
 
     const targetProjectWorkspaceId =
       targetProjectId
-      && targetProjectId === issue.projectId
-      && issue.projectWorkspaceId
-      && (targetProjectWorkspaceIds.has(issue.projectWorkspaceId)
-        || importedProjectWorkspaceIds.has(issue.projectWorkspaceId))
-        ? issue.projectWorkspaceId
+      && targetProjectId === task.projectId
+      && task.projectWorkspaceId
+      && (targetProjectWorkspaceIds.has(task.projectWorkspaceId)
+        || importedProjectWorkspaceIds.has(task.projectWorkspaceId))
+        ? task.projectWorkspaceId
         : null;
-    if (issue.projectWorkspaceId && !targetProjectWorkspaceId) {
+    if (task.projectWorkspaceId && !targetProjectWorkspaceId) {
       adjustments.push("clear_project_workspace");
       incrementAdjustment(adjustmentCounts, "clear_project_workspace");
     }
 
     const targetGoalId =
-      issue.goalId && targetGoalIds.has(issue.goalId) ? issue.goalId : null;
-    if (issue.goalId && !targetGoalId) {
+      task.goalId && targetGoalIds.has(task.goalId) ? task.goalId : null;
+    if (task.goalId && !targetGoalId) {
       adjustments.push("clear_goal");
       incrementAdjustment(adjustmentCounts, "clear_goal");
     }
 
-    let targetStatus = issue.status;
+    let targetStatus = task.status;
     if (
       targetStatus === "in_progress"
       && !targetAssigneeAgentId
-      && !(issue.assigneeUserId && issue.assigneeUserId.trim().length > 0)
+      && !(task.assigneeUserId && task.assigneeUserId.trim().length > 0)
     ) {
       targetStatus = "todo";
       adjustments.push("coerce_in_progress_to_todo");
       incrementAdjustment(adjustmentCounts, "coerce_in_progress_to_todo");
     }
 
-    issuePlans.push({
-      source: issue,
+    taskPlans.push({
+      source: task,
       action: "insert",
-      previewIssueNumber: nextPreviewIssueNumber,
-      previewIdentifier: `${input.issuePrefix}-${nextPreviewIssueNumber}`,
+      previewTaskNumber: nextPreviewTaskNumber,
+      previewIdentifier: `${input.taskPrefix}-${nextPreviewTaskNumber}`,
       targetStatus,
       targetAssigneeAgentId,
       targetCreatedByAgentId,
@@ -514,9 +514,9 @@ export function buildWorktreeMergePlan(input: {
     });
   }
 
-  const issueIdsAvailableAfterImport = new Set<string>([
-    ...input.targetIssues.map((issue) => issue.id),
-    ...issuePlans.filter((plan): plan is PlannedIssueInsert => plan.action === "insert").map((plan) => plan.source.id),
+  const taskIdsAvailableAfterImport = new Set<string>([
+    ...input.targetTasks.map((task) => task.id),
+    ...taskPlans.filter((plan): plan is PlannedTaskInsert => plan.action === "insert").map((plan) => plan.source.id),
   ]);
 
   const commentPlans: Array<PlannedCommentInsert | PlannedCommentSkip> = [];
@@ -532,7 +532,7 @@ export function buildWorktreeMergePlan(input: {
         commentPlans.push({ source: comment, action: "skip_existing" });
         continue;
       }
-      if (!issueIdsAvailableAfterImport.has(comment.issueId)) {
+      if (!taskIdsAvailableAfterImport.has(comment.taskId)) {
         commentPlans.push({ source: comment, action: "skip_missing_parent" });
         continue;
       }
@@ -560,7 +560,7 @@ export function buildWorktreeMergePlan(input: {
   const targetDocumentRevisions = input.targetDocumentRevisions ?? [];
 
   const targetDocumentsById = new Map(targetDocuments.map((document) => [document.documentId, document]));
-  const targetDocumentsByIssueKey = new Map(targetDocuments.map((document) => [`${document.issueId}:${document.key}`, document]));
+  const targetDocumentsByTaskKey = new Map(targetDocuments.map((document) => [`${document.taskId}:${document.key}`, document]));
   const sourceRevisionsByDocumentId = groupBy(sourceDocumentRevisions, (revision) => revision.documentId);
   const targetRevisionsByDocumentId = groupBy(targetDocumentRevisions, (revision) => revision.documentId);
   const commentIdsAvailableAfterImport = new Set<string>([
@@ -568,16 +568,16 @@ export function buildWorktreeMergePlan(input: {
     ...commentPlans.filter((plan): plan is PlannedCommentInsert => plan.action === "insert").map((plan) => plan.source.id),
   ]);
 
-  const documentPlans: Array<PlannedIssueDocumentInsert | PlannedIssueDocumentMerge | PlannedIssueDocumentSkip> = [];
+  const documentPlans: Array<PlannedTaskDocumentInsert | PlannedTaskDocumentMerge | PlannedTaskDocumentSkip> = [];
   for (const document of sortDocumentRows(sourceDocuments)) {
-    if (!issueIdsAvailableAfterImport.has(document.issueId)) {
+    if (!taskIdsAvailableAfterImport.has(document.taskId)) {
       documentPlans.push({ source: document, action: "skip_missing_parent" });
       continue;
     }
 
     const existingDocument = targetDocumentsById.get(document.documentId);
-    const conflictingIssueKeyDocument = targetDocumentsByIssueKey.get(`${document.issueId}:${document.key}`);
-    if (!existingDocument && conflictingIssueKeyDocument && conflictingIssueKeyDocument.documentId !== document.documentId) {
+    const conflictingTaskKeyDocument = targetDocumentsByTaskKey.get(`${document.taskId}:${document.key}`);
+    if (!existingDocument && conflictingTaskKeyDocument && conflictingTaskKeyDocument.documentId !== document.documentId) {
       documentPlans.push({ source: document, action: "skip_conflicting_key" });
       continue;
     }
@@ -697,7 +697,7 @@ export function buildWorktreeMergePlan(input: {
       attachmentPlans.push({ source: attachment, action: "skip_existing" });
       continue;
     }
-    if (!issueIdsAvailableAfterImport.has(attachment.issueId)) {
+    if (!taskIdsAvailableAfterImport.has(attachment.taskId)) {
       attachmentPlans.push({ source: attachment, action: "skip_missing_parent" });
       continue;
     }
@@ -715,9 +715,9 @@ export function buildWorktreeMergePlan(input: {
     attachmentPlans.push({
       source: attachment,
       action: "insert",
-      targetIssueCommentId:
-        attachment.issueCommentId && commentIdsAvailableAfterImport.has(attachment.issueCommentId)
-          ? attachment.issueCommentId
+      targetTaskCommentId:
+        attachment.taskCommentId && commentIdsAvailableAfterImport.has(attachment.taskCommentId)
+          ? attachment.taskCommentId
           : null,
       targetCreatedByAgentId,
       adjustments,
@@ -726,9 +726,9 @@ export function buildWorktreeMergePlan(input: {
 
   const counts = {
     projectsToImport: projectImports.length,
-    issuesToInsert: issuePlans.filter((plan) => plan.action === "insert").length,
-    issuesExisting: issuePlans.filter((plan) => plan.action === "skip_existing").length,
-    issueDrift: issuePlans.filter((plan) => plan.action === "skip_existing" && plan.driftKeys.length > 0).length,
+    tasksToInsert: taskPlans.filter((plan) => plan.action === "insert").length,
+    tasksExisting: taskPlans.filter((plan) => plan.action === "skip_existing").length,
+    taskDrift: taskPlans.filter((plan) => plan.action === "skip_existing" && plan.driftKeys.length > 0).length,
     commentsToInsert: commentPlans.filter((plan) => plan.action === "insert").length,
     commentsExisting: commentPlans.filter((plan) => plan.action === "skip_existing").length,
     commentsMissingParent: commentPlans.filter((plan) => plan.action === "skip_missing_parent").length,
@@ -750,11 +750,11 @@ export function buildWorktreeMergePlan(input: {
   return {
     companyId: input.companyId,
     companyName: input.companyName,
-    issuePrefix: input.issuePrefix,
-    previewIssueCounterStart: input.previewIssueCounterStart,
+    taskPrefix: input.taskPrefix,
+    previewTaskCounterStart: input.previewTaskCounterStart,
     scopes: input.scopes,
     projectImports,
-    issuePlans,
+    taskPlans,
     commentPlans,
     documentPlans,
     attachmentPlans,

@@ -7,8 +7,8 @@ import {
   authUsers,
   companyMemberships,
   costEvents,
-  issueComments,
-  issues,
+  taskComments,
+  tasks,
 } from "@paperclipai/db";
 import type {
   UserProfileDailyPoint,
@@ -90,17 +90,17 @@ async function resolveCompanyUser(db: Db, companyId: string, rawSlug: string): P
   return rows.find((row) => userSlugCandidates(row).includes(slug)) ?? null;
 }
 
-function userIssueInvolvementSql(companyId: string, userId: string) {
+function userTaskInvolvementSql(companyId: string, userId: string) {
   return sql<boolean>`
     (
-      ${issues.createdByUserId} = ${userId}
-      OR ${issues.assigneeUserId} = ${userId}
+      ${tasks.createdByUserId} = ${userId}
+      OR ${tasks.assigneeUserId} = ${userId}
       OR EXISTS (
         SELECT 1
-        FROM ${issueComments}
-        WHERE ${issueComments.companyId} = ${companyId}
-          AND ${issueComments.issueId} = ${issues.id}
-          AND ${issueComments.authorUserId} = ${userId}
+        FROM ${taskComments}
+        WHERE ${taskComments.companyId} = ${companyId}
+          AND ${taskComments.taskId} = ${tasks.id}
+          AND ${taskComments.authorUserId} = ${userId}
       )
     )
   `;
@@ -135,28 +135,28 @@ async function loadWindowStats(
   label: string,
   from: Date | null,
 ): Promise<UserProfileWindowStats> {
-  const involvement = userIssueInvolvementSql(companyId, userId);
+  const involvement = userTaskInvolvementSql(companyId, userId);
   const openStatuses = ["backlog", "todo", "in_progress", "in_review", "blocked"];
   const fromIso = from?.toISOString();
 
-  const [issueStats] = await db
+  const [taskStats] = await db
     .select({
-      touchedIssues: sql<number>`count(distinct case when ${involvement} ${fromIso ? sql`and ${issues.updatedAt} >= ${fromIso}` : sql``} then ${issues.id} end)::int`,
-      createdIssues: sql<number>`count(distinct case when ${issues.createdByUserId} = ${userId} ${fromIso ? sql`and ${issues.createdAt} >= ${fromIso}` : sql``} then ${issues.id} end)::int`,
-      completedIssues: sql<number>`count(distinct case when ${involvement} and ${issues.status} = 'done' ${fromIso ? sql`and ${issues.completedAt} >= ${fromIso}` : sql``} then ${issues.id} end)::int`,
-      assignedOpenIssues: sql<number>`count(distinct case when ${issues.assigneeUserId} = ${userId} and ${issues.status} in (${sql.join(openStatuses.map((status) => sql`${status}`), sql`, `)}) then ${issues.id} end)::int`,
+      touchedTasks: sql<number>`count(distinct case when ${involvement} ${fromIso ? sql`and ${tasks.updatedAt} >= ${fromIso}` : sql``} then ${tasks.id} end)::int`,
+      createdTasks: sql<number>`count(distinct case when ${tasks.createdByUserId} = ${userId} ${fromIso ? sql`and ${tasks.createdAt} >= ${fromIso}` : sql``} then ${tasks.id} end)::int`,
+      completedTasks: sql<number>`count(distinct case when ${involvement} and ${tasks.status} = 'done' ${fromIso ? sql`and ${tasks.completedAt} >= ${fromIso}` : sql``} then ${tasks.id} end)::int`,
+      assignedOpenTasks: sql<number>`count(distinct case when ${tasks.assigneeUserId} = ${userId} and ${tasks.status} in (${sql.join(openStatuses.map((status) => sql`${status}`), sql`, `)}) then ${tasks.id} end)::int`,
     })
-    .from(issues)
-    .where(and(eq(issues.companyId, companyId), isNull(issues.hiddenAt)));
+    .from(tasks)
+    .where(and(eq(tasks.companyId, companyId), isNull(tasks.hiddenAt)));
 
   const commentConditions = [
-    eq(issueComments.companyId, companyId),
-    eq(issueComments.authorUserId, userId),
+    eq(taskComments.companyId, companyId),
+    eq(taskComments.authorUserId, userId),
   ];
-  if (from) commentConditions.push(gte(issueComments.createdAt, from));
+  if (from) commentConditions.push(gte(taskComments.createdAt, from));
   const [commentStats] = await db
     .select({ count: sql<number>`count(*)::int` })
-    .from(issueComments)
+    .from(taskComments)
     .where(and(...commentConditions));
 
   const activityConditions = [
@@ -172,7 +172,7 @@ async function loadWindowStats(
 
   const costConditions = [
     eq(costEvents.companyId, companyId),
-    userIssueInvolvementSql(companyId, userId),
+    userTaskInvolvementSql(companyId, userId),
   ];
   if (from) costConditions.push(gte(costEvents.occurredAt, from));
   const [costStats] = await db
@@ -184,16 +184,16 @@ async function loadWindowStats(
       costEventCount: sql<number>`count(${costEvents.id})::int`,
     })
     .from(costEvents)
-    .innerJoin(issues, and(eq(issues.id, costEvents.issueId), eq(issues.companyId, costEvents.companyId)))
+    .innerJoin(tasks, and(eq(tasks.id, costEvents.taskId), eq(tasks.companyId, costEvents.companyId)))
     .where(and(...costConditions));
 
   return {
     key,
     label,
-    touchedIssues: Number(issueStats?.touchedIssues ?? 0),
-    createdIssues: Number(issueStats?.createdIssues ?? 0),
-    completedIssues: Number(issueStats?.completedIssues ?? 0),
-    assignedOpenIssues: Number(issueStats?.assignedOpenIssues ?? 0),
+    touchedTasks: Number(taskStats?.touchedTasks ?? 0),
+    createdTasks: Number(taskStats?.createdTasks ?? 0),
+    completedTasks: Number(taskStats?.completedTasks ?? 0),
+    assignedOpenTasks: Number(taskStats?.assignedOpenTasks ?? 0),
     commentCount: Number(commentStats?.count ?? 0),
     activityCount: Number(activityStats?.count ?? 0),
     costCents: Number(costStats?.costCents ?? 0),
@@ -212,7 +212,7 @@ async function loadDailyStats(db: Db, companyId: string, userId: string): Promis
     points.set(isoDay(date), {
       date: isoDay(date),
       activityCount: 0,
-      completedIssues: 0,
+      completedTasks: 0,
       costCents: 0,
       inputTokens: 0,
       cachedInputTokens: 0,
@@ -242,27 +242,27 @@ async function loadDailyStats(db: Db, companyId: string, userId: string): Promis
     if (point) point.activityCount = Number(row.count);
   }
 
-  const completedDay = dayKeyExpr(sql`${issues.completedAt}`);
+  const completedDay = dayKeyExpr(sql`${tasks.completedAt}`);
   const completedRows = await db
     .select({
       date: completedDay,
-      count: sql<number>`count(distinct ${issues.id})::int`,
+      count: sql<number>`count(distinct ${tasks.id})::int`,
     })
-    .from(issues)
+    .from(tasks)
     .where(
       and(
-        eq(issues.companyId, companyId),
-        isNull(issues.hiddenAt),
-        eq(issues.status, "done"),
-        gte(issues.completedAt, firstDay),
-        userIssueInvolvementSql(companyId, userId),
+        eq(tasks.companyId, companyId),
+        isNull(tasks.hiddenAt),
+        eq(tasks.status, "done"),
+        gte(tasks.completedAt, firstDay),
+        userTaskInvolvementSql(companyId, userId),
       ),
     )
     .groupBy(completedDay);
 
   for (const row of completedRows) {
     const point = points.get(row.date);
-    if (point) point.completedIssues = Number(row.count);
+    if (point) point.completedTasks = Number(row.count);
   }
 
   const costDay = dayKeyExpr(sql`${costEvents.occurredAt}`);
@@ -275,12 +275,12 @@ async function loadDailyStats(db: Db, companyId: string, userId: string): Promis
       outputTokens: sumNumber(costEvents.outputTokens),
     })
     .from(costEvents)
-    .innerJoin(issues, and(eq(issues.id, costEvents.issueId), eq(issues.companyId, costEvents.companyId)))
+    .innerJoin(tasks, and(eq(tasks.id, costEvents.taskId), eq(tasks.companyId, costEvents.companyId)))
     .where(
       and(
         eq(costEvents.companyId, companyId),
         gte(costEvents.occurredAt, firstDay),
-        userIssueInvolvementSql(companyId, userId),
+        userTaskInvolvementSql(companyId, userId),
       ),
     )
     .groupBy(costDay);
@@ -310,7 +310,7 @@ export function userProfileRoutes(db: Db) {
     const canonicalSlug = userSlugCandidates(row)[0] ?? row.principalId;
     const userId = row.userId ?? row.principalId;
 
-    const [stats, daily, recentIssues, recentActivity, topAgents, topProviders] = await Promise.all([
+    const [stats, daily, recentTasks, recentActivity, topAgents, topProviders] = await Promise.all([
       Promise.all(
         PROFILE_WINDOWS.map((entry) =>
           loadWindowStats(db, companyId, userId, entry.key, entry.label, windowStart(entry.days)),
@@ -319,25 +319,25 @@ export function userProfileRoutes(db: Db) {
       loadDailyStats(db, companyId, userId),
       db
         .select({
-          id: issues.id,
-          identifier: issues.identifier,
-          title: issues.title,
-          status: issues.status,
-          priority: issues.priority,
-          assigneeAgentId: issues.assigneeAgentId,
-          assigneeUserId: issues.assigneeUserId,
-          updatedAt: issues.updatedAt,
-          completedAt: issues.completedAt,
+          id: tasks.id,
+          identifier: tasks.identifier,
+          title: tasks.title,
+          status: tasks.status,
+          priority: tasks.priority,
+          assigneeAgentId: tasks.assigneeAgentId,
+          assigneeUserId: tasks.assigneeUserId,
+          updatedAt: tasks.updatedAt,
+          completedAt: tasks.completedAt,
         })
-        .from(issues)
+        .from(tasks)
         .where(
           and(
-            eq(issues.companyId, companyId),
-            isNull(issues.hiddenAt),
-            userIssueInvolvementSql(companyId, userId),
+            eq(tasks.companyId, companyId),
+            isNull(tasks.hiddenAt),
+            userTaskInvolvementSql(companyId, userId),
           ),
         )
-        .orderBy(desc(issues.updatedAt))
+        .orderBy(desc(tasks.updatedAt))
         .limit(8),
       db
         .select({
@@ -368,9 +368,9 @@ export function userProfileRoutes(db: Db) {
           outputTokens: sumNumber(costEvents.outputTokens),
         })
         .from(costEvents)
-        .innerJoin(issues, and(eq(issues.id, costEvents.issueId), eq(issues.companyId, costEvents.companyId)))
+        .innerJoin(tasks, and(eq(tasks.id, costEvents.taskId), eq(tasks.companyId, costEvents.companyId)))
         .leftJoin(agents, eq(agents.id, costEvents.agentId))
-        .where(and(eq(costEvents.companyId, companyId), userIssueInvolvementSql(companyId, userId)))
+        .where(and(eq(costEvents.companyId, companyId), userTaskInvolvementSql(companyId, userId)))
         .groupBy(costEvents.agentId, agents.name)
         .orderBy(desc(sumNumber(costEvents.costCents)))
         .limit(5),
@@ -385,8 +385,8 @@ export function userProfileRoutes(db: Db) {
           outputTokens: sumNumber(costEvents.outputTokens),
         })
         .from(costEvents)
-        .innerJoin(issues, and(eq(issues.id, costEvents.issueId), eq(issues.companyId, costEvents.companyId)))
-        .where(and(eq(costEvents.companyId, companyId), userIssueInvolvementSql(companyId, userId)))
+        .innerJoin(tasks, and(eq(tasks.id, costEvents.taskId), eq(tasks.companyId, costEvents.companyId)))
+        .where(and(eq(costEvents.companyId, companyId), userTaskInvolvementSql(companyId, userId)))
         .groupBy(costEvents.provider, costEvents.biller, costEvents.model)
         .orderBy(desc(sumNumber(costEvents.costCents)))
         .limit(5),
@@ -407,10 +407,10 @@ export function userProfileRoutes(db: Db) {
       user,
       stats,
       daily,
-      recentIssues: recentIssues.map((issue) => ({
-        ...issue,
-        status: issue.status as UserProfileResponse["recentIssues"][number]["status"],
-        priority: issue.priority as UserProfileResponse["recentIssues"][number]["priority"],
+      recentTasks: recentTasks.map((task) => ({
+        ...task,
+        status: task.status as UserProfileResponse["recentTasks"][number]["status"],
+        priority: task.priority as UserProfileResponse["recentTasks"][number]["priority"],
       })),
       recentActivity,
       topAgents: topAgents.map((entry) => ({

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { ChevronLeft, ChevronRight, Download, X } from "lucide-react";
-import type { IssueAttachment } from "@paperclipai/shared";
+import type { TaskAttachment } from "@paperclipai/shared";
 
 interface ImageGalleryModalProps {
-  images: IssueAttachment[];
+  images: TaskAttachment[];
   initialIndex: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;

@@ -134,7 +134,7 @@ export type CompanyMember = {
 
 export type ArchiveCompanyMemberResponse = {
   member: CompanyMember;
-  reassignedIssueCount: number;
+  reassignedTaskCount: number;
 };
 
 export type CompanyMembersResponse = {

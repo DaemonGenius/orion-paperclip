@@ -12,7 +12,7 @@ import { logger } from "../middleware/logger.js";
 import {
   approvalService,
   heartbeatService,
-  issueApprovalService,
+  taskApprovalService,
   logActivity,
   secretService,
 } from "../services/index.js";
@@ -36,7 +36,7 @@ export function approvalRoutes(
   const heartbeat = heartbeatService(db, {
     pluginWorkerManager: options.pluginWorkerManager,
   });
-  const issueApprovalsSvc = issueApprovalService(db);
+  const taskApprovalsSvc = taskApprovalService(db);
   const secretsSvc = secretService(db);
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
 
@@ -71,12 +71,12 @@ export function approvalRoutes(
   router.post("/companies/:companyId/approvals", validate(createApprovalSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    const rawIssueIds = req.body.issueIds;
-    const issueIds = Array.isArray(rawIssueIds)
-      ? rawIssueIds.filter((value: unknown): value is string => typeof value === "string")
+    const rawTaskIds = req.body.taskIds;
+    const taskIds = Array.isArray(rawTaskIds)
+      ? rawTaskIds.filter((value: unknown): value is string => typeof value === "string")
       : [];
-    const uniqueIssueIds = Array.from(new Set(issueIds));
-    const { issueIds: _issueIds, ...approvalInput } = req.body;
+    const uniqueTaskIds = Array.from(new Set(taskIds));
+    const { taskIds: _taskIds, ...approvalInput } = req.body;
     const normalizedPayload =
       approvalInput.type === "hire_agent"
         ? await secretsSvc.normalizeHireApprovalPayloadForPersistence(
@@ -100,8 +100,8 @@ export function approvalRoutes(
       updatedAt: new Date(),
     });
 
-    if (uniqueIssueIds.length > 0) {
-      await issueApprovalsSvc.linkManyForApproval(approval.id, uniqueIssueIds, {
+    if (uniqueTaskIds.length > 0) {
+      await taskApprovalsSvc.linkManyForApproval(approval.id, uniqueTaskIds, {
         agentId: actor.agentId,
         userId: actor.actorType === "user" ? actor.actorId : null,
       });
@@ -115,13 +115,13 @@ export function approvalRoutes(
       action: "approval.created",
       entityType: "approval",
       entityId: approval.id,
-      details: { type: approval.type, issueIds: uniqueIssueIds },
+      details: { type: approval.type, taskIds: uniqueTaskIds },
     });
 
     res.status(201).json(redactApprovalPayload(approval));
   });
 
-  router.get("/approvals/:id/issues", async (req, res) => {
+  router.get("/approvals/:id/tasks", async (req, res) => {
     const id = req.params.id as string;
     const approval = await svc.getById(id);
     if (!approval) {
@@ -129,8 +129,8 @@ export function approvalRoutes(
       return;
     }
     assertCompanyAccess(req, approval.companyId);
-    const issues = await issueApprovalsSvc.listIssuesForApproval(id);
-    res.json(issues);
+    const tasks = await taskApprovalsSvc.listTasksForApproval(id);
+    res.json(tasks);
   });
 
   router.post("/approvals/:id/approve", validate(resolveApprovalSchema), async (req, res) => {
@@ -144,9 +144,9 @@ export function approvalRoutes(
     const { approval, applied } = await svc.approve(id, decidedByUserId, req.body.decisionNote);
 
     if (applied) {
-      const linkedIssues = await issueApprovalsSvc.listIssuesForApproval(approval.id);
-      const linkedIssueIds = linkedIssues.map((issue) => issue.id);
-      const primaryIssueId = linkedIssueIds[0] ?? null;
+      const linkedTasks = await taskApprovalsSvc.listTasksForApproval(approval.id);
+      const linkedTaskIds = linkedTasks.map((task) => task.id);
+      const primaryTaskId = linkedTaskIds[0] ?? null;
 
       await logActivity(db, {
         companyId: approval.companyId,
@@ -158,7 +158,7 @@ export function approvalRoutes(
         details: {
           type: approval.type,
           requestedByAgentId: approval.requestedByAgentId,
-          linkedIssueIds,
+          linkedTaskIds,
         },
       });
 
@@ -171,8 +171,8 @@ export function approvalRoutes(
             payload: {
               approvalId: approval.id,
               approvalStatus: approval.status,
-              issueId: primaryIssueId,
-              issueIds: linkedIssueIds,
+              taskId: primaryTaskId,
+              taskIds: linkedTaskIds,
             },
             requestedByActorType: "user",
             requestedByActorId: req.actor.userId ?? "board",
@@ -180,9 +180,8 @@ export function approvalRoutes(
               source: "approval.approved",
               approvalId: approval.id,
               approvalStatus: approval.status,
-              issueId: primaryIssueId,
-              issueIds: linkedIssueIds,
-              taskId: primaryIssueId,
+              taskId: primaryTaskId,
+              taskIds: linkedTaskIds,
               wakeReason: "approval_approved",
             },
           });
@@ -197,7 +196,7 @@ export function approvalRoutes(
             details: {
               requesterAgentId: approval.requestedByAgentId,
               wakeRunId: wakeRun?.id ?? null,
-              linkedIssueIds,
+              linkedTaskIds,
             },
           });
         } catch (err) {
@@ -218,7 +217,7 @@ export function approvalRoutes(
             entityId: approval.id,
             details: {
               requesterAgentId: approval.requestedByAgentId,
-              linkedIssueIds,
+              linkedTaskIds,
               error: err instanceof Error ? err.message : String(err),
             },
           });

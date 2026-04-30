@@ -19,8 +19,8 @@ import { RoutineVariablesEditor, RoutineVariablesHint } from "@/components/Routi
 import { ScheduleEditor, describeSchedule } from "@/components/ScheduleEditor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { buildExecutionPolicy } from "@/lib/issue-execution-policy";
-import { createIssue, storybookAgents } from "../fixtures/paperclipData";
+import { buildExecutionPolicy } from "@/lib/task-execution-policy";
+import { createTask, storybookAgents } from "../fixtures/paperclipData";
 
 function Section({
   eyebrow,
@@ -94,11 +94,11 @@ Ship criteria for the board UI refresh:
 
 | Surface | Owner | State |
 | --- | --- | --- |
-| Issues | CodexCoder | In progress |
+| Tasks | CodexCoder | In progress |
 | Approvals | CTO | Ready |
 
 \`\`\`ts
-const shouldRun = issue.status === "in_progress" && issue.companyId === company.id;
+const shouldRun = task.status === "in_progress" && task.companyId === company.id;
 \`\`\`
 
 See [the implementation notes](https://github.com/paperclipai/paperclip).`;
@@ -301,7 +301,7 @@ const storybookProject: Project = {
 };
 
 const entityOptions: InlineEntityOption[] = [
-  { id: "issue-1672", label: "Storybook forms and editors", searchText: "PAP-1672 ui story coverage" },
+  { id: "task-1672", label: "Storybook forms and editors", searchText: "PAP-1672 ui story coverage" },
   { id: "project-board-ui", label: "Board UI", searchText: "project frontend Storybook" },
   { id: "agent-codex", label: "CodexCoder", searchText: "engineer implementation" },
 ];
@@ -371,7 +371,7 @@ function MarkdownBodyGallery() {
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <StatePanel label="Filled markdown" detail="Mixed document syntax with code and table overflow handling.">
-          <MarkdownBody linkIssueReferences={false}>{reviewMarkdown}</MarkdownBody>
+          <MarkdownBody linkTaskReferences={false}>{reviewMarkdown}</MarkdownBody>
         </StatePanel>
         <div className="space-y-4">
           <StatePanel label="Empty">
@@ -379,7 +379,7 @@ function MarkdownBodyGallery() {
             <p className="text-sm text-muted-foreground">No markdown body content.</p>
           </StatePanel>
           <StatePanel label="Disabled container" disabled>
-            <MarkdownBody linkIssueReferences={false}>A read-only preview can be dimmed by the parent surface.</MarkdownBody>
+            <MarkdownBody linkTaskReferences={false}>A read-only preview can be dimmed by the parent surface.</MarkdownBody>
           </StatePanel>
         </div>
       </div>
@@ -432,7 +432,7 @@ function InlineEditorGallery() {
           <InlineEditor value={description} onSave={setDescription} as="p" multiline nullable />
         </StatePanel>
         <StatePanel label="Empty nullable title" detail="Placeholder state for optional inline fields.">
-          <InlineEditor value={emptyTitle} onSave={setEmptyTitle} as="h2" nullable placeholder="Untitled issue" />
+          <InlineEditor value={emptyTitle} onSave={setEmptyTitle} as="h2" nullable placeholder="Untitled task" />
         </StatePanel>
       </div>
     </Section>
@@ -525,8 +525,8 @@ function RoutineVariablesGallery() {
 }
 
 function PickerGallery() {
-  const [issue, setIssue] = useState(() =>
-    createIssue({
+  const [task, setTask] = useState(() =>
+    createTask({
       executionPolicy: buildExecutionPolicy({
         reviewerValues: ["agent:agent-qa"],
         approverValues: ["user:user-board"],
@@ -559,18 +559,18 @@ function PickerGallery() {
         <StatePanel label="ExecutionParticipantPicker" detail="Review and approval participants share the same policy object.">
           <div className="flex flex-wrap gap-3">
             <ExecutionParticipantPicker
-              issue={issue}
+              task={task}
               stageType="review"
               agents={storybookAgents}
               currentUserId="user-board"
-              onUpdate={(patch) => setIssue((current) => ({ ...current, ...patch }))}
+              onUpdate={(patch) => setTask((current) => ({ ...current, ...patch }))}
             />
             <ExecutionParticipantPicker
-              issue={issue}
+              task={task}
               stageType="approval"
               agents={storybookAgents}
               currentUserId="user-board"
-              onUpdate={(patch) => setIssue((current) => ({ ...current, ...patch }))}
+              onUpdate={(patch) => setTask((current) => ({ ...current, ...patch }))}
             />
           </div>
         </StatePanel>
@@ -580,12 +580,12 @@ function PickerGallery() {
             <ReportsToPicker agents={agentsWithTerminated} value={null} onChange={() => undefined} disabled />
           </div>
         </StatePanel>
-        <StatePanel label="InlineEntitySelector" detail="Search/select dropdown for issue, project, and agent entities.">
+        <StatePanel label="InlineEntitySelector" detail="Search/select dropdown for task, project, and agent entities.">
           <div className="flex flex-wrap gap-3">
             <InlineEntitySelector
               value={selectorValue}
               options={entityOptions}
-              recentOptionIds={["issue-1672"]}
+              recentOptionIds={["task-1672"]}
               placeholder="Entity"
               noneLabel="No entity"
               searchPlaceholder="Search entities..."
@@ -653,7 +653,7 @@ function RoutineRunDialogStory() {
       <Section
         eyebrow="RoutineRunVariablesDialog"
         title="Manual routine run configuration"
-        description="The dialog collects runtime variables, the target assignee, and optional project context before creating the run issue."
+        description="The dialog collects runtime variables, the target assignee, and optional project context before creating the run task."
       >
         <div className="flex flex-wrap items-center gap-3">
           <Button onClick={() => setOpen(true)}>Open run dialog</Button>

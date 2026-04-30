@@ -5,7 +5,7 @@ import { Loader2 } from "lucide-react";
 import { executionWorkspacesApi } from "../api/execution-workspaces";
 import { useToastActions } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
-import { formatDateTime, issueUrl } from "../lib/utils";
+import { formatDateTime, taskUrl } from "../lib/utils";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -75,8 +75,8 @@ export function ExecutionWorkspaceCloseDialog({
   });
 
   const readiness = readinessQuery.data ?? null;
-  const blockingIssues = readiness?.linkedIssues.filter((issue) => !issue.isTerminal) ?? [];
-  const otherLinkedIssues = readiness?.linkedIssues.filter((issue) => issue.isTerminal) ?? [];
+  const blockingTasks = readiness?.linkedTasks.filter((task) => !task.isTerminal) ?? [];
+  const otherLinkedTasks = readiness?.linkedTasks.filter((task) => task.isTerminal) ?? [];
   const confirmDisabled =
     currentStatus === "archived" ||
     closeWorkspace.isPending ||
@@ -93,7 +93,7 @@ export function ExecutionWorkspaceCloseDialog({
           <DialogTitle>{actionLabel}</DialogTitle>
           <DialogDescription className="break-words">
             Archive <span className="font-medium text-foreground">{workspaceName}</span> and clean up any owned workspace
-            artifacts. Paperclip keeps the workspace record and issue history, but removes it from active workspace views.
+            artifacts. Paperclip keeps the workspace record and task history, but removes it from active workspace views.
           </DialogDescription>
         </DialogHeader>
 
@@ -127,17 +127,17 @@ export function ExecutionWorkspaceCloseDialog({
               </div>
             </div>
 
-            {blockingIssues.length > 0 ? (
+            {blockingTasks.length > 0 ? (
               <section className="space-y-2">
-                <h3 className="text-sm font-medium">Blocking issues</h3>
+                <h3 className="text-sm font-medium">Blocking tasks</h3>
                 <div className="space-y-2">
-                  {blockingIssues.map((issue) => (
-                    <div key={issue.id} className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm">
+                  {blockingTasks.map((task) => (
+                    <div key={task.id} className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm">
                       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                        <Link to={issueUrl(issue)} className="min-w-0 break-words font-medium hover:underline">
-                          {issue.identifier ?? issue.id} · {issue.title}
+                        <Link to={taskUrl(task)} className="min-w-0 break-words font-medium hover:underline">
+                          {task.identifier ?? task.id} · {task.title}
                         </Link>
-                        <span className="text-xs text-muted-foreground">{issue.status}</span>
+                        <span className="text-xs text-muted-foreground">{task.status}</span>
                       </div>
                     </div>
                   ))}
@@ -207,17 +207,17 @@ export function ExecutionWorkspaceCloseDialog({
               </section>
             ) : null}
 
-            {otherLinkedIssues.length > 0 ? (
+            {otherLinkedTasks.length > 0 ? (
               <section className="space-y-2">
-                <h3 className="text-sm font-medium">Other linked issues</h3>
+                <h3 className="text-sm font-medium">Other linked tasks</h3>
                 <div className="space-y-2">
-                  {otherLinkedIssues.map((issue) => (
-                    <div key={issue.id} className="rounded-xl border border-border bg-background px-4 py-3 text-sm">
+                  {otherLinkedTasks.map((task) => (
+                    <div key={task.id} className="rounded-xl border border-border bg-background px-4 py-3 text-sm">
                       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                        <Link to={issueUrl(issue)} className="min-w-0 break-words font-medium hover:underline">
-                          {issue.identifier ?? issue.id} · {issue.title}
+                        <Link to={taskUrl(task)} className="min-w-0 break-words font-medium hover:underline">
+                          {task.identifier ?? task.id} · {task.title}
                         </Link>
-                        <span className="text-xs text-muted-foreground">{issue.status}</span>
+                        <span className="text-xs text-muted-foreground">{task.status}</span>
                       </div>
                     </div>
                   ))}

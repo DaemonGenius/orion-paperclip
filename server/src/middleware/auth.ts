@@ -18,6 +18,32 @@ interface ActorMiddlewareOptions {
   resolveSession?: (req: Request) => Promise<BetterAuthSessionResult | null>;
 }
 
+const SESSIONLESS_ASSET_PREFIXES = [
+  "/@fs/",
+  "/@id/",
+  "/@react-refresh",
+  "/@vite/",
+  "/assets/",
+  "/node_modules/",
+  "/src/",
+  "/_plugins/",
+];
+
+const SESSIONLESS_STATIC_PATHS = new Set([
+  "/apple-touch-icon.png",
+  "/favicon-16x16.png",
+  "/favicon-32x32.png",
+  "/favicon.ico",
+  "/manifest.webmanifest",
+  "/robots.txt",
+]);
+
+export function shouldBypassSessionResolution(req: Pick<Request, "method" | "path">): boolean {
+  if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") return false;
+  if (req.path.startsWith("/api/")) return false;
+  return SESSIONLESS_STATIC_PATHS.has(req.path) || SESSIONLESS_ASSET_PREFIXES.some((prefix) => req.path.startsWith(prefix));
+}
+
 export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHandler {
   const boardAuth = boardAuthService(db);
   return async (req, _res, next) => {
@@ -37,6 +63,11 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
 
     const authHeader = req.header("authorization");
     if (!authHeader?.toLowerCase().startsWith("bearer ")) {
+      if (shouldBypassSessionResolution(req)) {
+        if (runIdHeader) req.actor.runId = runIdHeader;
+        next();
+        return;
+      }
       if (opts.deploymentMode === "authenticated" && opts.resolveSession) {
         let session: BetterAuthSessionResult | null = null;
         try {

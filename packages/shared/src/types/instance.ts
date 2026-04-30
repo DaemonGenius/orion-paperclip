@@ -27,7 +27,7 @@ export interface InstanceExperimentalSettings {
   enableEnvironments: boolean;
   enableIsolatedWorkspaces: boolean;
   autoRestartDevServerWhenIdle: boolean;
-  enableIssueGraphLivenessAutoRecovery: boolean;
+  enableTaskGraphLivenessAutoRecovery: boolean;
 }
 
 export interface InstanceSettings {

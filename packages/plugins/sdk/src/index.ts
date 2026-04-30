@@ -13,8 +13,8 @@
  *   async setup(ctx) {
  *     ctx.logger.info("Plugin starting up");
  *
- *     ctx.events.on("issue.created", async (event) => {
- *       ctx.logger.info("Issue created", { issueId: event.entityId });
+ *     ctx.events.on("task.created", async (event) => {
+ *       ctx.logger.info("Task created", { taskId: event.entityId });
  *     });
  *
  *     ctx.jobs.register("full-sync", async (job) => {
@@ -191,23 +191,23 @@ export type {
   PluginEntitiesClient,
   PluginProjectsClient,
   PluginCompaniesClient,
-  PluginIssuesClient,
-  PluginIssueMutationActor,
-  PluginIssueRelationsClient,
-  PluginIssueRelationSummary,
-  PluginIssueCheckoutOwnership,
-  PluginIssueWakeupResult,
-  PluginIssueWakeupBatchResult,
-  PluginIssueRunSummary,
-  PluginIssueApprovalSummary,
-  PluginIssueCostSummary,
+  PluginTasksClient,
+  PluginTaskMutationActor,
+  PluginTaskRelationsClient,
+  PluginTaskRelationSummary,
+  PluginTaskCheckoutOwnership,
+  PluginTaskWakeupResult,
+  PluginTaskWakeupBatchResult,
+  PluginTaskRunSummary,
+  PluginTaskApprovalSummary,
+  PluginTaskCostSummary,
   PluginBudgetIncidentSummary,
-  PluginIssueInvocationBlockSummary,
-  PluginIssueOrchestrationSummary,
-  PluginIssueSubtreeOptions,
-  PluginIssueAssigneeSummary,
-  PluginIssueSubtree,
-  PluginIssueSummariesClient,
+  PluginTaskInvocationBlockSummary,
+  PluginTaskOrchestrationSummary,
+  PluginTaskSubtreeOptions,
+  PluginTaskAssigneeSummary,
+  PluginTaskSubtree,
+  PluginTaskSummariesClient,
   PluginAgentsClient,
   PluginAgentSessionsClient,
   AgentSession,
@@ -238,9 +238,9 @@ export type {
   PluginWorkspace,
   Company,
   Project,
-  Issue,
-  IssueComment,
-  IssueDocumentSummary,
+  Task,
+  TaskComment,
+  TaskDocumentSummary,
   Agent,
   Goal,
   PluginDatabaseClient,

@@ -62,7 +62,7 @@ describeEmbeddedPostgres("inbox dismissals", () => {
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: "PAP",
+      taskPrefix: "PAP",
       requireBoardApprovalForNewAgents: false,
     });
 
@@ -91,7 +91,7 @@ describeEmbeddedPostgres("inbox dismissals", () => {
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: "PAP",
+      taskPrefix: "PAP",
       requireBoardApprovalForNewAgents: false,
     });
 
@@ -199,7 +199,7 @@ describeEmbeddedPostgres("inbox dismissals", () => {
         createdAt: new Date("2026-03-11T01:00:00.000Z"),
         updatedAt: new Date("2026-03-11T01:00:00.000Z"),
       }],
-      unreadTouchedIssues: 1,
+      unreadTouchedTasks: 1,
     });
 
     expect(badges).toEqual({

@@ -1,11 +1,11 @@
 import { and, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agents, issues } from "@paperclipai/db";
+import { agents, tasks } from "@paperclipai/db";
 import type { Request } from "express";
 import { forbidden } from "../errors.js";
 import { assertCompanyAccess } from "./authz.js";
 
-const WORKSPACE_RUNTIME_ELIGIBLE_ISSUE_STATUSES: string[] = [
+const WORKSPACE_RUNTIME_ELIGIBLE_TASK_STATUSES: string[] = [
   "backlog",
   "todo",
   "in_progress",
@@ -53,7 +53,7 @@ async function assertAgentCanManageRuntimeServicesForWorkspace(
     companyId: string;
     projectWorkspaceId?: string | null;
     executionWorkspaceId?: string | null;
-    sourceIssueId?: string | null;
+    sourceTaskId?: string | null;
   },
 ) {
   if (req.actor.type !== "agent" || !req.actor.agentId) {
@@ -81,30 +81,30 @@ async function assertAgentCanManageRuntimeServicesForWorkspace(
 
   const eligibleAgentIds = await listReportingSubtreeAgentIds(db, input.companyId, actorAgent.id);
   const workspaceScopeConditions = [
-    input.projectWorkspaceId ? eq(issues.projectWorkspaceId, input.projectWorkspaceId) : null,
-    input.executionWorkspaceId ? eq(issues.executionWorkspaceId, input.executionWorkspaceId) : null,
-    input.sourceIssueId ? eq(issues.id, input.sourceIssueId) : null,
+    input.projectWorkspaceId ? eq(tasks.projectWorkspaceId, input.projectWorkspaceId) : null,
+    input.executionWorkspaceId ? eq(tasks.executionWorkspaceId, input.executionWorkspaceId) : null,
+    input.sourceTaskId ? eq(tasks.id, input.sourceTaskId) : null,
   ].filter((condition): condition is NonNullable<typeof condition> => condition !== null);
 
   if (workspaceScopeConditions.length === 0) {
     throw forbidden("Missing permission to manage workspace runtime services");
   }
 
-  const linkedIssue = await db
-    .select({ id: issues.id })
-    .from(issues)
+  const linkedTask = await db
+    .select({ id: tasks.id })
+    .from(tasks)
     .where(and(
-      eq(issues.companyId, input.companyId),
-      isNull(issues.hiddenAt),
-      inArray(issues.status, WORKSPACE_RUNTIME_ELIGIBLE_ISSUE_STATUSES),
-      inArray(issues.assigneeAgentId, eligibleAgentIds),
+      eq(tasks.companyId, input.companyId),
+      isNull(tasks.hiddenAt),
+      inArray(tasks.status, WORKSPACE_RUNTIME_ELIGIBLE_TASK_STATUSES),
+      inArray(tasks.assigneeAgentId, eligibleAgentIds),
       workspaceScopeConditions.length === 1
         ? workspaceScopeConditions[0]!
         : or(...workspaceScopeConditions),
     ))
     .then((rows) => rows[0] ?? null);
 
-  if (linkedIssue) {
+  if (linkedTask) {
     return;
   }
 
@@ -130,7 +130,7 @@ export async function assertCanManageExecutionWorkspaceRuntimeServices(
   input: {
     companyId: string;
     executionWorkspaceId: string;
-    sourceIssueId?: string | null;
+    sourceTaskId?: string | null;
   },
 ) {
   assertCompanyAccess(req, input.companyId);

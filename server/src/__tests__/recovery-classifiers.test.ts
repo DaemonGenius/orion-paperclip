@@ -1,31 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { classifyIssueGraphLiveness as classifyIssueGraphLivenessCompat } from "../services/issue-liveness.ts";
+import { classifyTaskGraphLiveness as classifyTaskGraphLivenessCompat } from "../services/task-liveness.ts";
 import { decideRunLivenessContinuation as decideRunLivenessContinuationCompat } from "../services/run-continuations.ts";
 import {
   RECOVERY_KEY_PREFIXES,
   RECOVERY_ORIGIN_KINDS,
   RECOVERY_REASON_KINDS,
-  buildIssueGraphLivenessIncidentKey,
-  buildIssueGraphLivenessLeafKey,
+  buildTaskGraphLivenessIncidentKey,
+  buildTaskGraphLivenessLeafKey,
   buildRunLivenessContinuationIdempotencyKey,
-  classifyIssueGraphLiveness,
+  classifyTaskGraphLiveness,
   decideRunLivenessContinuation,
-  parseIssueGraphLivenessIncidentKey,
+  parseTaskGraphLivenessIncidentKey,
 } from "../services/recovery/index.ts";
 
 const companyId = "company-1";
 const agentId = "agent-1";
 const managerId = "manager-1";
-const issueId = "issue-1";
+const taskId = "task-1";
 const blockerId = "blocker-1";
 const runId = "run-1";
 
 describe("recovery classifier boundary", () => {
-  it("keeps issue graph liveness classifier parity with the compatibility export", () => {
+  it("keeps task graph liveness classifier parity with the compatibility export", () => {
     const input = {
-      issues: [
+      tasks: [
         {
-          id: issueId,
+          id: taskId,
           companyId,
           identifier: "PAP-2073",
           title: "Centralize recovery classifiers",
@@ -49,7 +49,7 @@ describe("recovery classifier boundary", () => {
           executionState: null,
         },
       ],
-      relations: [{ companyId, blockerIssueId: blockerId, blockedIssueId: issueId }],
+      relations: [{ companyId, blockerTaskId: blockerId, blockedTaskId: taskId }],
       agents: [
         {
           id: agentId,
@@ -70,7 +70,7 @@ describe("recovery classifier boundary", () => {
       ],
     };
 
-    expect(classifyIssueGraphLiveness(input)).toEqual(classifyIssueGraphLivenessCompat(input));
+    expect(classifyTaskGraphLiveness(input)).toEqual(classifyTaskGraphLivenessCompat(input));
   });
 
   it("keeps run liveness continuation decision parity with the compatibility export", () => {
@@ -81,8 +81,8 @@ describe("recovery classifier boundary", () => {
         agentId,
         continuationAttempt: 0,
       } as never,
-      issue: {
-        id: issueId,
+      task: {
+        id: taskId,
         companyId,
         identifier: "PAP-2073",
         title: "Centralize recovery classifiers",
@@ -108,39 +108,39 @@ describe("recovery classifier boundary", () => {
 
   it("keeps recovery origin and idempotency keys stable", () => {
     expect(RECOVERY_ORIGIN_KINDS).toMatchObject({
-      issueGraphLivenessEscalation: "harness_liveness_escalation",
-      strandedIssueRecovery: "stranded_issue_recovery",
+      taskGraphLivenessEscalation: "harness_liveness_escalation",
+      strandedTaskRecovery: "stranded_task_recovery",
       staleActiveRunEvaluation: "stale_active_run_evaluation",
     });
     expect(RECOVERY_REASON_KINDS.runLivenessContinuation).toBe("run_liveness_continuation");
-    expect(RECOVERY_KEY_PREFIXES.issueGraphLivenessIncident).toBe("harness_liveness");
-    expect(RECOVERY_KEY_PREFIXES.issueGraphLivenessLeaf).toBe("harness_liveness_leaf");
+    expect(RECOVERY_KEY_PREFIXES.taskGraphLivenessIncident).toBe("harness_liveness");
+    expect(RECOVERY_KEY_PREFIXES.taskGraphLivenessLeaf).toBe("harness_liveness_leaf");
 
-    const incidentKey = buildIssueGraphLivenessIncidentKey({
+    const incidentKey = buildTaskGraphLivenessIncidentKey({
       companyId,
-      issueId,
-      state: "blocked_by_unassigned_issue",
-      blockerIssueId: blockerId,
+      taskId,
+      state: "blocked_by_unassigned_task",
+      blockerTaskId: blockerId,
     });
     expect(incidentKey).toBe(
-      "harness_liveness:company-1:issue-1:blocked_by_unassigned_issue:blocker-1",
+      "harness_liveness:company-1:task-1:blocked_by_unassigned_task:blocker-1",
     );
-    expect(parseIssueGraphLivenessIncidentKey(incidentKey)).toEqual({
+    expect(parseTaskGraphLivenessIncidentKey(incidentKey)).toEqual({
       companyId,
-      issueId,
-      state: "blocked_by_unassigned_issue",
-      leafIssueId: blockerId,
+      taskId,
+      state: "blocked_by_unassigned_task",
+      leafTaskId: blockerId,
     });
-    expect(buildIssueGraphLivenessLeafKey({
+    expect(buildTaskGraphLivenessLeafKey({
       companyId,
-      state: "blocked_by_unassigned_issue",
-      leafIssueId: blockerId,
-    })).toBe("harness_liveness_leaf:company-1:blocked_by_unassigned_issue:blocker-1");
+      state: "blocked_by_unassigned_task",
+      leafTaskId: blockerId,
+    })).toBe("harness_liveness_leaf:company-1:blocked_by_unassigned_task:blocker-1");
     expect(buildRunLivenessContinuationIdempotencyKey({
-      issueId,
+      taskId,
       sourceRunId: runId,
       livenessState: "plan_only",
       nextAttempt: 1,
-    })).toBe("run_liveness_continuation:issue-1:run-1:plan_only:1");
+    })).toBe("run_liveness_continuation:task-1:run-1:plan_only:1");
   });
 });

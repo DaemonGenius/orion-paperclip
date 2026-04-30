@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildOnboardingIssuePayload,
+  buildOnboardingTaskPayload,
   buildOnboardingProjectPayload,
   selectDefaultCompanyGoalId,
 } from "./onboarding-launch";
@@ -82,7 +82,7 @@ describe("selectDefaultCompanyGoalId", () => {
 });
 
 describe("onboarding launch payloads", () => {
-  it("links the onboarding project and first issue to the selected goal", () => {
+  it("links the onboarding project and first task to the selected goal", () => {
     expect(buildOnboardingProjectPayload("goal-1")).toEqual({
       name: "Onboarding",
       status: "in_progress",
@@ -90,7 +90,7 @@ describe("onboarding launch payloads", () => {
     });
 
     expect(
-      buildOnboardingIssuePayload({
+      buildOnboardingTaskPayload({
         title: "  Hire your first engineer  ",
         description: "  Kick off the hiring plan  ",
         assigneeAgentId: "agent-1",
@@ -114,7 +114,7 @@ describe("onboarding launch payloads", () => {
     });
 
     expect(
-      buildOnboardingIssuePayload({
+      buildOnboardingTaskPayload({
         title: "Task",
         description: "",
         assigneeAgentId: "agent-1",

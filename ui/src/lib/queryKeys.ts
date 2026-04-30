@@ -37,37 +37,37 @@ export const queryKeys = {
     detectModel: (companyId: string, adapterType: string) =>
       ["agents", companyId, "detect-model", adapterType] as const,
   },
-  issues: {
-    list: (companyId: string) => ["issues", companyId] as const,
+  tasks: {
+    list: (companyId: string) => ["tasks", companyId] as const,
     search: (companyId: string, q: string, projectId?: string, limit?: number) =>
-      ["issues", companyId, "search", q, projectId ?? "__all-projects__", limit ?? "__no-limit__"] as const,
-    listAssignedToMe: (companyId: string) => ["issues", companyId, "assigned-to-me"] as const,
-    listMineByMe: (companyId: string) => ["issues", companyId, "mine-by-me"] as const,
-    listTouchedByMe: (companyId: string) => ["issues", companyId, "touched-by-me"] as const,
-    listUnreadTouchedByMe: (companyId: string) => ["issues", companyId, "unread-touched-by-me"] as const,
-    labels: (companyId: string) => ["issues", companyId, "labels"] as const,
+      ["tasks", companyId, "search", q, projectId ?? "__all-projects__", limit ?? "__no-limit__"] as const,
+    listAssignedToMe: (companyId: string) => ["tasks", companyId, "assigned-to-me"] as const,
+    listMineByMe: (companyId: string) => ["tasks", companyId, "mine-by-me"] as const,
+    listTouchedByMe: (companyId: string) => ["tasks", companyId, "touched-by-me"] as const,
+    listUnreadTouchedByMe: (companyId: string) => ["tasks", companyId, "unread-touched-by-me"] as const,
+    labels: (companyId: string) => ["tasks", companyId, "labels"] as const,
     listByProject: (companyId: string, projectId: string) =>
-      ["issues", companyId, "project", projectId] as const,
+      ["tasks", companyId, "project", projectId] as const,
     listByParent: (companyId: string, parentId: string) =>
-      ["issues", companyId, "parent", parentId] as const,
-    listByDescendantRoot: (companyId: string, rootIssueId: string) =>
-      ["issues", companyId, "descendants", rootIssueId] as const,
+      ["tasks", companyId, "parent", parentId] as const,
+    listByDescendantRoot: (companyId: string, rootTaskId: string) =>
+      ["tasks", companyId, "descendants", rootTaskId] as const,
     listByExecutionWorkspace: (companyId: string, executionWorkspaceId: string) =>
-      ["issues", companyId, "execution-workspace", executionWorkspaceId] as const,
-    detail: (id: string) => ["issues", "detail", id] as const,
-    comments: (issueId: string) => ["issues", "comments", issueId] as const,
-    interactions: (issueId: string) => ["issues", "interactions", issueId] as const,
-    feedbackVotes: (issueId: string) => ["issues", "feedback-votes", issueId] as const,
-    attachments: (issueId: string) => ["issues", "attachments", issueId] as const,
-    documents: (issueId: string) => ["issues", "documents", issueId] as const,
-    document: (issueId: string, key: string) => ["issues", "document", issueId, key] as const,
-    documentRevisions: (issueId: string, key: string) => ["issues", "document-revisions", issueId, key] as const,
-    activity: (issueId: string) => ["issues", "activity", issueId] as const,
-    runs: (issueId: string) => ["issues", "runs", issueId] as const,
-    approvals: (issueId: string) => ["issues", "approvals", issueId] as const,
-    liveRuns: (issueId: string) => ["issues", "live-runs", issueId] as const,
-    activeRun: (issueId: string) => ["issues", "active-run", issueId] as const,
-    workProducts: (issueId: string) => ["issues", "work-products", issueId] as const,
+      ["tasks", companyId, "execution-workspace", executionWorkspaceId] as const,
+    detail: (id: string) => ["tasks", "detail", id] as const,
+    comments: (taskId: string) => ["tasks", "comments", taskId] as const,
+    interactions: (taskId: string) => ["tasks", "interactions", taskId] as const,
+    feedbackVotes: (taskId: string) => ["tasks", "feedback-votes", taskId] as const,
+    attachments: (taskId: string) => ["tasks", "attachments", taskId] as const,
+    documents: (taskId: string) => ["tasks", "documents", taskId] as const,
+    document: (taskId: string, key: string) => ["tasks", "document", taskId, key] as const,
+    documentRevisions: (taskId: string, key: string) => ["tasks", "document-revisions", taskId, key] as const,
+    activity: (taskId: string) => ["tasks", "activity", taskId] as const,
+    runs: (taskId: string) => ["tasks", "runs", taskId] as const,
+    approvals: (taskId: string) => ["tasks", "approvals", taskId] as const,
+    liveRuns: (taskId: string) => ["tasks", "live-runs", taskId] as const,
+    activeRun: (taskId: string) => ["tasks", "active-run", taskId] as const,
+    workProducts: (taskId: string) => ["tasks", "work-products", taskId] as const,
   },
   routines: {
     list: (companyId: string) => ["routines", companyId] as const,
@@ -103,7 +103,7 @@ export const queryKeys = {
       ["approvals", companyId, status] as const,
     detail: (approvalId: string) => ["approvals", "detail", approvalId] as const,
     comments: (approvalId: string) => ["approvals", "comments", approvalId] as const,
-    issues: (approvalId: string) => ["approvals", "issues", approvalId] as const,
+    tasks: (approvalId: string) => ["approvals", "tasks", approvalId] as const,
   },
   access: {
     invites: (companyId: string, state: string = "all", limit: number = 20) =>
@@ -167,7 +167,7 @@ export const queryKeys = {
   runDetail: (runId: string) => ["heartbeat-run", runId] as const,
   runWorkspaceOperations: (runId: string) => ["heartbeat-run", runId, "workspace-operations"] as const,
   liveRuns: (companyId: string) => ["live-runs", companyId] as const,
-  runIssues: (runId: string) => ["run-issues", runId] as const,
+  runTasks: (runId: string) => ["run-tasks", runId] as const,
   org: (companyId: string) => ["org", companyId] as const,
   skills: {
     available: ["skills", "available"] as const,

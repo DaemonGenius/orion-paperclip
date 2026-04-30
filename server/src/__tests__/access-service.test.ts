@@ -6,7 +6,7 @@ import {
   companyMemberships,
   createDb,
   instanceUserRoles,
-  issues,
+  tasks,
   principalPermissionGrants,
 } from "@paperclipai/db";
 import {
@@ -23,7 +23,7 @@ async function createCompanyWithOwner(db: ReturnType<typeof createDb>) {
     .insert(companies)
     .values({
       name: `Access Service ${randomUUID()}`,
-      issuePrefix: `AS${randomUUID().slice(0, 6).toUpperCase()}`,
+      taskPrefix: `AS${randomUUID().slice(0, 6).toUpperCase()}`,
     })
     .returning()
     .then((rows) => rows[0]!);
@@ -53,7 +53,7 @@ describeEmbeddedPostgres("access service", () => {
   }, 20_000);
 
   afterEach(async () => {
-    await db.delete(issues);
+    await db.delete(tasks);
     await db.delete(principalPermissionGrants);
     await db.delete(instanceUserRoles);
     await db.delete(companyMemberships);
@@ -101,7 +101,7 @@ describeEmbeddedPostgres("access service", () => {
     expect(unchanged.status).toBe("active");
   });
 
-  it("archives members, clears grants, and reassigns open issues without deleting history", async () => {
+  it("archives members, clears grants, and reassigns open tasks without deleting history", async () => {
     const { company, owner } = await createCompanyWithOwner(db);
     const member = await db
       .insert(companyMemberships)
@@ -121,21 +121,21 @@ describeEmbeddedPostgres("access service", () => {
       permissionKey: "tasks:assign",
       grantedByUserId: owner.principalId,
     });
-    const openIssue = await db
-      .insert(issues)
+    const openTask = await db
+      .insert(tasks)
       .values({
         companyId: company.id,
-        title: "Open assigned issue",
+        title: "Open assigned task",
         status: "in_progress",
         assigneeUserId: member.principalId,
       })
       .returning()
       .then((rows) => rows[0]!);
-    const doneIssue = await db
-      .insert(issues)
+    const doneTask = await db
+      .insert(tasks)
       .values({
         companyId: company.id,
-        title: "Historical assigned issue",
+        title: "Historical assigned task",
         status: "done",
         assigneeUserId: member.principalId,
       })
@@ -147,7 +147,7 @@ describeEmbeddedPostgres("access service", () => {
       reassignment: { assigneeUserId: owner.principalId },
     });
 
-    expect(result?.reassignedIssueCount).toBe(1);
+    expect(result?.reassignedTaskCount).toBe(1);
     const archived = await db
       .select()
       .from(companyMemberships)
@@ -161,20 +161,20 @@ describeEmbeddedPostgres("access service", () => {
       .where(eq(principalPermissionGrants.principalId, member.principalId));
     expect(remainingGrants).toHaveLength(0);
 
-    const reassignedIssue = await db
+    const reassignedTask = await db
       .select()
-      .from(issues)
-      .where(eq(issues.id, openIssue.id))
+      .from(tasks)
+      .where(eq(tasks.id, openTask.id))
       .then((rows) => rows[0]!);
-    expect(reassignedIssue.assigneeUserId).toBe(owner.principalId);
-    expect(reassignedIssue.status).toBe("todo");
+    expect(reassignedTask.assigneeUserId).toBe(owner.principalId);
+    expect(reassignedTask.status).toBe("todo");
 
-    const historicalIssue = await db
+    const historicalTask = await db
       .select()
-      .from(issues)
-      .where(eq(issues.id, doneIssue.id))
+      .from(tasks)
+      .where(eq(tasks.id, doneTask.id))
       .then((rows) => rows[0]!);
-    expect(historicalIssue.assigneeUserId).toBe(member.principalId);
+    expect(historicalTask.assigneeUserId).toBe(member.principalId);
   });
 
   it("rejects instance-level company access removal for self and protected users", async () => {

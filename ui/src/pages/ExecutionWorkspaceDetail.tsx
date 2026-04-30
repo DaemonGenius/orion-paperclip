@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate, useParams } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ExecutionWorkspace, Issue, Project, ProjectWorkspace } from "@paperclipai/shared";
+import type { ExecutionWorkspace, Task, Project, ProjectWorkspace } from "@paperclipai/shared";
 import { ArrowLeft, Copy, ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardAction } from "@/components/ui/card";
@@ -14,9 +14,9 @@ import { ExecutionWorkspaceCloseDialog } from "../components/ExecutionWorkspaceC
 import { agentsApi } from "../api/agents";
 import { executionWorkspacesApi } from "../api/execution-workspaces";
 import { heartbeatsApi } from "../api/heartbeats";
-import { issuesApi } from "../api/issues";
+import { tasksApi } from "../api/tasks";
 import { projectsApi } from "../api/projects";
-import { IssuesList } from "../components/IssuesList";
+import { TasksList } from "../components/TasksList";
 import { PageTabBar } from "../components/PageTabBar";
 import {
   buildWorkspaceRuntimeControlSections,
@@ -25,9 +25,9 @@ import {
 } from "../components/WorkspaceRuntimeControls";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useCompany } from "../context/CompanyContext";
-import { collectLiveIssueIds } from "../lib/liveIssueIds";
+import { collectLiveTaskIds } from "../lib/liveTaskIds";
 import { queryKeys } from "../lib/queryKeys";
-import { cn, formatDateTime, issueUrl, projectRouteRef, projectWorkspaceUrl } from "../lib/utils";
+import { cn, formatDateTime, taskUrl, projectRouteRef, projectWorkspaceUrl } from "../lib/utils";
 
 type WorkspaceFormState = {
   name: string;
@@ -43,14 +43,14 @@ type WorkspaceFormState = {
   workspaceRuntime: string;
 };
 
-type ExecutionWorkspaceTab = "configuration" | "runtime_logs" | "issues";
+type ExecutionWorkspaceTab = "configuration" | "runtime_logs" | "tasks";
 
 function resolveExecutionWorkspaceTab(pathname: string, workspaceId: string): ExecutionWorkspaceTab | null {
   const segments = pathname.split("/").filter(Boolean);
   const executionWorkspacesIndex = segments.indexOf("execution-workspaces");
   if (executionWorkspacesIndex === -1 || segments[executionWorkspacesIndex + 1] !== workspaceId) return null;
   const tab = segments[executionWorkspacesIndex + 2];
-  if (tab === "issues") return "issues";
+  if (tab === "tasks") return "tasks";
   if (tab === "runtime-logs") return "runtime_logs";
   if (tab === "configuration") return "configuration";
   return null;
@@ -242,17 +242,17 @@ function WorkspaceLink({
   return <Link to={projectWorkspaceUrl(project, workspace.id)} className="hover:underline">{workspace.name}</Link>;
 }
 
-function ExecutionWorkspaceIssuesList({
+function ExecutionWorkspaceTasksList({
   companyId,
   workspaceId,
-  issues,
+  tasks,
   isLoading,
   error,
   project,
 }: {
   companyId: string;
   workspaceId: string;
-  issues: Issue[];
+  tasks: Task[];
   isLoading: boolean;
   error: Error | null;
   project: Project | null;
@@ -272,15 +272,15 @@ function ExecutionWorkspaceIssuesList({
     refetchInterval: 5000,
   });
 
-  const liveIssueIds = useMemo(() => collectLiveIssueIds(liveRuns), [liveRuns]);
+  const liveTaskIds = useMemo(() => collectLiveTaskIds(liveRuns), [liveRuns]);
 
-  const updateIssue = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => issuesApi.update(id, data),
+  const updateTask = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => tasksApi.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.listByExecutionWorkspace(companyId, workspaceId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.listByExecutionWorkspace(companyId, workspaceId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(companyId) });
       if (project?.id) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.issues.listByProject(companyId, project.id) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.tasks.listByProject(companyId, project.id) });
       }
     },
   });
@@ -291,16 +291,16 @@ function ExecutionWorkspaceIssuesList({
   );
 
   return (
-    <IssuesList
-      issues={issues}
+    <TasksList
+      tasks={tasks}
       isLoading={isLoading}
       error={error}
       agents={agents}
       projects={projectOptions}
-      liveIssueIds={liveIssueIds}
+      liveTaskIds={liveTaskIds}
       projectId={project?.id}
-      viewStateKey="paperclip:execution-workspace-issues-view"
-      onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
+      viewStateKey="paperclip:execution-workspace-tasks-view"
+      onUpdateTask={(id, data) => updateTask.mutate({ id, data })}
     />
   );
 }
@@ -333,12 +333,12 @@ export function ExecutionWorkspaceDetail() {
   });
   const project = projectQuery.data ?? null;
 
-  const sourceIssueQuery = useQuery({
-    queryKey: workspace?.sourceIssueId ? queryKeys.issues.detail(workspace.sourceIssueId) : ["issues", "detail", "__none__"],
-    queryFn: () => issuesApi.get(workspace!.sourceIssueId!),
-    enabled: Boolean(workspace?.sourceIssueId),
+  const sourceTaskQuery = useQuery({
+    queryKey: workspace?.sourceTaskId ? queryKeys.tasks.detail(workspace.sourceTaskId) : ["tasks", "detail", "__none__"],
+    queryFn: () => tasksApi.get(workspace!.sourceTaskId!),
+    enabled: Boolean(workspace?.sourceTaskId),
   });
-  const sourceIssue = sourceIssueQuery.data ?? null;
+  const sourceTask = sourceTaskQuery.data ?? null;
 
   const derivedWorkspaceQuery = useQuery({
     queryKey: workspace?.derivedFromExecutionWorkspaceId
@@ -348,14 +348,14 @@ export function ExecutionWorkspaceDetail() {
     enabled: Boolean(workspace?.derivedFromExecutionWorkspaceId),
   });
   const derivedWorkspace = derivedWorkspaceQuery.data ?? null;
-  const linkedIssuesQuery = useQuery({
+  const linkedTasksQuery = useQuery({
     queryKey: workspace
-      ? queryKeys.issues.listByExecutionWorkspace(workspace.companyId, workspace.id)
-      : ["issues", "__execution-workspace__", "__none__"],
-    queryFn: () => issuesApi.list(workspace!.companyId, { executionWorkspaceId: workspace!.id }),
+      ? queryKeys.tasks.listByExecutionWorkspace(workspace.companyId, workspace.id)
+      : ["tasks", "__execution-workspace__", "__none__"],
+    queryFn: () => tasksApi.list(workspace!.companyId, { executionWorkspaceId: workspace!.id }),
     enabled: Boolean(workspace?.companyId),
   });
-  const linkedIssues = linkedIssuesQuery.data ?? [];
+  const linkedTasks = linkedTasksQuery.data ?? [];
 
   const linkedProjectWorkspace = useMemo(
     () => project?.workspaces.find((item) => item.id === workspace?.projectWorkspaceId) ?? null,
@@ -407,8 +407,8 @@ export function ExecutionWorkspaceDetail() {
         queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(project.id) });
         queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(project.urlKey) });
       }
-      if (sourceIssue) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.issues.detail(sourceIssue.id) });
+      if (sourceTask) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.tasks.detail(sourceTask.id) });
       }
       setErrorMessage(null);
     },
@@ -469,7 +469,7 @@ export function ExecutionWorkspaceDetail() {
     let cachedTab: ExecutionWorkspaceTab = "configuration";
     try {
       const storedTab = localStorage.getItem(`paperclip:execution-workspace-tab:${workspaceId}`);
-      if (storedTab === "issues" || storedTab === "configuration" || storedTab === "runtime_logs") {
+      if (storedTab === "tasks" || storedTab === "configuration" || storedTab === "runtime_logs") {
         cachedTab = storedTab;
       }
     } catch {}
@@ -525,7 +525,7 @@ export function ExecutionWorkspaceDetail() {
           </div>
           <h1 className="truncate text-xl font-semibold sm:text-2xl">{workspace.name}</h1>
           <p className="max-w-2xl text-sm text-muted-foreground">
-            Configure the concrete runtime workspace that Paperclip reuses for this issue flow.
+            Configure the concrete runtime workspace that Paperclip reuses for this task flow.
             <span className="hidden sm:inline"> These settings stay attached to the execution workspace so future runs can keep local paths, repo refs, provisioning, teardown, and runtime-service behavior in sync with the actual workspace being reused.</span>
           </p>
         </div>
@@ -569,7 +569,7 @@ export function ExecutionWorkspaceDetail() {
             items={[
               { value: "configuration", label: "Configuration" },
               { value: "runtime_logs", label: "Runtime logs" },
-              { value: "issues", label: "Issues" },
+              { value: "tasks", label: "Tasks" },
             ]}
             align="start"
             value={activeTab ?? "configuration"}
@@ -817,13 +817,13 @@ export function ExecutionWorkspaceDetail() {
                   "None"
                 )}
               </DetailRow>
-              <DetailRow label="Source issue">
-                {sourceIssue ? (
-                  <Link to={issueUrl(sourceIssue)} className="hover:underline">
-                    {sourceIssue.identifier ?? sourceIssue.id} · {sourceIssue.title}
+              <DetailRow label="Source task">
+                {sourceTask ? (
+                  <Link to={taskUrl(sourceTask)} className="hover:underline">
+                    {sourceTask.identifier ?? sourceTask.id} · {sourceTask.title}
                   </Link>
-                ) : workspace.sourceIssueId ? (
-                  <MonoValue value={workspace.sourceIssueId} />
+                ) : workspace.sourceTaskId ? (
+                  <MonoValue value={workspace.sourceTaskId} />
                 ) : (
                   "None"
                 )}
@@ -933,12 +933,12 @@ export function ExecutionWorkspaceDetail() {
             </CardContent>
           </Card>
         ) : (
-          <ExecutionWorkspaceIssuesList
+          <ExecutionWorkspaceTasksList
             companyId={workspace.companyId}
             workspaceId={workspace.id}
-            issues={linkedIssues}
-            isLoading={linkedIssuesQuery.isLoading}
-            error={linkedIssuesQuery.error as Error | null}
+            tasks={linkedTasks}
+            isLoading={linkedTasksQuery.isLoading}
+            error={linkedTasksQuery.error as Error | null}
             project={project}
           />
         )}
@@ -957,8 +957,8 @@ export function ExecutionWorkspaceDetail() {
             queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(project.id) });
             queryClient.invalidateQueries({ queryKey: queryKeys.executionWorkspaces.list(project.companyId, { projectId: project.id }) });
           }
-          if (sourceIssue) {
-            queryClient.invalidateQueries({ queryKey: queryKeys.issues.detail(sourceIssue.id) });
+          if (sourceTask) {
+            queryClient.invalidateQueries({ queryKey: queryKeys.tasks.detail(sourceTask.id) });
           }
         }}
       />

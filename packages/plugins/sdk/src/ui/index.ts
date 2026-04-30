@@ -26,7 +26,7 @@
  *
  *   return (
  *     <div style={{ display: "grid", gap: 8 }}>
- *       <strong>Synced Issues</strong>
+ *       <strong>Synced Tasks</strong>
  *       <div>{data!.syncedCount}</div>
  *       <button onClick={() => resync({ companyId: context.companyId })}>
  *         Resync Now

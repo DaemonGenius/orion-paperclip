@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { IssueChatUxLab } from "@/pages/IssueChatUxLab";
+import { TaskChatUxLab } from "@/pages/TaskChatUxLab";
 import { InviteUxLab } from "@/pages/InviteUxLab";
 import { RunTranscriptUxLab } from "@/pages/RunTranscriptUxLab";
 
@@ -27,18 +27,18 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-export const IssueChatReviewSurface: Story = {
-  name: "Issue Chat Review Surface",
+export const TaskChatReviewSurface: Story = {
+  name: "Task Chat Review Surface",
   render: () => (
     <StoryFrame>
-      <IssueChatUxLab />
+      <TaskChatUxLab />
     </StoryFrame>
   ),
   parameters: {
     docs: {
       description: {
         story:
-          "Exercises assistant-ui issue chat states: timeline events, live run stream, queued message, feedback controls, submitting bubble, empty state, and disabled composer.",
+          "Exercises assistant-ui task chat states: timeline events, live run stream, queued message, feedback controls, submitting bubble, empty state, and disabled composer.",
       },
     },
   },
@@ -55,7 +55,7 @@ export const RunTranscriptFixtures: Story = {
     docs: {
       description: {
         story:
-          "Exercises run transcript presentation across the run detail page, issue live widget, and dashboard card density.",
+          "Exercises run transcript presentation across the run detail page, task live widget, and dashboard card density.",
       },
     },
   },

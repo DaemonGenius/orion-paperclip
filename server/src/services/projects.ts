@@ -107,7 +107,7 @@ function toRuntimeService(row: WorkspaceRuntimeServiceRow): WorkspaceRuntimeServ
     projectId: row.projectId ?? null,
     projectWorkspaceId: row.projectWorkspaceId ?? null,
     executionWorkspaceId: row.executionWorkspaceId ?? null,
-    issueId: row.issueId ?? null,
+    taskId: row.taskId ?? null,
     scopeType: row.scopeType as WorkspaceRuntimeService["scopeType"],
     scopeId: row.scopeId ?? null,
     serviceName: row.serviceName,

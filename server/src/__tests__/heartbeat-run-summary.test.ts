@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   summarizeHeartbeatRunResultJson,
-  buildHeartbeatRunIssueComment,
+  buildHeartbeatRunTaskComment,
   mergeHeartbeatRunResultJson,
 } from "../services/heartbeat-run-summary.js";
 
@@ -44,10 +44,10 @@ describe("summarizeHeartbeatRunResultJson", () => {
   });
 });
 
-describe("buildHeartbeatRunIssueComment", () => {
-  it("uses the final summary text for issue comments on successful runs", () => {
-    const comment = buildHeartbeatRunIssueComment({
-      summary: "## Summary\n\n- fixed deploy config\n- posted issue update",
+describe("buildHeartbeatRunTaskComment", () => {
+  it("uses the final summary text for task comments on successful runs", () => {
+    const comment = buildHeartbeatRunTaskComment({
+      summary: "## Summary\n\n- fixed deploy config\n- posted task update",
     });
 
     expect(comment).toContain("## Summary");
@@ -56,12 +56,12 @@ describe("buildHeartbeatRunIssueComment", () => {
   });
 
   it("falls back to result or message when summary is missing", () => {
-    expect(buildHeartbeatRunIssueComment({ result: "done" })).toBe("done");
-    expect(buildHeartbeatRunIssueComment({ message: "completed" })).toBe("completed");
+    expect(buildHeartbeatRunTaskComment({ result: "done" })).toBe("done");
+    expect(buildHeartbeatRunTaskComment({ message: "completed" })).toBe("completed");
   });
 
   it("returns null when there is no usable final text", () => {
-    expect(buildHeartbeatRunIssueComment({ costUsd: 1.2 })).toBeNull();
+    expect(buildHeartbeatRunTaskComment({ costUsd: 1.2 })).toBeNull();
   });
 });
 
@@ -77,7 +77,7 @@ describe("mergeHeartbeatRunResultJson", () => {
       stderr: "",
       summary: "## Summary\n\n1. first thing\n2. second thing",
     });
-    expect(buildHeartbeatRunIssueComment(merged)).toBe("## Summary\n\n1. first thing\n2. second thing");
+    expect(buildHeartbeatRunTaskComment(merged)).toBe("## Summary\n\n1. first thing\n2. second thing");
   });
 
   it("creates a result payload when only a summary exists", () => {

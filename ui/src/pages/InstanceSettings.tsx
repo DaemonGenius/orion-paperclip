@@ -23,7 +23,7 @@ function humanize(value: string) {
 }
 
 function buildAgentHref(agent: InstanceSchedulerHeartbeatAgent) {
-  return `/${agent.companyIssuePrefix}/agents/${encodeURIComponent(agent.agentUrlKey)}`;
+  return `/${agent.companyTaskPrefix}/agents/${encodeURIComponent(agent.agentUrlKey)}`;
 }
 
 export function InstanceSettings() {

@@ -21,7 +21,7 @@ import {
   type ToolResult,
   type ToolRunContext,
 } from "@paperclipai/plugin-sdk";
-import type { Goal, Issue } from "@paperclipai/shared";
+import type { Goal, Task } from "@paperclipai/shared";
 import {
   DEFAULT_CONFIG,
   JOB_KEYS,
@@ -231,8 +231,8 @@ function getListLimit(params: Record<string, unknown>, fallback = 50): number {
   return Math.max(1, Math.min(200, Math.floor(value)));
 }
 
-async function listIssuesForCompany(ctx: PluginContext, companyId: string, limit = 50): Promise<Issue[]> {
-  return await ctx.issues.list({ companyId, limit, offset: 0 });
+async function listTasksForCompany(ctx: PluginContext, companyId: string, limit = 50): Promise<Task[]> {
+  return await ctx.tasks.list({ companyId, limit, offset: 0 });
 }
 
 async function listGoalsForCompany(ctx: PluginContext, companyId: string, limit = 50): Promise<Goal[]> {
@@ -257,7 +257,7 @@ async function registerDataHandlers(ctx: PluginContext): Promise<void> {
     const config = await getConfig(ctx);
     const companies = await ctx.companies.list({ limit: 200, offset: 0 });
     const projects = companyId ? await ctx.projects.list({ companyId, limit: 200, offset: 0 }) : [];
-    const issues = companyId ? await listIssuesForCompany(ctx, companyId, 200) : [];
+    const tasks = companyId ? await listTasksForCompany(ctx, companyId, 200) : [];
     const goals = companyId ? await listGoalsForCompany(ctx, companyId, 200) : [];
     const agents = companyId ? await ctx.agents.list({ companyId, limit: 200, offset: 0 }) : [];
     const lastJob = await readInstanceState(ctx, "last-job-run");
@@ -273,7 +273,7 @@ async function registerDataHandlers(ctx: PluginContext): Promise<void> {
       counts: {
         companies: companies.length,
         projects: projects.length,
-        issues: issues.length,
+        tasks: tasks.length,
         goals: goals.length,
         agents: agents.length,
         entities: entityRecords.length,
@@ -300,9 +300,9 @@ async function registerDataHandlers(ctx: PluginContext): Promise<void> {
     return await ctx.projects.list({ companyId, limit: getListLimit(params), offset: 0 });
   });
 
-  ctx.data.register("issues", async (params) => {
+  ctx.data.register("tasks", async (params) => {
     const companyId = getCurrentCompanyId(params);
-    return await listIssuesForCompany(ctx, companyId, getListLimit(params));
+    return await listTasksForCompany(ctx, companyId, getListLimit(params));
   });
 
   ctx.data.register("goals", async (params) => {
@@ -344,21 +344,21 @@ async function registerDataHandlers(ctx: PluginContext): Promise<void> {
 
   ctx.data.register("comment-context", async (params) => {
     const companyId = getCurrentCompanyId(params);
-    const issueId = typeof params.issueId === "string" ? params.issueId : "";
+    const taskId = typeof params.taskId === "string" ? params.taskId : "";
     const commentId = typeof params.commentId === "string" ? params.commentId : "";
-    if (!issueId || !commentId) return null;
-    const comments = await ctx.issues.listComments(issueId, companyId);
+    if (!taskId || !commentId) return null;
+    const comments = await ctx.tasks.listComments(taskId, companyId);
     const comment = comments.find((entry) => entry.id === commentId) ?? null;
     if (!comment) return null;
     return {
       commentId: comment.id,
-      issueId,
+      taskId,
       preview: comment.body.slice(0, 160),
       length: comment.body.length,
       copiedCount: (await ctx.entities.list({
         entityType: "copied-comment",
-        scopeKind: "issue",
-        scopeId: issueId,
+        scopeKind: "task",
+        scopeId: taskId,
         limit: 100,
         offset: 0,
       })).filter((entry) => entry.externalId === commentId).length,
@@ -374,8 +374,8 @@ async function registerDataHandlers(ctx: PluginContext): Promise<void> {
     if (entityType === "project") {
       return await ctx.projects.get(entityId, companyId);
     }
-    if (entityType === "issue") {
-      return await ctx.issues.get(entityId, companyId);
+    if (entityType === "task") {
+      return await ctx.tasks.get(entityId, companyId);
     }
     if (entityType === "goal") {
       return await ctx.goals.get(entityId, companyId);
@@ -474,44 +474,44 @@ async function registerActionHandlers(ctx: PluginContext): Promise<void> {
     return record;
   });
 
-  ctx.actions.register("create-issue", async (params) => {
+  ctx.actions.register("create-task", async (params) => {
     const companyId = getCurrentCompanyId(params);
     const title = typeof params.title === "string" && params.title.trim().length > 0
       ? params.title.trim()
-      : "Kitchen Sink demo issue";
+      : "Kitchen Sink demo task";
     const description = typeof params.description === "string" ? params.description : undefined;
     const projectId = typeof params.projectId === "string" && params.projectId.length > 0 ? params.projectId : undefined;
-    const issue = await ctx.issues.create({ companyId, projectId, title, description });
+    const task = await ctx.tasks.create({ companyId, projectId, title, description });
     pushRecord({
       level: "info",
-      source: "issues.create",
-      message: `Created issue ${issue.title}`,
-      data: { issueId: issue.id },
+      source: "tasks.create",
+      message: `Created task ${task.title}`,
+      data: { taskId: task.id },
     });
     await ctx.activity.log({
       companyId,
-      entityType: "issue",
-      entityId: issue.id,
-      message: `Kitchen Sink created issue "${issue.title}"`,
+      entityType: "task",
+      entityId: task.id,
+      message: `Kitchen Sink created task "${task.title}"`,
       metadata: { plugin: PLUGIN_ID },
     });
-    return issue;
+    return task;
   });
 
-  ctx.actions.register("advance-issue-status", async (params) => {
+  ctx.actions.register("advance-task-status", async (params) => {
     const companyId = getCurrentCompanyId(params);
-    const issueId = typeof params.issueId === "string" ? params.issueId : "";
+    const taskId = typeof params.taskId === "string" ? params.taskId : "";
     const status = typeof params.status === "string" ? params.status : "";
-    if (!issueId || !status) {
-      throw new Error("issueId and status are required");
+    if (!taskId || !status) {
+      throw new Error("taskId and status are required");
     }
-    const issue = await ctx.issues.update(issueId, { status: status as Issue["status"] }, companyId);
+    const task = await ctx.tasks.update(taskId, { status: status as Task["status"] }, companyId);
     pushRecord({
       level: "info",
-      source: "issues.update",
-      message: `Updated issue ${issue.id} to ${issue.status}`,
+      source: "tasks.update",
+      message: `Updated task ${task.id} to ${task.status}`,
     });
-    return issue;
+    return task;
   });
 
   ctx.actions.register("create-goal", async (params) => {
@@ -780,26 +780,26 @@ async function registerActionHandlers(ctx: PluginContext): Promise<void> {
 
   ctx.actions.register("copy-comment-context", async (params) => {
     const companyId = getCurrentCompanyId(params);
-    const issueId = typeof params.issueId === "string" ? params.issueId : "";
+    const taskId = typeof params.taskId === "string" ? params.taskId : "";
     const commentId = typeof params.commentId === "string" ? params.commentId : "";
-    if (!issueId || !commentId) {
-      throw new Error("issueId and commentId are required");
+    if (!taskId || !commentId) {
+      throw new Error("taskId and commentId are required");
     }
-    const comments = await ctx.issues.listComments(issueId, companyId);
+    const comments = await ctx.tasks.listComments(taskId, companyId);
     const comment = comments.find((entry) => entry.id === commentId);
     if (!comment) {
       throw new Error("Comment not found");
     }
     const record = await ctx.entities.upsert({
       entityType: "copied-comment",
-      scopeKind: "issue",
-      scopeId: issueId,
+      scopeKind: "task",
+      scopeId: taskId,
       externalId: comment.id,
       title: `Copied comment ${comment.id.slice(0, 8)}`,
       status: "captured",
       data: {
         commentId: comment.id,
-        issueId,
+        taskId,
         body: comment.body,
       },
     });
@@ -848,15 +848,15 @@ async function registerToolHandlers(ctx: PluginContext): Promise<void> {
     },
     async (_params, runCtx): Promise<ToolResult> => {
       const projects = await ctx.projects.list({ companyId: runCtx.companyId, limit: 50, offset: 0 });
-      const issues = await ctx.issues.list({ companyId: runCtx.companyId, limit: 50, offset: 0 });
+      const tasks = await ctx.tasks.list({ companyId: runCtx.companyId, limit: 50, offset: 0 });
       const goals = await ctx.goals.list({ companyId: runCtx.companyId, limit: 50, offset: 0 });
       const agents = await ctx.agents.list({ companyId: runCtx.companyId, limit: 50, offset: 0 });
       return {
-        content: `Company has ${projects.length} projects, ${issues.length} issues, ${goals.length} goals, and ${agents.length} agents.`,
+        content: `Company has ${projects.length} projects, ${tasks.length} tasks, ${goals.length} goals, and ${agents.length} agents.`,
         data: {
           companyId: runCtx.companyId,
           projects: projects.length,
-          issues: issues.length,
+          tasks: tasks.length,
           goals: goals.length,
           agents: agents.length,
         },
@@ -865,10 +865,10 @@ async function registerToolHandlers(ctx: PluginContext): Promise<void> {
   );
 
   ctx.tools.register(
-    TOOL_NAMES.createIssue,
+    TOOL_NAMES.createTask,
     {
-      displayName: "Kitchen Sink Create Issue",
-      description: "Creates an issue in the current run context.",
+      displayName: "Kitchen Sink Create Task",
+      description: "Creates an task in the current run context.",
       parametersSchema: {
         type: "object",
         properties: {
@@ -883,35 +883,35 @@ async function registerToolHandlers(ctx: PluginContext): Promise<void> {
       if (!payload.title) {
         return { error: "title is required" };
       }
-      const issue = await ctx.issues.create({
+      const task = await ctx.tasks.create({
         companyId: runCtx.companyId,
         projectId: runCtx.projectId,
         title: payload.title,
         description: payload.description,
       });
       return {
-        content: `Created issue ${issue.title}`,
-        data: issue,
+        content: `Created task ${task.title}`,
+        data: task,
       };
     },
   );
 }
 
 async function registerEventHandlers(ctx: PluginContext): Promise<void> {
-  ctx.events.on("issue.created", async (event: PluginEvent) => {
+  ctx.events.on("task.created", async (event: PluginEvent) => {
     pushRecord({
       level: "info",
       source: "events.subscribe",
-      message: "Observed issue.created",
+      message: "Observed task.created",
       data: event,
     });
   });
 
-  ctx.events.on("issue.updated", async (event: PluginEvent) => {
+  ctx.events.on("task.updated", async (event: PluginEvent) => {
     pushRecord({
       level: "info",
       source: "events.subscribe",
-      message: "Observed issue.updated",
+      message: "Observed task.updated",
       data: event,
     });
   });

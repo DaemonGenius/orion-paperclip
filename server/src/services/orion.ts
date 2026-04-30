@@ -6,8 +6,8 @@ import {
   companyNotionBindings,
   externalObjectRefs,
   heartbeatRuns,
-  issueWorkProducts,
-  issues,
+  taskWorkProducts,
+  tasks,
   notionSyncState,
   orionDecisions,
   orionPrReceipts,
@@ -367,13 +367,13 @@ export function orionService(db: Db) {
       return createWorkflowFromPreset(companyId, { presetId, makeDefault: true, agentBindings: {} });
     },
 
-    bindTaskWorkflow: async (issueId: string, input: BindOrionTaskWorkflow) => {
-      const issue = await db.select().from(issues).where(eq(issues.id, issueId)).limit(1).then((rows) => rows[0] ?? null);
-      if (!issue) throw notFound("Task not found");
+    bindTaskWorkflow: async (taskId: string, input: BindOrionTaskWorkflow) => {
+      const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).then((rows) => rows[0] ?? null);
+      if (!task) throw notFound("Task not found");
       const workflow = await db
         .select()
         .from(orionWorkflows)
-        .where(and(eq(orionWorkflows.companyId, issue.companyId), eq(orionWorkflows.id, input.workflowId)))
+        .where(and(eq(orionWorkflows.companyId, task.companyId), eq(orionWorkflows.id, input.workflowId)))
         .limit(1)
         .then((rows) => rows[0] ?? null);
       if (!workflow) throw notFound("Workflow not found");
@@ -384,14 +384,14 @@ export function orionService(db: Db) {
       const [binding] = await db
         .insert(orionTaskWorkflowBindings)
         .values({
-          companyId: issue.companyId,
-          issueId: issue.id,
+          companyId: task.companyId,
+          taskId: task.id,
           workflowId: workflow.id,
           currentNodeKey,
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
-          target: orionTaskWorkflowBindings.issueId,
+          target: orionTaskWorkflowBindings.taskId,
           set: {
             workflowId: workflow.id,
             currentNodeKey,
@@ -403,11 +403,11 @@ export function orionService(db: Db) {
       return binding!;
     },
 
-    resolveNextWorkflowAction: async (issueId: string, edgeType: string = "assigns_to") => {
+    resolveNextWorkflowAction: async (taskId: string, edgeType: string = "assigns_to") => {
       const binding = await db
         .select()
         .from(orionTaskWorkflowBindings)
-        .where(eq(orionTaskWorkflowBindings.issueId, issueId))
+        .where(eq(orionTaskWorkflowBindings.taskId, taskId))
         .limit(1)
         .then((rows) => rows[0] ?? null);
       if (!binding?.currentNodeKey) return null;
@@ -519,39 +519,39 @@ export function orionService(db: Db) {
           .where(and(eq(notionSyncState.companyId, companyId), eq(notionSyncState.notionPageId, task.notionPageId)))
           .limit(1)
           .then((rows) => rows[0] ?? null);
-        const existingIssue = existingState?.objectType === "task"
+        const existingTask = existingState?.objectType === "task"
           ? await db
             .select()
-            .from(issues)
-            .where(and(eq(issues.companyId, companyId), eq(issues.id, existingState.objectId)))
+            .from(tasks)
+            .where(and(eq(tasks.companyId, companyId), eq(tasks.id, existingState.objectId)))
             .limit(1)
             .then((rows) => rows[0] ?? null)
           : null;
 
         const notionLastEditedAt = task.notionLastEditedAt ? new Date(task.notionLastEditedAt) : null;
         const hasOrionChanges =
-          Boolean(existingIssue && existingState?.orionUpdatedAt && existingIssue.updatedAt > existingState.orionUpdatedAt);
+          Boolean(existingTask && existingState?.orionUpdatedAt && existingTask.updatedAt > existingState.orionUpdatedAt);
         const hasNotionChanges = Boolean(existingState && checksum !== existingState.checksum);
 
-        if (existingIssue && hasOrionChanges && hasNotionChanges) {
+        if (existingTask && hasOrionChanges && hasNotionChanges) {
           const [decision] = await db
             .insert(orionDecisions)
             .values({
               companyId,
-              issueId: existingIssue.id,
+              taskId: existingTask.id,
               kind: "notion_sync_conflict",
-              title: `Resolve Notion sync conflict for ${existingIssue.identifier ?? existingIssue.title}`,
+              title: `Resolve Notion sync conflict for ${existingTask.identifier ?? existingTask.title}`,
               body: "Notion operator fields and Orion task fields both changed since the last sync.",
               payload: {
                 notionPageId: task.notionPageId,
                 operatorFields: ORION_OPERATOR_FIELDS,
                 incoming: task,
-                existingIssue: {
-                  title: existingIssue.title,
-                  description: existingIssue.description,
-                  priority: existingIssue.priority,
-                  projectId: existingIssue.projectId,
-                  updatedAt: existingIssue.updatedAt,
+                existingTask: {
+                  title: existingTask.title,
+                  description: existingTask.description,
+                  priority: existingTask.priority,
+                  projectId: existingTask.projectId,
+                  updatedAt: existingTask.updatedAt,
                 },
               },
             })
@@ -572,7 +572,7 @@ export function orionService(db: Db) {
               companyId,
               provider: "notion",
               localObjectType: "task",
-              localObjectId: existingIssue.id,
+              localObjectId: existingTask.id,
               externalObjectId: task.notionPageId,
               status: "open",
               conflictJson: {
@@ -581,7 +581,7 @@ export function orionService(db: Db) {
                 incomingChecksum: checksum,
                 previousChecksum: existingState!.checksum,
                 notionLastEditedAt,
-                orionUpdatedAt: existingIssue.updatedAt,
+                orionUpdatedAt: existingTask.updatedAt,
               },
               decisionId: decision!.id,
               updatedAt: now,
@@ -593,7 +593,7 @@ export function orionService(db: Db) {
               companyId,
               provider: "notion",
               localObjectType: "task",
-              localObjectId: existingIssue.id,
+              localObjectId: existingTask.id,
               externalObjectId: task.notionPageId,
               externalUrl: notionPageUrl(task.notionPageId),
               ownerClass: "operator_owned",
@@ -605,7 +605,7 @@ export function orionService(db: Db) {
                 requestedMode: task.requestedMode ?? null,
               },
               lastExternalEditedAt: notionLastEditedAt,
-              lastOrionEditedAt: existingIssue.updatedAt,
+              lastOrionEditedAt: existingTask.updatedAt,
               syncStatus: "conflict",
               updatedAt: now,
             })
@@ -623,7 +623,7 @@ export function orionService(db: Db) {
                   requestedMode: task.requestedMode ?? null,
                 },
                 lastExternalEditedAt: notionLastEditedAt,
-                lastOrionEditedAt: existingIssue.updatedAt,
+                lastOrionEditedAt: existingTask.updatedAt,
                 syncStatus: "conflict",
                 updatedAt: now,
               },
@@ -633,30 +633,30 @@ export function orionService(db: Db) {
             notionPageId: task.notionPageId,
             status: "conflict",
             decisionId: decision!.id,
-            issueId: existingIssue.id,
+            taskId: existingTask.id,
           });
           continue;
         }
 
-        const issuePatch = {
+        const taskPatch = {
           title: task.title,
           description: task.description ?? null,
           priority: task.priority,
           projectId: task.projectId ?? null,
           updatedAt: now,
         };
-        const issue = existingIssue
+        const taskRow = existingTask
           ? await db
-            .update(issues)
-            .set(issuePatch)
-            .where(and(eq(issues.companyId, companyId), eq(issues.id, existingIssue.id)))
+            .update(tasks)
+            .set(taskPatch)
+            .where(and(eq(tasks.companyId, companyId), eq(tasks.id, existingTask.id)))
             .returning()
             .then((rows) => rows[0]!)
           : await db
-            .insert(issues)
+            .insert(tasks)
             .values({
               companyId,
-              ...issuePatch,
+              ...taskPatch,
               status: "backlog",
               originKind: "notion",
               originId: task.notionPageId,
@@ -670,13 +670,13 @@ export function orionService(db: Db) {
             .insert(orionTaskPolicies)
             .values({
               companyId,
-              issueId: issue.id,
+              taskId: taskRow.id,
               mode: task.requestedMode,
               autonomyEnvelope: task.autonomyEnvelope ?? null,
               updatedAt: now,
             })
             .onConflictDoUpdate({
-              target: orionTaskPolicies.issueId,
+              target: orionTaskPolicies.taskId,
               set: {
                 mode: task.requestedMode,
                 autonomyEnvelope: task.autonomyEnvelope ?? null,
@@ -690,10 +690,10 @@ export function orionService(db: Db) {
           .values({
             companyId,
             objectType: "task",
-            objectId: issue.id,
+            objectId: taskRow.id,
             notionPageId: task.notionPageId,
             notionLastEditedAt,
-            orionUpdatedAt: issue.updatedAt,
+            orionUpdatedAt: taskRow.updatedAt,
             checksum,
             direction: "notion_to_orion",
             status: "synced",
@@ -703,9 +703,9 @@ export function orionService(db: Db) {
             target: [notionSyncState.companyId, notionSyncState.notionPageId],
             set: {
               objectType: "task",
-              objectId: issue.id,
+              objectId: taskRow.id,
               notionLastEditedAt,
-              orionUpdatedAt: issue.updatedAt,
+              orionUpdatedAt: taskRow.updatedAt,
               checksum,
               direction: "notion_to_orion",
               status: "synced",
@@ -720,7 +720,7 @@ export function orionService(db: Db) {
             companyId,
             provider: "notion",
             localObjectType: "task",
-            localObjectId: issue.id,
+            localObjectId: taskRow.id,
             externalObjectId: task.notionPageId,
             externalUrl: notionPageUrl(task.notionPageId),
             ownerClass: "operator_owned",
@@ -733,7 +733,7 @@ export function orionService(db: Db) {
               projectId: task.projectId ?? null,
             },
             lastExternalEditedAt: notionLastEditedAt,
-            lastOrionEditedAt: issue.updatedAt,
+            lastOrionEditedAt: taskRow.updatedAt,
             syncStatus: "synced",
             updatedAt: now,
           })
@@ -752,7 +752,7 @@ export function orionService(db: Db) {
                 projectId: task.projectId ?? null,
               },
               lastExternalEditedAt: notionLastEditedAt,
-              lastOrionEditedAt: issue.updatedAt,
+              lastOrionEditedAt: taskRow.updatedAt,
               syncStatus: "synced",
               updatedAt: now,
             },
@@ -761,8 +761,8 @@ export function orionService(db: Db) {
 
         results.push({
           notionPageId: task.notionPageId,
-          status: existingIssue ? "updated" : "created",
-          issueId: issue.id,
+          status: existingTask ? "updated" : "created",
+          taskId: taskRow.id,
           refId: ref!.id,
         });
       }
@@ -797,25 +797,25 @@ export function orionService(db: Db) {
       return { syncedAt: now.toISOString(), results };
     },
 
-    createRun: async (issueId: string, input: CreateOrionRun) => {
+    createRun: async (taskId: string, input: CreateOrionRun) => {
       requireAutoEnvelope(input);
-      const issue = await db.select().from(issues).where(eq(issues.id, issueId)).limit(1).then((rows) => rows[0] ?? null);
-      if (!issue) throw notFound("Task not found");
+      const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).then((rows) => rows[0] ?? null);
+      if (!task) throw notFound("Task not found");
       const agent = await db.select().from(agents).where(eq(agents.id, input.agentId)).limit(1).then((rows) => rows[0] ?? null);
-      if (!agent || agent.companyId !== issue.companyId) throw notFound("Agent not found");
+      if (!agent || agent.companyId !== task.companyId) throw notFound("Agent not found");
 
       if (input.autonomyEnvelope) {
         await db
           .insert(orionTaskPolicies)
           .values({
-            companyId: issue.companyId,
-            issueId: issue.id,
+            companyId: task.companyId,
+            taskId: task.id,
             mode: input.mode,
             autonomyEnvelope: input.autonomyEnvelope,
             updatedAt: new Date(),
           })
           .onConflictDoUpdate({
-            target: orionTaskPolicies.issueId,
+            target: orionTaskPolicies.taskId,
             set: {
               mode: input.mode,
               autonomyEnvelope: input.autonomyEnvelope,
@@ -834,14 +834,14 @@ export function orionService(db: Db) {
         const [run] = await tx
           .insert(heartbeatRuns)
           .values({
-            companyId: issue.companyId,
+            companyId: task.companyId,
             agentId: input.agentId,
             invocationSource: "on_demand",
             triggerDetail: "manual",
             status: "queued",
             contextSnapshot: {
               source: "orion.create_run",
-              taskId: issue.id,
+              taskId: task.id,
               mode: input.mode,
               autonomyEnvelope: input.autonomyEnvelope ?? null,
             },
@@ -851,8 +851,8 @@ export function orionService(db: Db) {
         const [ledger] = await tx
           .insert(orionReqLedgers)
           .values({
-            companyId: issue.companyId,
-            issueId: issue.id,
+            companyId: task.companyId,
+            taskId: task.id,
             runId: run!.id,
             mode: input.mode,
             status: "awaiting_execution",
@@ -867,14 +867,14 @@ export function orionService(db: Db) {
           .insert(orionReqLedgerEvents)
           .values({
             ledgerId: ledger!.id,
-            companyId: issue.companyId,
+            companyId: task.companyId,
             runId: run!.id,
             seq: 1,
             eventType: "orion.run.created",
             phase: "planning",
             message: "Orion run and DB-backed REQ ledger initialized.",
             payload: {
-              taskId: issue.id,
+              taskId: task.id,
               mode: input.mode,
               planSha256,
               approvedPlanSha256,
@@ -882,29 +882,29 @@ export function orionService(db: Db) {
           });
 
         await tx
-          .update(issues)
+          .update(tasks)
           .set({
             executionRunId: run!.id,
             assigneeAgentId: input.agentId,
-            status: issue.status === "backlog" || issue.status === "todo" ? "in_progress" : issue.status,
-            startedAt: issue.startedAt ?? new Date(),
+            status: task.status === "backlog" || task.status === "todo" ? "in_progress" : task.status,
+            startedAt: task.startedAt ?? new Date(),
             updatedAt: new Date(),
           })
-          .where(eq(issues.id, issue.id));
+          .where(eq(tasks.id, task.id));
 
         const binding = await tx
           .select()
           .from(orionTaskWorkflowBindings)
-          .where(eq(orionTaskWorkflowBindings.issueId, issue.id))
+          .where(eq(orionTaskWorkflowBindings.taskId, task.id))
           .limit(1)
           .then((rows) => rows[0] ?? null);
         if (binding) {
           await tx
             .insert(orionWorkflowRuns)
             .values({
-              companyId: issue.companyId,
+              companyId: task.companyId,
               workflowId: binding.workflowId,
-              issueId: issue.id,
+              taskId: task.id,
               runId: run!.id,
               currentNodeKey: binding.currentNodeKey,
               updatedAt: new Date(),
@@ -913,7 +913,7 @@ export function orionService(db: Db) {
               target: orionWorkflowRuns.runId,
               set: {
                 workflowId: binding.workflowId,
-                issueId: issue.id,
+                taskId: task.id,
                 currentNodeKey: binding.currentNodeKey,
                 status: "active",
                 updatedAt: new Date(),
@@ -964,7 +964,7 @@ export function orionService(db: Db) {
     recordPr: async (runId: string, input: RecordOrionPr) => {
       const ledger = await db.select().from(orionReqLedgers).where(eq(orionReqLedgers.runId, runId)).limit(1).then((rows) => rows[0] ?? null);
       if (!ledger) throw notFound("Ledger not found");
-      const policy = await db.select().from(orionTaskPolicies).where(eq(orionTaskPolicies.issueId, ledger.issueId)).limit(1).then((rows) => rows[0] ?? null);
+      const policy = await db.select().from(orionTaskPolicies).where(eq(orionTaskPolicies.taskId, ledger.taskId)).limit(1).then((rows) => rows[0] ?? null);
       const envelope = policy?.autonomyEnvelope as OrionAutonomyEnvelope | null | undefined;
       if (envelope) {
         if (!envelope.allowedRepos.includes(input.repository)) {
@@ -985,7 +985,7 @@ export function orionService(db: Db) {
           .insert(orionPrReceipts)
           .values({
             companyId: ledger.companyId,
-            issueId: ledger.issueId,
+            taskId: ledger.taskId,
             runId,
             ledgerId: ledger.id,
             repository: input.repository,
@@ -1016,10 +1016,10 @@ export function orionService(db: Db) {
           .returning();
 
         await tx
-          .insert(issueWorkProducts)
+          .insert(taskWorkProducts)
           .values({
             companyId: ledger.companyId,
-            issueId: ledger.issueId,
+            taskId: ledger.taskId,
             type: "pull_request",
             provider: "github",
             externalId: receipt!.prNumber == null ? receipt!.prUrl : String(receipt!.prNumber),

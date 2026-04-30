@@ -81,7 +81,7 @@ These are the concrete `ctx` clients currently exposed by the SDK:
 - `ctx.entities`
 - `ctx.projects`
 - `ctx.companies`
-- `ctx.issues`
+- `ctx.tasks`
 - `ctx.agents`
 - `ctx.goals`
 - `ctx.data`
@@ -174,7 +174,7 @@ Recommended page sections:
 - `Paperclip Domain APIs`
   - companies
   - projects/workspaces
-  - issues
+  - tasks
   - goals
   - agents
 - `Local Workspace + Process`
@@ -212,7 +212,7 @@ Add a `Kitchen Sink` link under each project that deep-links into a project-scop
 Use detail tabs to demonstrate entity-context rendering on:
 
 - `project`
-- `issue`
+- `task`
 - `agent`
 - `goal`
 
@@ -224,11 +224,11 @@ Each tab should show:
 
 ### 5. Comment surfaces
 
-Use issue comment demos to prove comment-specific extension points:
+Use task comment demos to prove comment-specific extension points:
 
 - `commentAnnotation`
   - render parsed metadata below each comment
-  - show comment id, issue id, and a small derived status
+  - show comment id, task id, and a small derived status
 - `commentContextMenuItem`
   - add a menu action like `Copy Context To Kitchen Sink`
   - action writes a plugin entity or state record for later inspection
@@ -265,7 +265,7 @@ Demos:
 
 - emit a plugin event
 - subscribe to plugin events
-- subscribe to a core Paperclip event such as `issue.created`
+- subscribe to a core Paperclip event such as `task.created`
 - show recent received events in a timeline
 
 ### `ctx.jobs`
@@ -322,7 +322,7 @@ Demos:
 - instance-scoped state
 - company-scoped state
 - project-scoped state
-- issue-scoped state
+- task-scoped state
 - delete/reset controls
 
 Use a small state inspector/editor on the plugin page.
@@ -342,7 +342,7 @@ Demos:
 - list projects
 - list project workspaces
 - resolve primary workspace
-- resolve workspace for issue
+- resolve workspace for task
 
 ### `ctx.companies`
 
@@ -350,13 +350,13 @@ Demo:
 
 - list companies and show current selected company
 
-### `ctx.issues`
+### `ctx.tasks`
 
 Demos:
 
-- list issues in current company
-- create issue
-- update issue status/title
+- list tasks in current company
+- create task
+- update task status/title
 - list comments
 - create comment
 
@@ -412,7 +412,7 @@ Demos:
 - declare 2-3 simple agent tools
 - tool 1: echo/diagnostics
 - tool 2: project/workspace summary
-- tool 3: create issue or write plugin state
+- tool 3: create task or write plugin state
 
 The plugin page should list declared tools and show example input payloads.
 
@@ -463,7 +463,7 @@ The plugin should aim to declare:
 - `page`
 - `settingsPage`
 - `dashboardWidget`
-- `detailTab` for `project`, `issue`, `agent`, `goal`
+- `detailTab` for `project`, `task`, `agent`, `goal`
 - `projectSidebarItem`
 - `commentAnnotation`
 - `commentContextMenuItem`
@@ -531,7 +531,7 @@ Recommended split:
 - `src/ui/settings/KitchenSinkSettingsPage.tsx`
 - `src/ui/widgets/KitchenSinkDashboardWidget.tsx`
 - `src/ui/tabs/ProjectKitchenSinkTab.tsx`
-- `src/ui/tabs/IssueKitchenSinkTab.tsx`
+- `src/ui/tabs/TaskKitchenSinkTab.tsx`
 - `src/ui/tabs/AgentKitchenSinkTab.tsx`
 - `src/ui/tabs/GoalKitchenSinkTab.tsx`
 - `src/ui/comments/KitchenSinkCommentAnnotation.tsx`
@@ -593,7 +593,7 @@ Default posture:
 - config
 - state
 - entities
-- companies/projects/issues/goals
+- companies/projects/tasks/goals
 - data/actions
 - metrics/logger/activity
 
@@ -658,7 +658,7 @@ Minimum verification:
 
 Recommended manual checklist:
 
-- create issue from plugin
+- create task from plugin
 - create goal from plugin
 - emit and receive plugin event
 - stream action output
@@ -672,7 +672,7 @@ Recommended manual checklist:
 1. Should the process demo remain curated-command-only in the first pass?
    Recommendation: yes.
 
-2. Should the plugin create throwaway "kitchen sink demo" issues/goals automatically?
+2. Should the plugin create throwaway "kitchen sink demo" tasks/goals automatically?
    Recommendation: no. Make creation explicit.
 
 3. Should we expose unsupported-but-typed surfaces in the UI even if host mounting is not wired?
@@ -693,7 +693,7 @@ If this plan looks right, the next implementation pass should start by building 
 - settings page
 - dashboard widget
 - one project detail tab
-- one issue detail tab
+- one task detail tab
 - the basic worker/action/data/state/event scaffolding
 
 That is enough to lock the architecture before filling in every demo surface.

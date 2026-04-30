@@ -18,12 +18,12 @@ function makeTrace(overrides: Partial<FeedbackTrace> = {}): FeedbackTrace {
     id: "trace-12345678",
     companyId: "company-123",
     feedbackVoteId: "vote-12345678",
-    issueId: "issue-123",
+    taskId: "task-123",
     projectId: "project-123",
-    issueIdentifier: "PAP-123",
-    issueTitle: "Fix the feedback command",
+    taskIdentifier: "PAP-123",
+    taskTitle: "Fix the feedback command",
     authorUserId: "user-123",
-    targetType: "issue_comment",
+    targetType: "task_comment",
     targetId: "comment-123",
     vote: "down",
     status: "pending",
@@ -78,17 +78,17 @@ describe("buildFeedbackTraceQuery", () => {
   it("encodes all supported filters", () => {
     expect(
       buildFeedbackTraceQuery({
-        targetType: "issue_comment",
+        targetType: "task_comment",
         vote: "down",
         status: "pending",
         projectId: "project-123",
-        issueId: "issue-123",
+        taskId: "task-123",
         from: "2026-03-31T00:00:00.000Z",
         to: "2026-03-31T23:59:59.999Z",
         sharedOnly: true,
       }),
     ).toBe(
-      "?targetType=issue_comment&vote=down&status=pending&projectId=project-123&issueId=issue-123&from=2026-03-31T00%3A00%3A00.000Z&to=2026-03-31T23%3A59%3A59.999Z&sharedOnly=true&includePayload=true",
+      "?targetType=task_comment&vote=down&status=pending&projectId=project-123&taskId=task-123&from=2026-03-31T00%3A00%3A00.000Z&to=2026-03-31T23%3A59%3A59.999Z&sharedOnly=true&includePayload=true",
     );
   });
 });
@@ -135,8 +135,8 @@ describe("writeFeedbackExportBundle", () => {
       makeTrace({
         id: "trace-abcdef12",
         feedbackVoteId: "vote-abcdef12",
-        issueIdentifier: "PAP-124",
-        issueId: "issue-124",
+        taskIdentifier: "PAP-124",
+        taskId: "task-124",
         vote: "up",
         status: "local_only",
         payloadSnapshot: {

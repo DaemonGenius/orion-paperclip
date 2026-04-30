@@ -2099,15 +2099,15 @@
           "notNull": true,
           "default": "'active'"
         },
-        "issue_prefix": {
-          "name": "issue_prefix",
+        "task_prefix": {
+          "name": "task_prefix",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "default": "'PAP'"
         },
-        "issue_counter": {
-          "name": "issue_counter",
+        "task_counter": {
+          "name": "task_counter",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -2156,11 +2156,11 @@
         }
       },
       "indexes": {
-        "companies_issue_prefix_idx": {
-          "name": "companies_issue_prefix_idx",
+        "companies_task_prefix_idx": {
+          "name": "companies_task_prefix_idx",
           "columns": [
             {
-              "expression": "issue_prefix",
+              "expression": "task_prefix",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2680,8 +2680,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "issue_id": {
-          "name": "issue_id",
+        "task_id": {
+          "name": "task_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -2827,12 +2827,12 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "cost_events_issue_id_issues_id_fk": {
-          "name": "cost_events_issue_id_issues_id_fk",
+        "cost_events_task_id_tasks_id_fk": {
+          "name": "cost_events_task_id_tasks_id_fk",
           "tableFrom": "cost_events",
-          "tableTo": "issues",
+          "tableTo": "tasks",
           "columnsFrom": [
-            "issue_id"
+            "task_id"
           ],
           "columnsTo": [
             "id"
@@ -4026,8 +4026,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.issue_approvals": {
-      "name": "issue_approvals",
+    "public.task_approvals": {
+      "name": "task_approvals",
       "schema": "",
       "columns": {
         "company_id": {
@@ -4036,8 +4036,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "issue_id": {
-          "name": "issue_id",
+        "task_id": {
+          "name": "task_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -4069,11 +4069,11 @@
         }
       },
       "indexes": {
-        "issue_approvals_issue_idx": {
-          "name": "issue_approvals_issue_idx",
+        "task_approvals_task_idx": {
+          "name": "task_approvals_task_idx",
           "columns": [
             {
-              "expression": "issue_id",
+              "expression": "task_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4084,8 +4084,8 @@
           "method": "btree",
           "with": {}
         },
-        "issue_approvals_approval_idx": {
-          "name": "issue_approvals_approval_idx",
+        "task_approvals_approval_idx": {
+          "name": "task_approvals_approval_idx",
           "columns": [
             {
               "expression": "approval_id",
@@ -4099,8 +4099,8 @@
           "method": "btree",
           "with": {}
         },
-        "issue_approvals_company_idx": {
-          "name": "issue_approvals_company_idx",
+        "task_approvals_company_idx": {
+          "name": "task_approvals_company_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -4116,9 +4116,9 @@
         }
       },
       "foreignKeys": {
-        "issue_approvals_company_id_companies_id_fk": {
-          "name": "issue_approvals_company_id_companies_id_fk",
-          "tableFrom": "issue_approvals",
+        "task_approvals_company_id_companies_id_fk": {
+          "name": "task_approvals_company_id_companies_id_fk",
+          "tableFrom": "task_approvals",
           "tableTo": "companies",
           "columnsFrom": [
             "company_id"
@@ -4129,12 +4129,12 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "issue_approvals_issue_id_issues_id_fk": {
-          "name": "issue_approvals_issue_id_issues_id_fk",
-          "tableFrom": "issue_approvals",
-          "tableTo": "issues",
+        "task_approvals_task_id_tasks_id_fk": {
+          "name": "task_approvals_task_id_tasks_id_fk",
+          "tableFrom": "task_approvals",
+          "tableTo": "tasks",
           "columnsFrom": [
-            "issue_id"
+            "task_id"
           ],
           "columnsTo": [
             "id"
@@ -4142,9 +4142,9 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "issue_approvals_approval_id_approvals_id_fk": {
-          "name": "issue_approvals_approval_id_approvals_id_fk",
-          "tableFrom": "issue_approvals",
+        "task_approvals_approval_id_approvals_id_fk": {
+          "name": "task_approvals_approval_id_approvals_id_fk",
+          "tableFrom": "task_approvals",
           "tableTo": "approvals",
           "columnsFrom": [
             "approval_id"
@@ -4155,9 +4155,9 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "issue_approvals_linked_by_agent_id_agents_id_fk": {
-          "name": "issue_approvals_linked_by_agent_id_agents_id_fk",
-          "tableFrom": "issue_approvals",
+        "task_approvals_linked_by_agent_id_agents_id_fk": {
+          "name": "task_approvals_linked_by_agent_id_agents_id_fk",
+          "tableFrom": "task_approvals",
           "tableTo": "agents",
           "columnsFrom": [
             "linked_by_agent_id"
@@ -4170,10 +4170,10 @@
         }
       },
       "compositePrimaryKeys": {
-        "issue_approvals_pk": {
-          "name": "issue_approvals_pk",
+        "task_approvals_pk": {
+          "name": "task_approvals_pk",
           "columns": [
-            "issue_id",
+            "task_id",
             "approval_id"
           ]
         }
@@ -4183,8 +4183,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.issue_attachments": {
-      "name": "issue_attachments",
+    "public.task_attachments": {
+      "name": "task_attachments",
       "schema": "",
       "columns": {
         "id": {
@@ -4200,8 +4200,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "issue_id": {
-          "name": "issue_id",
+        "task_id": {
+          "name": "task_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -4212,8 +4212,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "issue_comment_id": {
-          "name": "issue_comment_id",
+        "task_comment_id": {
+          "name": "task_comment_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -4234,8 +4234,8 @@
         }
       },
       "indexes": {
-        "issue_attachments_company_issue_idx": {
-          "name": "issue_attachments_company_issue_idx",
+        "task_attachments_company_task_idx": {
+          "name": "task_attachments_company_task_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -4244,7 +4244,7 @@
               "nulls": "last"
             },
             {
-              "expression": "issue_id",
+              "expression": "task_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4255,11 +4255,11 @@
           "method": "btree",
           "with": {}
         },
-        "issue_attachments_issue_comment_idx": {
-          "name": "issue_attachments_issue_comment_idx",
+        "task_attachments_task_comment_idx": {
+          "name": "task_attachments_task_comment_idx",
           "columns": [
             {
-              "expression": "issue_comment_id",
+              "expression": "task_comment_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4270,8 +4270,8 @@
           "method": "btree",
           "with": {}
         },
-        "issue_attachments_asset_uq": {
-          "name": "issue_attachments_asset_uq",
+        "task_attachments_asset_uq": {
+          "name": "task_attachments_asset_uq",
           "columns": [
             {
               "expression": "asset_id",
@@ -4287,9 +4287,9 @@
         }
       },
       "foreignKeys": {
-        "issue_attachments_company_id_companies_id_fk": {
-          "name": "issue_attachments_company_id_companies_id_fk",
-          "tableFrom": "issue_attachments",
+        "task_attachments_company_id_companies_id_fk": {
+          "name": "task_attachments_company_id_companies_id_fk",
+          "tableFrom": "task_attachments",
           "tableTo": "companies",
           "columnsFrom": [
             "company_id"
@@ -4300,12 +4300,12 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "issue_attachments_issue_id_issues_id_fk": {
-          "name": "issue_attachments_issue_id_issues_id_fk",
-          "tableFrom": "issue_attachments",
-          "tableTo": "issues",
+        "task_attachments_task_id_tasks_id_fk": {
+          "name": "task_attachments_task_id_tasks_id_fk",
+          "tableFrom": "task_attachments",
+          "tableTo": "tasks",
           "columnsFrom": [
-            "issue_id"
+            "task_id"
           ],
           "columnsTo": [
             "id"
@@ -4313,9 +4313,9 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "issue_attachments_asset_id_assets_id_fk": {
-          "name": "issue_attachments_asset_id_assets_id_fk",
-          "tableFrom": "issue_attachments",
+        "task_attachments_asset_id_assets_id_fk": {
+          "name": "task_attachments_asset_id_assets_id_fk",
+          "tableFrom": "task_attachments",
           "tableTo": "assets",
           "columnsFrom": [
             "asset_id"
@@ -4326,12 +4326,12 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "issue_attachments_issue_comment_id_issue_comments_id_fk": {
-          "name": "issue_attachments_issue_comment_id_issue_comments_id_fk",
-          "tableFrom": "issue_attachments",
-          "tableTo": "issue_comments",
+        "task_attachments_task_comment_id_task_comments_id_fk": {
+          "name": "task_attachments_task_comment_id_task_comments_id_fk",
+          "tableFrom": "task_attachments",
+          "tableTo": "task_comments",
           "columnsFrom": [
-            "issue_comment_id"
+            "task_comment_id"
           ],
           "columnsTo": [
             "id"
@@ -4346,8 +4346,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.issue_comments": {
-      "name": "issue_comments",
+    "public.task_comments": {
+      "name": "task_comments",
       "schema": "",
       "columns": {
         "id": {
@@ -4363,8 +4363,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "issue_id": {
-          "name": "issue_id",
+        "task_id": {
+          "name": "task_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -4403,11 +4403,11 @@
         }
       },
       "indexes": {
-        "issue_comments_issue_idx": {
-          "name": "issue_comments_issue_idx",
+        "task_comments_task_idx": {
+          "name": "task_comments_task_idx",
           "columns": [
             {
-              "expression": "issue_id",
+              "expression": "task_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4418,8 +4418,8 @@
           "method": "btree",
           "with": {}
         },
-        "issue_comments_company_idx": {
-          "name": "issue_comments_company_idx",
+        "task_comments_company_idx": {
+          "name": "task_comments_company_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -4433,8 +4433,8 @@
           "method": "btree",
           "with": {}
         },
-        "issue_comments_company_issue_created_at_idx": {
-          "name": "issue_comments_company_issue_created_at_idx",
+        "task_comments_company_task_created_at_idx": {
+          "name": "task_comments_company_task_created_at_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -4443,7 +4443,7 @@
               "nulls": "last"
             },
             {
-              "expression": "issue_id",
+              "expression": "task_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4460,8 +4460,8 @@
           "method": "btree",
           "with": {}
         },
-        "issue_comments_company_author_issue_created_at_idx": {
-          "name": "issue_comments_company_author_issue_created_at_idx",
+        "task_comments_company_author_task_created_at_idx": {
+          "name": "task_comments_company_author_task_created_at_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -4476,7 +4476,7 @@
               "nulls": "last"
             },
             {
-              "expression": "issue_id",
+              "expression": "task_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4495,9 +4495,9 @@
         }
       },
       "foreignKeys": {
-        "issue_comments_company_id_companies_id_fk": {
-          "name": "issue_comments_company_id_companies_id_fk",
-          "tableFrom": "issue_comments",
+        "task_comments_company_id_companies_id_fk": {
+          "name": "task_comments_company_id_companies_id_fk",
+          "tableFrom": "task_comments",
           "tableTo": "companies",
           "columnsFrom": [
             "company_id"
@@ -4508,12 +4508,12 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "issue_comments_issue_id_issues_id_fk": {
-          "name": "issue_comments_issue_id_issues_id_fk",
-          "tableFrom": "issue_comments",
-          "tableTo": "issues",
+        "task_comments_task_id_tasks_id_fk": {
+          "name": "task_comments_task_id_tasks_id_fk",
+          "tableFrom": "task_comments",
+          "tableTo": "tasks",
           "columnsFrom": [
-            "issue_id"
+            "task_id"
           ],
           "columnsTo": [
             "id"
@@ -4521,9 +4521,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "issue_comments_author_agent_id_agents_id_fk": {
-          "name": "issue_comments_author_agent_id_agents_id_fk",
-          "tableFrom": "issue_comments",
+        "task_comments_author_agent_id_agents_id_fk": {
+          "name": "task_comments_author_agent_id_agents_id_fk",
+          "tableFrom": "task_comments",
           "tableTo": "agents",
           "columnsFrom": [
             "author_agent_id"
@@ -4541,8 +4541,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.issue_documents": {
-      "name": "issue_documents",
+    "public.task_documents": {
+      "name": "task_documents",
       "schema": "",
       "columns": {
         "id": {
@@ -4558,8 +4558,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "issue_id": {
-          "name": "issue_id",
+        "task_id": {
+          "name": "task_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -4592,8 +4592,8 @@
         }
       },
       "indexes": {
-        "issue_documents_company_issue_key_uq": {
-          "name": "issue_documents_company_issue_key_uq",
+        "task_documents_company_task_key_uq": {
+          "name": "task_documents_company_task_key_uq",
           "columns": [
             {
               "expression": "company_id",
@@ -4602,7 +4602,7 @@
               "nulls": "last"
             },
             {
-              "expression": "issue_id",
+              "expression": "task_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4619,8 +4619,8 @@
           "method": "btree",
           "with": {}
         },
-        "issue_documents_document_uq": {
-          "name": "issue_documents_document_uq",
+        "task_documents_document_uq": {
+          "name": "task_documents_document_uq",
           "columns": [
             {
               "expression": "document_id",
@@ -4634,8 +4634,8 @@
           "method": "btree",
           "with": {}
         },
-        "issue_documents_company_issue_updated_idx": {
-          "name": "issue_documents_company_issue_updated_idx",
+        "task_documents_company_task_updated_idx": {
+          "name": "task_documents_company_task_updated_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -4644,7 +4644,7 @@
               "nulls": "last"
             },
             {
-              "expression": "issue_id",
+              "expression": "task_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4663,9 +4663,9 @@
         }
       },
       "foreignKeys": {
-        "issue_documents_company_id_companies_id_fk": {
-          "name": "issue_documents_company_id_companies_id_fk",
-          "tableFrom": "issue_documents",
+        "task_documents_company_id_companies_id_fk": {
+          "name": "task_documents_company_id_companies_id_fk",
+          "tableFrom": "task_documents",
           "tableTo": "companies",
           "columnsFrom": [
             "company_id"
@@ -4676,12 +4676,12 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "issue_documents_issue_id_issues_id_fk": {
-          "name": "issue_documents_issue_id_issues_id_fk",
-          "tableFrom": "issue_documents",
-          "tableTo": "issues",
+        "task_documents_task_id_tasks_id_fk": {
+          "name": "task_documents_task_id_tasks_id_fk",
+          "tableFrom": "task_documents",
+          "tableTo": "tasks",
           "columnsFrom": [
-            "issue_id"
+            "task_id"
           ],
           "columnsTo": [
             "id"
@@ -4689,9 +4689,9 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "issue_documents_document_id_documents_id_fk": {
-          "name": "issue_documents_document_id_documents_id_fk",
-          "tableFrom": "issue_documents",
+        "task_documents_document_id_documents_id_fk": {
+          "name": "task_documents_document_id_documents_id_fk",
+          "tableFrom": "task_documents",
           "tableTo": "documents",
           "columnsFrom": [
             "document_id"
@@ -4709,12 +4709,12 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.issue_labels": {
-      "name": "issue_labels",
+    "public.task_labels": {
+      "name": "task_labels",
       "schema": "",
       "columns": {
-        "issue_id": {
-          "name": "issue_id",
+        "task_id": {
+          "name": "task_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -4740,11 +4740,11 @@
         }
       },
       "indexes": {
-        "issue_labels_issue_idx": {
-          "name": "issue_labels_issue_idx",
+        "task_labels_task_idx": {
+          "name": "task_labels_task_idx",
           "columns": [
             {
-              "expression": "issue_id",
+              "expression": "task_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4755,8 +4755,8 @@
           "method": "btree",
           "with": {}
         },
-        "issue_labels_label_idx": {
-          "name": "issue_labels_label_idx",
+        "task_labels_label_idx": {
+          "name": "task_labels_label_idx",
           "columns": [
             {
               "expression": "label_id",
@@ -4770,8 +4770,8 @@
           "method": "btree",
           "with": {}
         },
-        "issue_labels_company_idx": {
-          "name": "issue_labels_company_idx",
+        "task_labels_company_idx": {
+          "name": "task_labels_company_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -4787,12 +4787,12 @@
         }
       },
       "foreignKeys": {
-        "issue_labels_issue_id_issues_id_fk": {
-          "name": "issue_labels_issue_id_issues_id_fk",
-          "tableFrom": "issue_labels",
-          "tableTo": "issues",
+        "task_labels_task_id_tasks_id_fk": {
+          "name": "task_labels_task_id_tasks_id_fk",
+          "tableFrom": "task_labels",
+          "tableTo": "tasks",
           "columnsFrom": [
-            "issue_id"
+            "task_id"
           ],
           "columnsTo": [
             "id"
@@ -4800,9 +4800,9 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "issue_labels_label_id_labels_id_fk": {
-          "name": "issue_labels_label_id_labels_id_fk",
-          "tableFrom": "issue_labels",
+        "task_labels_label_id_labels_id_fk": {
+          "name": "task_labels_label_id_labels_id_fk",
+          "tableFrom": "task_labels",
           "tableTo": "labels",
           "columnsFrom": [
             "label_id"
@@ -4813,9 +4813,9 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "issue_labels_company_id_companies_id_fk": {
-          "name": "issue_labels_company_id_companies_id_fk",
-          "tableFrom": "issue_labels",
+        "task_labels_company_id_companies_id_fk": {
+          "name": "task_labels_company_id_companies_id_fk",
+          "tableFrom": "task_labels",
           "tableTo": "companies",
           "columnsFrom": [
             "company_id"
@@ -4828,10 +4828,10 @@
         }
       },
       "compositePrimaryKeys": {
-        "issue_labels_pk": {
-          "name": "issue_labels_pk",
+        "task_labels_pk": {
+          "name": "task_labels_pk",
           "columns": [
-            "issue_id",
+            "task_id",
             "label_id"
           ]
         }
@@ -4841,8 +4841,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.issue_read_states": {
-      "name": "issue_read_states",
+    "public.task_read_states": {
+      "name": "task_read_states",
       "schema": "",
       "columns": {
         "id": {
@@ -4858,8 +4858,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "issue_id": {
-          "name": "issue_id",
+        "task_id": {
+          "name": "task_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -4893,8 +4893,8 @@
         }
       },
       "indexes": {
-        "issue_read_states_company_issue_idx": {
-          "name": "issue_read_states_company_issue_idx",
+        "task_read_states_company_task_idx": {
+          "name": "task_read_states_company_task_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -4903,7 +4903,7 @@
               "nulls": "last"
             },
             {
-              "expression": "issue_id",
+              "expression": "task_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4914,8 +4914,8 @@
           "method": "btree",
           "with": {}
         },
-        "issue_read_states_company_user_idx": {
-          "name": "issue_read_states_company_user_idx",
+        "task_read_states_company_user_idx": {
+          "name": "task_read_states_company_user_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -4935,8 +4935,8 @@
           "method": "btree",
           "with": {}
         },
-        "issue_read_states_company_issue_user_idx": {
-          "name": "issue_read_states_company_issue_user_idx",
+        "task_read_states_company_task_user_idx": {
+          "name": "task_read_states_company_task_user_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -4945,7 +4945,7 @@
               "nulls": "last"
             },
             {
-              "expression": "issue_id",
+              "expression": "task_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4964,9 +4964,9 @@
         }
       },
       "foreignKeys": {
-        "issue_read_states_company_id_companies_id_fk": {
-          "name": "issue_read_states_company_id_companies_id_fk",
-          "tableFrom": "issue_read_states",
+        "task_read_states_company_id_companies_id_fk": {
+          "name": "task_read_states_company_id_companies_id_fk",
+          "tableFrom": "task_read_states",
           "tableTo": "companies",
           "columnsFrom": [
             "company_id"
@@ -4977,12 +4977,12 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "issue_read_states_issue_id_issues_id_fk": {
-          "name": "issue_read_states_issue_id_issues_id_fk",
-          "tableFrom": "issue_read_states",
-          "tableTo": "issues",
+        "task_read_states_task_id_tasks_id_fk": {
+          "name": "task_read_states_task_id_tasks_id_fk",
+          "tableFrom": "task_read_states",
+          "tableTo": "tasks",
           "columnsFrom": [
-            "issue_id"
+            "task_id"
           ],
           "columnsTo": [
             "id"
@@ -4997,8 +4997,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.issues": {
-      "name": "issues",
+    "public.tasks": {
+      "name": "tasks",
       "schema": "",
       "columns": {
         "id": {
@@ -5106,8 +5106,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "issue_number": {
-          "name": "issue_number",
+        "task_number": {
+          "name": "task_number",
           "type": "integer",
           "primaryKey": false,
           "notNull": false
@@ -5183,8 +5183,8 @@
         }
       },
       "indexes": {
-        "issues_company_status_idx": {
-          "name": "issues_company_status_idx",
+        "tasks_company_status_idx": {
+          "name": "tasks_company_status_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -5204,8 +5204,8 @@
           "method": "btree",
           "with": {}
         },
-        "issues_company_assignee_status_idx": {
-          "name": "issues_company_assignee_status_idx",
+        "tasks_company_assignee_status_idx": {
+          "name": "tasks_company_assignee_status_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -5231,8 +5231,8 @@
           "method": "btree",
           "with": {}
         },
-        "issues_company_assignee_user_status_idx": {
-          "name": "issues_company_assignee_user_status_idx",
+        "tasks_company_assignee_user_status_idx": {
+          "name": "tasks_company_assignee_user_status_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -5258,8 +5258,8 @@
           "method": "btree",
           "with": {}
         },
-        "issues_company_parent_idx": {
-          "name": "issues_company_parent_idx",
+        "tasks_company_parent_idx": {
+          "name": "tasks_company_parent_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -5279,8 +5279,8 @@
           "method": "btree",
           "with": {}
         },
-        "issues_company_project_idx": {
-          "name": "issues_company_project_idx",
+        "tasks_company_project_idx": {
+          "name": "tasks_company_project_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -5300,8 +5300,8 @@
           "method": "btree",
           "with": {}
         },
-        "issues_identifier_idx": {
-          "name": "issues_identifier_idx",
+        "tasks_identifier_idx": {
+          "name": "tasks_identifier_idx",
           "columns": [
             {
               "expression": "identifier",
@@ -5317,9 +5317,9 @@
         }
       },
       "foreignKeys": {
-        "issues_company_id_companies_id_fk": {
-          "name": "issues_company_id_companies_id_fk",
-          "tableFrom": "issues",
+        "tasks_company_id_companies_id_fk": {
+          "name": "tasks_company_id_companies_id_fk",
+          "tableFrom": "tasks",
           "tableTo": "companies",
           "columnsFrom": [
             "company_id"
@@ -5330,9 +5330,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "issues_project_id_projects_id_fk": {
-          "name": "issues_project_id_projects_id_fk",
-          "tableFrom": "issues",
+        "tasks_project_id_projects_id_fk": {
+          "name": "tasks_project_id_projects_id_fk",
+          "tableFrom": "tasks",
           "tableTo": "projects",
           "columnsFrom": [
             "project_id"
@@ -5343,9 +5343,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "issues_goal_id_goals_id_fk": {
-          "name": "issues_goal_id_goals_id_fk",
-          "tableFrom": "issues",
+        "tasks_goal_id_goals_id_fk": {
+          "name": "tasks_goal_id_goals_id_fk",
+          "tableFrom": "tasks",
           "tableTo": "goals",
           "columnsFrom": [
             "goal_id"
@@ -5356,10 +5356,10 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "issues_parent_id_issues_id_fk": {
-          "name": "issues_parent_id_issues_id_fk",
-          "tableFrom": "issues",
-          "tableTo": "issues",
+        "tasks_parent_id_tasks_id_fk": {
+          "name": "tasks_parent_id_tasks_id_fk",
+          "tableFrom": "tasks",
+          "tableTo": "tasks",
           "columnsFrom": [
             "parent_id"
           ],
@@ -5369,9 +5369,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "issues_assignee_agent_id_agents_id_fk": {
-          "name": "issues_assignee_agent_id_agents_id_fk",
-          "tableFrom": "issues",
+        "tasks_assignee_agent_id_agents_id_fk": {
+          "name": "tasks_assignee_agent_id_agents_id_fk",
+          "tableFrom": "tasks",
           "tableTo": "agents",
           "columnsFrom": [
             "assignee_agent_id"
@@ -5382,9 +5382,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "issues_checkout_run_id_heartbeat_runs_id_fk": {
-          "name": "issues_checkout_run_id_heartbeat_runs_id_fk",
-          "tableFrom": "issues",
+        "tasks_checkout_run_id_heartbeat_runs_id_fk": {
+          "name": "tasks_checkout_run_id_heartbeat_runs_id_fk",
+          "tableFrom": "tasks",
           "tableTo": "heartbeat_runs",
           "columnsFrom": [
             "checkout_run_id"
@@ -5395,9 +5395,9 @@
           "onDelete": "set null",
           "onUpdate": "no action"
         },
-        "issues_execution_run_id_heartbeat_runs_id_fk": {
-          "name": "issues_execution_run_id_heartbeat_runs_id_fk",
-          "tableFrom": "issues",
+        "tasks_execution_run_id_heartbeat_runs_id_fk": {
+          "name": "tasks_execution_run_id_heartbeat_runs_id_fk",
+          "tableFrom": "tasks",
           "tableTo": "heartbeat_runs",
           "columnsFrom": [
             "execution_run_id"
@@ -5408,9 +5408,9 @@
           "onDelete": "set null",
           "onUpdate": "no action"
         },
-        "issues_created_by_agent_id_agents_id_fk": {
-          "name": "issues_created_by_agent_id_agents_id_fk",
-          "tableFrom": "issues",
+        "tasks_created_by_agent_id_agents_id_fk": {
+          "name": "tasks_created_by_agent_id_agents_id_fk",
+          "tableFrom": "tasks",
           "tableTo": "agents",
           "columnsFrom": [
             "created_by_agent_id"
@@ -7568,8 +7568,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "issue_id": {
-          "name": "issue_id",
+        "task_id": {
+          "name": "task_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -7838,12 +7838,12 @@
           "onDelete": "set null",
           "onUpdate": "no action"
         },
-        "workspace_runtime_services_issue_id_issues_id_fk": {
-          "name": "workspace_runtime_services_issue_id_issues_id_fk",
+        "workspace_runtime_services_task_id_tasks_id_fk": {
+          "name": "workspace_runtime_services_task_id_tasks_id_fk",
           "tableFrom": "workspace_runtime_services",
-          "tableTo": "issues",
+          "tableTo": "tasks",
           "columnsFrom": [
-            "issue_id"
+            "task_id"
           ],
           "columnsTo": [
             "id"

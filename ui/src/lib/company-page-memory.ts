@@ -15,15 +15,15 @@ export function isRememberableCompanyPath(path: string): boolean {
   return true;
 }
 
-function findCompanyByPrefix<T extends { id: string; issuePrefix: string }>(params: {
+function findCompanyByPrefix<T extends { id: string; taskPrefix: string }>(params: {
   companies: T[];
   companyPrefix: string;
 }): T | null {
   const normalizedPrefix = normalizeCompanyPrefix(params.companyPrefix);
-  return params.companies.find((company) => normalizeCompanyPrefix(company.issuePrefix) === normalizedPrefix) ?? null;
+  return params.companies.find((company) => normalizeCompanyPrefix(company.taskPrefix) === normalizedPrefix) ?? null;
 }
 
-export function getRememberedPathOwnerCompanyId<T extends { id: string; issuePrefix: string }>(params: {
+export function getRememberedPathOwnerCompanyId<T extends { id: string; taskPrefix: string }>(params: {
   companies: T[];
   pathname: string;
   fallbackCompanyId: string | null;
@@ -51,7 +51,7 @@ export function sanitizeRememberedPathForCompany(params: {
   const pathname = relativePath.split("?")[0] ?? "";
   const segments = pathname.split("/").filter(Boolean);
   const [root, entityId] = segments;
-  if (root === "issues" && entityId) {
+  if (root === "tasks" && entityId) {
     const identifierMatch = /^([A-Za-z]+)-\d+$/.exec(entityId);
     if (
       identifierMatch &&

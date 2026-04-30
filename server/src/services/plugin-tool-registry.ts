@@ -4,8 +4,8 @@
  * Responsibilities:
  * - Store tool declarations (from plugin manifests) alongside routing metadata
  *   so the host can resolve namespaced tool names to the owning plugin worker.
- * - Namespace tools automatically: a tool `"search-issues"` from plugin
- *   `"acme.linear"` is exposed to agents as `"acme.linear:search-issues"`.
+ * - Namespace tools automatically: a tool `"search-tasks"` from plugin
+ *   `"acme.linear"` is exposed to agents as `"acme.linear:search-tasks"`.
  * - Route `executeTool` calls to the correct plugin worker via the
  *   `PluginWorkerManager`.
  * - Provide tool discovery queries so agents can list available tools.
@@ -34,7 +34,7 @@ import { logger } from "../middleware/logger.js";
 /**
  * Separator between plugin ID and tool name in the namespaced tool identifier.
  *
- * Example: `"acme.linear:search-issues"`
+ * Example: `"acme.linear:search-tasks"`
  */
 export const TOOL_NAMESPACE_SEPARATOR = ":";
 
@@ -126,7 +126,7 @@ export interface PluginToolRegistry {
   /**
    * Look up a registered tool by its namespaced name.
    *
-   * @param namespacedName - Fully qualified name, e.g. `"acme.linear:search-issues"`
+   * @param namespacedName - Fully qualified name, e.g. `"acme.linear:search-tasks"`
    * @returns The registered tool entry, or `null` if not found
    */
   getTool(namespacedName: string): RegisteredTool | null;
@@ -151,7 +151,7 @@ export interface PluginToolRegistry {
   /**
    * Parse a namespaced tool name into plugin ID and bare tool name.
    *
-   * @param namespacedName - e.g. `"acme.linear:search-issues"`
+   * @param namespacedName - e.g. `"acme.linear:search-tasks"`
    * @returns `{ pluginId, toolName }` or `null` if the format is invalid
    */
   parseNamespacedName(namespacedName: string): { pluginId: string; toolName: string } | null;
@@ -160,8 +160,8 @@ export interface PluginToolRegistry {
    * Build a namespaced tool name from a plugin ID and bare tool name.
    *
    * @param pluginId - e.g. `"acme.linear"`
-   * @param toolName - e.g. `"search-issues"`
-   * @returns The namespaced name, e.g. `"acme.linear:search-issues"`
+   * @param toolName - e.g. `"search-tasks"`
+   * @returns The namespaced name, e.g. `"acme.linear:search-tasks"`
    */
   buildNamespacedName(pluginId: string, toolName: string): string;
 
@@ -171,7 +171,7 @@ export interface PluginToolRegistry {
    * Resolves the namespaced name to the owning plugin, validates the tool
    * exists, and dispatches the `executeTool` RPC call to the worker.
    *
-   * @param namespacedName - Fully qualified tool name (e.g. `"acme.linear:search-issues"`)
+   * @param namespacedName - Fully qualified tool name (e.g. `"acme.linear:search-tasks"`)
    * @param parameters - The parsed parameters matching the tool's schema
    * @param runContext - Agent run context
    * @returns The execution result with routing metadata
@@ -214,11 +214,11 @@ export interface PluginToolRegistry {
  *
  * // List all available tools for agents
  * const tools = toolRegistry.listTools();
- * // → [{ namespacedName: "acme.linear:search-issues", ... }]
+ * // → [{ namespacedName: "acme.linear:search-tasks", ... }]
  *
  * // Execute a tool
  * const result = await toolRegistry.executeTool(
- *   "acme.linear:search-issues",
+ *   "acme.linear:search-tasks",
  *   { query: "auth bug" },
  *   { agentId: "agent-1", runId: "run-1", companyId: "co-1", projectId: "proj-1" },
  * );

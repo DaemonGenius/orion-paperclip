@@ -69,8 +69,8 @@ test.describe("Docker authenticated onboarding smoke", () => {
     await expect(page.getByText(AGENT_NAME)).toBeVisible();
     await expect(page.getByText(TASK_TITLE)).toBeVisible();
 
-    await page.getByRole("button", { name: "Create & Open Issue" }).click();
-    await expect(page).toHaveURL(/\/issues\//, { timeout: 10_000 });
+    await page.getByRole("button", { name: "Create & Open Task" }).click();
+    await expect(page).toHaveURL(/\/tasks\//, { timeout: 10_000 });
 
     const baseUrl = new URL(page.url()).origin;
 
@@ -95,18 +95,18 @@ test.describe("Docker authenticated onboarding smoke", () => {
     expect(ceoAgent!.role).toBe("ceo");
     expect(ceoAgent!.adapterType).not.toBe("process");
 
-    const issuesRes = await page.request.get(
-      `${baseUrl}/api/companies/${company!.id}/issues`
+    const tasksRes = await page.request.get(
+      `${baseUrl}/api/companies/${company!.id}/tasks`
     );
-    expect(issuesRes.ok()).toBe(true);
-    const issues = (await issuesRes.json()) as Array<{
+    expect(tasksRes.ok()).toBe(true);
+    const tasks = (await tasksRes.json()) as Array<{
       id: string;
       title: string;
       assigneeAgentId: string | null;
     }>;
-    const issue = issues.find((entry) => entry.title === TASK_TITLE);
-    expect(issue).toBeTruthy();
-    expect(issue!.assigneeAgentId).toBe(ceoAgent!.id);
+    const task = tasks.find((entry) => entry.title === TASK_TITLE);
+    expect(task).toBeTruthy();
+    expect(task!.assigneeAgentId).toBe(ceoAgent!.id);
 
     await expect.poll(
       async () => {

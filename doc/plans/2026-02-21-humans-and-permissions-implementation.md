@@ -218,7 +218,7 @@ Note:
 
 ## 5.3 Existing table changes
 
-1. `issues`
+1. `tasks`
 
 - add `assignee_user_id` text null
 - enforce single-assignee invariant:

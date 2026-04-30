@@ -31,7 +31,7 @@ interface ApprovalCreateOptions extends BaseClientOptions {
   type: string;
   requestedByAgentId?: string;
   payload: string;
-  issueIds?: string;
+  taskIds?: string;
 }
 
 interface ApprovalResubmitOptions extends BaseClientOptions {
@@ -114,7 +114,7 @@ export function registerApprovalCommands(program: Command): void {
       .requiredOption("--type <type>", "Approval type (hire_agent|approve_ceo_strategy)")
       .requiredOption("--payload <json>", "Approval payload as JSON object")
       .option("--requested-by-agent-id <id>", "Requesting agent ID")
-      .option("--issue-ids <csv>", "Comma-separated linked issue IDs")
+      .option("--task-ids <csv>", "Comma-separated linked task IDs")
       .action(async (opts: ApprovalCreateOptions) => {
         try {
           const ctx = resolveCommandContext(opts, { requireCompany: true });
@@ -123,7 +123,7 @@ export function registerApprovalCommands(program: Command): void {
             type: opts.type,
             payload: payloadJson,
             requestedByAgentId: opts.requestedByAgentId,
-            issueIds: parseCsv(opts.issueIds),
+            taskIds: parseCsv(opts.taskIds),
           });
           const created = await ctx.api.post<Approval>(`/api/companies/${ctx.companyId}/approvals`, payload);
           printOutput(created, { json: ctx.json });

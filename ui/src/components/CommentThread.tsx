@@ -6,7 +6,7 @@ import type {
   FeedbackDataSharingPreference,
   FeedbackVote,
   FeedbackVoteValue,
-  IssueComment,
+  TaskComment,
 } from "@paperclipai/shared";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,13 +20,13 @@ import { OutputFeedbackButtons } from "./OutputFeedbackButtons";
 import { ApprovalCard } from "./ApprovalCard";
 import { AgentIcon } from "./AgentIconPicker";
 import { formatAssigneeUserLabel } from "../lib/assignees";
-import type { IssueTimelineAssignee, IssueTimelineEvent } from "../lib/issue-timeline-events";
+import type { TaskTimelineAssignee, TaskTimelineEvent } from "../lib/task-timeline-events";
 import { timeAgo } from "../lib/timeAgo";
 import { cn, formatDateTime } from "../lib/utils";
 import { restoreSubmittedCommentDraft } from "../lib/comment-submit-draft";
 import { PluginSlotOutlet } from "@/plugins/slots";
 
-interface CommentWithRunMeta extends IssueComment {
+interface CommentWithRunMeta extends TaskComment {
   runId?: string | null;
   runAgentId?: string | null;
   clientId?: string;
@@ -74,7 +74,7 @@ interface CommentThreadProps {
   feedbackDataSharingPreference?: FeedbackDataSharingPreference;
   feedbackTermsUrl?: string | null;
   linkedRuns?: LinkedRunItem[];
-  timelineEvents?: IssueTimelineEvent[];
+  timelineEvents?: TaskTimelineEvent[];
   companyId?: string | null;
   projectId?: string | null;
   onApproveApproval?: (approvalId: string) => Promise<void>;
@@ -89,11 +89,11 @@ interface CommentThreadProps {
     options?: { allowSharing?: boolean; reason?: string },
   ) => Promise<void>;
   onAdd: (body: string, reopen?: boolean, reassignment?: CommentReassignment) => Promise<void>;
-  issueStatus?: string;
+  taskStatus?: string;
   agentMap?: Map<string, Agent>;
   currentUserId?: string | null;
   imageUploadHandler?: (file: File) => Promise<string>;
-  /** Callback to attach an image file to the parent issue (not inline in a comment). */
+  /** Callback to attach an image file to the parent task (not inline in a comment). */
   onAttachImage?: (file: File) => Promise<void>;
   draftKey?: string;
   liveRunSlot?: React.ReactNode;
@@ -162,8 +162,8 @@ function parseReassignment(target: string): CommentReassignment | null {
   return null;
 }
 
-function shouldImplicitlyReopenComment(issueStatus: string | undefined, assigneeValue: string) {
-  const resumesToTodo = issueStatus === "done" || issueStatus === "cancelled" || issueStatus === "blocked";
+function shouldImplicitlyReopenComment(taskStatus: string | undefined, assigneeValue: string) {
+  const resumesToTodo = taskStatus === "done" || taskStatus === "cancelled" || taskStatus === "blocked";
   return resumesToTodo && assigneeValue.startsWith("agent:");
 }
 
@@ -173,7 +173,7 @@ function humanizeValue(value: string | null): string {
 }
 
 function formatTimelineAssigneeLabel(
-  assignee: IssueTimelineAssignee,
+  assignee: TaskTimelineAssignee,
   agentMap?: Map<string, Agent>,
   currentUserId?: string | null,
 ) {
@@ -187,7 +187,7 @@ function formatTimelineAssigneeLabel(
 }
 
 function formatTimelineActorName(
-  actorType: IssueTimelineEvent["actorType"],
+  actorType: TaskTimelineEvent["actorType"],
   actorId: string,
   agentMap?: Map<string, Agent>,
   currentUserId?: string | null,
@@ -388,7 +388,7 @@ function CommentCard({
                 projectId: projectId ?? null,
                 entityId: comment.id,
                 entityType: "comment",
-                parentEntityId: comment.issueId,
+                parentEntityId: comment.taskId,
               }}
               className="flex flex-wrap items-center gap-1.5"
               itemClassName="inline-flex"
@@ -419,7 +419,7 @@ function CommentCard({
               projectId: projectId ?? null,
               entityId: comment.id,
               entityType: "comment",
-              parentEntityId: comment.issueId,
+              parentEntityId: comment.taskId,
             }}
             className="space-y-2"
             itemClassName="rounded-md"
@@ -473,7 +473,7 @@ function CommentCard({
 type TimelineItem =
   | { kind: "comment"; id: string; createdAtMs: number; comment: CommentWithRunMeta }
   | { kind: "approval"; id: string; createdAtMs: number; approval: Approval }
-  | { kind: "event"; id: string; createdAtMs: number; event: IssueTimelineEvent }
+  | { kind: "event"; id: string; createdAtMs: number; event: TaskTimelineEvent }
   | { kind: "run"; id: string; createdAtMs: number; run: LinkedRunItem };
 
 function TimelineEventCard({
@@ -481,7 +481,7 @@ function TimelineEventCard({
   agentMap,
   currentUserId,
 }: {
-  event: IssueTimelineEvent;
+  event: TaskTimelineEvent;
   agentMap?: Map<string, Agent>;
   currentUserId?: string | null;
 }) {
@@ -721,7 +721,7 @@ export function CommentThread({
   pendingApprovalAction = null,
   onVote,
   onAdd,
-  issueStatus,
+  taskStatus,
   agentMap,
   currentUserId,
   imageUploadHandler,
@@ -799,7 +799,7 @@ export function CommentThread({
   const feedbackVoteByTargetId = useMemo(() => {
     const map = new Map<string, FeedbackVoteValue>();
     for (const feedbackVote of feedbackVotes) {
-      if (feedbackVote.targetType !== "issue_comment") continue;
+      if (feedbackVote.targetType !== "task_comment") continue;
       map.set(feedbackVote.targetId, feedbackVote.vote);
     }
     return map;
@@ -867,7 +867,7 @@ export function CommentThread({
     const hasReassignment = enableReassign && reassignTarget !== currentAssigneeValue;
     const reassignment = hasReassignment ? parseReassignment(reassignTarget) : null;
     const reopen = shouldImplicitlyReopenComment(
-      issueStatus,
+      taskStatus,
       hasReassignment ? reassignTarget : currentAssigneeValue,
     ) ? true : undefined;
     const submittedBody = trimmed;

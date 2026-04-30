@@ -12,7 +12,7 @@ import { validate } from "../middleware/validate.js";
 import {
   accessService,
   agentService,
-  issueService,
+  taskService,
   logActivity,
   projectService,
 } from "../services/index.js";
@@ -40,7 +40,7 @@ export function environmentRoutes(
   const access = accessService(db);
   const svc = environmentService(db);
   const executionWorkspaces = executionWorkspaceService(db);
-  const issues = issueService(db);
+  const tasks = taskService(db);
   const projects = projectService(db);
   const secrets = secretService(db);
 
@@ -343,7 +343,7 @@ export function environmentRoutes(
     await assertCanMutateEnvironments(req, existing.companyId);
     await Promise.all([
       executionWorkspaces.clearEnvironmentSelection(existing.companyId, existing.id),
-      issues.clearExecutionWorkspaceEnvironmentSelection(existing.companyId, existing.id),
+      tasks.clearExecutionWorkspaceEnvironmentSelection(existing.companyId, existing.id),
       projects.clearExecutionWorkspaceEnvironmentSelection(existing.companyId, existing.id),
     ]);
     const removed = await svc.remove(existing.id);

@@ -80,11 +80,11 @@ const mockHeartbeatService = vi.hoisted(() => ({
   cancelActiveForAgent: vi.fn(),
 }));
 
-const mockIssueApprovalService = vi.hoisted(() => ({
+const mockTaskApprovalService = vi.hoisted(() => ({
   linkManyForApproval: vi.fn(),
 }));
 
-const mockIssueService = vi.hoisted(() => ({
+const mockTaskService = vi.hoisted(() => ({
   list: vi.fn(),
 }));
 
@@ -183,8 +183,8 @@ vi.mock("../services/index.js", () => ({
   companySkillService: () => mockCompanySkillService,
   budgetService: () => mockBudgetService,
   heartbeatService: () => mockHeartbeatService,
-  issueApprovalService: () => mockIssueApprovalService,
-  issueService: () => mockIssueService,
+  taskApprovalService: () => mockTaskApprovalService,
+  taskService: () => mockTaskService,
   logActivity: mockLogActivity,
   secretService: () => mockSecretService,
   syncInstructionsBundleConfigFromFilePath: vi.fn((_agent, config) => config),
@@ -262,8 +262,8 @@ function resetMockDefaults() {
   for (const mock of Object.values(mockApprovalService)) mock.mockReset();
   for (const mock of Object.values(mockBudgetService)) mock.mockReset();
   for (const mock of Object.values(mockHeartbeatService)) mock.mockReset();
-  for (const mock of Object.values(mockIssueApprovalService)) mock.mockReset();
-  for (const mock of Object.values(mockIssueService)) mock.mockReset();
+  for (const mock of Object.values(mockTaskApprovalService)) mock.mockReset();
+  for (const mock of Object.values(mockTaskService)) mock.mockReset();
   for (const mock of Object.values(mockSecretService)) mock.mockReset();
   for (const mock of Object.values(mockAgentInstructionsService)) mock.mockReset();
   for (const mock of Object.values(mockCompanySkillService)) mock.mockReset();

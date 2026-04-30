@@ -44,7 +44,7 @@ const mockHeartbeatService = vi.hoisted(() => ({
   cancelActiveForAgent: vi.fn(),
 }));
 
-const mockIssueApprovalService = vi.hoisted(() => ({
+const mockTaskApprovalService = vi.hoisted(() => ({
   linkManyForApproval: vi.fn(),
 }));
 
@@ -67,8 +67,8 @@ vi.mock("../services/index.js", () => ({
   companySkillService: () => mockCompanySkillService,
   budgetService: () => mockBudgetService,
   heartbeatService: () => mockHeartbeatService,
-  issueApprovalService: () => mockIssueApprovalService,
-  issueService: () => ({}),
+  taskApprovalService: () => mockTaskApprovalService,
+  taskService: () => ({}),
   logActivity: mockLogActivity,
   secretService: () => mockSecretService,
   syncInstructionsBundleConfigFromFilePath: vi.fn((_agent, config) => config),
@@ -88,8 +88,8 @@ function registerModuleMocks() {
     companySkillService: () => mockCompanySkillService,
     budgetService: () => mockBudgetService,
     heartbeatService: () => mockHeartbeatService,
-    issueApprovalService: () => mockIssueApprovalService,
-    issueService: () => ({}),
+    taskApprovalService: () => mockTaskApprovalService,
+    taskService: () => ({}),
     logActivity: mockLogActivity,
     secretService: () => mockSecretService,
     syncInstructionsBundleConfigFromFilePath: vi.fn((_agent, config) => config),

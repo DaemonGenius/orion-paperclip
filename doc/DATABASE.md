@@ -27,17 +27,17 @@ pnpm db:migrate
 
 When `DATABASE_URL` is unset, this command targets the current embedded PostgreSQL instance for your active Paperclip config/instance.
 
-Issue reference mentions follow the normal migration path: the schema migration creates the tracking table, but it does not backfill historical issue titles, descriptions, comments, or documents automatically.
+Task reference mentions follow the normal migration path: the schema migration creates the tracking table, but it does not backfill historical task titles, descriptions, comments, or documents automatically.
 
 To backfill existing content manually after migrating, run:
 
 ```sh
-pnpm issue-references:backfill
+pnpm task-references:backfill
 # optional: limit to one company
-pnpm issue-references:backfill -- --company <company-id>
+pnpm task-references:backfill -- --company <company-id>
 ```
 
-Future issue, comment, and document writes sync references automatically without running the backfill command.
+Future task, comment, and document writes sync references automatically without running the backfill command.
 
 This mode is ideal for local development and one-command installs.
 
@@ -59,7 +59,7 @@ cp .env.example .env
 # DATABASE_URL=postgres://paperclip:paperclip@localhost:5432/paperclip
 ```
 
-Run migrations (once the migration generation issue is fixed) or use `drizzle-kit push`:
+Run migrations (once the migration generation task is fixed) or use `drizzle-kit push`:
 
 ```sh
 DATABASE_URL=postgres://paperclip:paperclip@localhost:5432/paperclip \

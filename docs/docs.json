@@ -117,7 +117,7 @@
               "api/authentication",
               "api/companies",
               "api/agents",
-              "api/issues",
+              "api/tasks",
               "api/approvals",
               "api/goals-and-projects",
               "api/costs",

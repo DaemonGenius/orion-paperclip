@@ -2,7 +2,7 @@
 
 ## Role of This Document
 
-This document translates [workspace-product-model-and-work-product.md](/Users/dotta/paperclip-subissues/doc/plans/workspace-product-model-and-work-product.md) into an implementation-ready engineering plan.
+This document translates [workspace-product-model-and-work-product.md](/Users/dotta/paperclip-subtasks/doc/plans/workspace-product-model-and-work-product.md) into an implementation-ready engineering plan.
 
 It is intentionally concrete:
 
@@ -19,23 +19,23 @@ This is the implementation target for the first workspace-aware delivery slice.
 These decisions are treated as settled for this implementation:
 
 1. Add a new durable `execution_workspaces` table now.
-2. Each issue has at most one current execution workspace at a time.
-3. `issues` get explicit `project_workspace_id` and `execution_workspace_id`.
+2. Each task has at most one current execution workspace at a time.
+3. `tasks` get explicit `project_workspace_id` and `execution_workspace_id`.
 4. Workspace reuse is in scope for V1.
 5. The feature is gated in the UI by `/instance/settings > Experimental > Workspaces`.
 6. The gate is UI-only. Backend model changes and migrations always ship.
 7. Existing users upgrade into compatibility-preserving defaults.
 8. `project_workspaces` evolves in place rather than being replaced.
-9. Work product is issue-first, with optional links to execution workspaces and runtime services.
+9. Work product is task-first, with optional links to execution workspaces and runtime services.
 10. GitHub is the only PR provider in the first slice.
 11. Both `adapter_managed` and `cloud_sandbox` execution modes are in scope.
 12. Workspace controls ship first inside existing project properties, not in a new global navigation area.
-13. Subissues are out of scope for this implementation slice.
+13. Subtasks are out of scope for this implementation slice.
 
 ## Non-Goals
 
 - Building a full code review system
-- Solving subissue UX in this slice
+- Solving subtask UX in this slice
 - Implementing reusable shared workspace definitions across projects in this slice
 - Reworking all current runtime service behavior before introducing execution workspaces
 
@@ -45,7 +45,7 @@ The repo already has:
 
 - `project_workspaces`
 - `projects.execution_workspace_policy`
-- `issues.execution_workspace_settings`
+- `tasks.execution_workspace_settings`
 - runtime service persistence in `workspace_runtime_services`
 - local git-worktree realization in `workspace-runtime.ts`
 
@@ -54,7 +54,7 @@ This implementation should build on that baseline rather than fork it.
 ## Terminology
 
 - `Project workspace`: durable configured codebase/root for a project
-- `Execution workspace`: actual runtime workspace used for one or more issues
+- `Execution workspace`: actual runtime workspace used for one or more tasks
 - `Work product`: user-facing output such as PR, preview, branch, commit, artifact, document
 - `Runtime service`: process or service owned or tracked for a workspace
 - `Compatibility mode`: existing behavior preserved for upgraded installs with no explicit workspace opt-in
@@ -71,11 +71,11 @@ The first slice should introduce three explicit layers:
    - new durable runtime record
    - represents shared, isolated, operator-branch, or remote-managed execution context
 
-3. `Issue work product`
+3. `Task work product`
    - new durable output record
    - stores PRs, previews, branches, commits, artifacts, and documents
 
-The issue remains the planning and ownership unit.
+The task remains the planning and ownership unit.
 The execution workspace remains the runtime unit.
 The work product remains the deliverable/output unit.
 
@@ -132,9 +132,9 @@ Rules:
 
 ### UI behavior when off
 
-- hide workspace-specific issue controls
+- hide workspace-specific task controls
 - hide workspace-specific project configuration
-- hide issue `Work Product` tab if it would otherwise be empty
+- hide task `Work Product` tab if it would otherwise be empty
 - do not remove or invalidate any stored workspace data
 
 ## Data Model
@@ -181,7 +181,7 @@ Create a new durable table.
 - `company_id uuid not null`
 - `project_id uuid not null`
 - `project_workspace_id uuid null`
-- `source_issue_id uuid null`
+- `source_task_id uuid null`
 - `mode text not null`
   - `shared_workspace | isolated_workspace | operator_branch | adapter_managed | cloud_sandbox`
 - `strategy_type text not null`
@@ -211,18 +211,18 @@ Create a new durable table.
 - `company_id -> companies.id`
 - `project_id -> projects.id`
 - `project_workspace_id -> project_workspaces.id on delete set null`
-- `source_issue_id -> issues.id on delete set null`
+- `source_task_id -> tasks.id on delete set null`
 - `derived_from_execution_workspace_id -> execution_workspaces.id on delete set null`
 
 ### Indexes
 
 - `(company_id, project_id, status)`
 - `(company_id, project_workspace_id, status)`
-- `(company_id, source_issue_id)`
+- `(company_id, source_task_id)`
 - `(company_id, last_used_at desc)`
 - `(company_id, branch_name)` non-unique
 
-## 3. Extend `issues`
+## 3. Extend `tasks`
 
 Add explicit workspace linkage.
 
@@ -240,16 +240,16 @@ Add explicit workspace linkage.
 
 ### Backfill rules
 
-- all existing issues get null values
+- all existing tasks get null values
 - null should be interpreted as compatibility/inherit behavior
 
 ### Invariants
 
-- if `project_workspace_id` is set, it must belong to the issue's project and company
-- if `execution_workspace_id` is set, it must belong to the issue's company
-- if `execution_workspace_id` is set, the referenced workspace's `project_id` must match the issue's `project_id`
+- if `project_workspace_id` is set, it must belong to the task's project and company
+- if `execution_workspace_id` is set, it must belong to the task's company
+- if `execution_workspace_id` is set, the referenced workspace's `project_id` must match the task's `project_id`
 
-## 4. Add `issue_work_products`
+## 4. Add `task_work_products`
 
 Create a new durable table for outputs.
 
@@ -258,7 +258,7 @@ Create a new durable table for outputs.
 - `id uuid pk`
 - `company_id uuid not null`
 - `project_id uuid null`
-- `issue_id uuid not null`
+- `task_id uuid not null`
 - `execution_workspace_id uuid null`
 - `runtime_service_id uuid null`
 - `type text not null`
@@ -285,14 +285,14 @@ Create a new durable table for outputs.
 
 - `company_id -> companies.id`
 - `project_id -> projects.id on delete set null`
-- `issue_id -> issues.id on delete cascade`
+- `task_id -> tasks.id on delete cascade`
 - `execution_workspace_id -> execution_workspaces.id on delete set null`
 - `runtime_service_id -> workspace_runtime_services.id on delete set null`
 - `created_by_run_id -> heartbeat_runs.id on delete set null`
 
 ### Indexes
 
-- `(company_id, issue_id, type)`
+- `(company_id, task_id, type)`
 - `(company_id, execution_workspace_id, type)`
 - `(company_id, provider, external_id)`
 - `(company_id, updated_at desc)`
@@ -312,7 +312,7 @@ This table already exists and should remain the system of record for owned/track
 ### Behavior
 
 - runtime services remain workspace-first
-- issue UIs should surface them through linked execution workspaces and work products
+- task UIs should surface them through linked execution workspaces and work products
 
 ## Shared Contracts
 
@@ -344,19 +344,19 @@ New shared types:
 
 New shared types:
 
-- `IssueWorkProduct`
-- `IssueWorkProductType`
-- `IssueWorkProductStatus`
-- `IssueWorkProductReviewState`
+- `TaskWorkProduct`
+- `TaskWorkProductType`
+- `TaskWorkProductStatus`
+- `TaskWorkProductReviewState`
 
-### Update issue types and validators
+### Update task types and validators
 
 Add:
 
 - `projectWorkspaceId`
 - `executionWorkspaceId`
 - `executionWorkspacePreference`
-- `workProducts?: IssueWorkProduct[]`
+- `workProducts?: TaskWorkProduct[]`
 
 ### Extend project execution policy contract
 
@@ -365,7 +365,7 @@ Replace the current narrow policy with a more explicit shape:
 - `enabled`
 - `defaultMode`
   - `shared_workspace | isolated_workspace | operator_branch | adapter_default`
-- `allowIssueOverride`
+- `allowTaskOverride`
 - `defaultProjectWorkspaceId`
 - `workspaceStrategy`
 - `branchPolicy`
@@ -388,7 +388,7 @@ Update project workspace CRUD to handle the extended schema.
 - local/git-backed workspaces should still require one of `cwd` or `repo_url`
 - preserve current behavior for existing callers that only send `cwd/repoUrl/repoRef`
 
-## 2. Issue service
+## 2. Task service
 
 Update create/update flows to handle explicit workspace binding.
 
@@ -407,7 +407,7 @@ Resolve `executionWorkspacePreference`:
 2. project policy default
 3. compatibility fallback to `inherit`
 
-Do not create an execution workspace at issue creation time unless:
+Do not create an execution workspace at task creation time unless:
 
 - `reuse_existing` is explicitly chosen and `executionWorkspaceId` is provided
 
@@ -427,7 +427,7 @@ Refactor `workspace-runtime.ts` so realization produces or reuses an `execution_
 
 Input:
 
-- issue
+- task
 - project workspace
 - project execution policy
 - execution topology hint
@@ -474,15 +474,15 @@ This avoids a special-case branch in later work product linkage.
 When runtime services are started or reused:
 
 - populate `execution_workspace_id`
-- continue populating `project_workspace_id`, `project_id`, and `issue_id`
+- continue populating `project_workspace_id`, `project_id`, and `task_id`
 
 When a runtime service yields a URL:
 
-- optionally create or update a linked `issue_work_products` row of type `runtime_service` or `preview_url`
+- optionally create or update a linked `task_work_products` row of type `runtime_service` or `preview_url`
 
 ## 5. PR and preview reporting
 
-Add a service for creating/updating `issue_work_products`.
+Add a service for creating/updating `task_work_products`.
 
 ### Supported V1 product types
 
@@ -539,7 +539,7 @@ Add:
     - `projectId`
     - `projectWorkspaceId`
     - `status`
-    - `issueId`
+    - `taskId`
     - `reuseEligible=true`
 - `GET /execution-workspaces/:id`
 - `PATCH /execution-workspaces/:id`
@@ -551,18 +551,18 @@ Do not add top-level navigation for these routes yet.
 
 Add:
 
-- `GET /issues/:id/work-products`
-- `POST /issues/:id/work-products`
+- `GET /tasks/:id/work-products`
+- `POST /tasks/:id/work-products`
 - `PATCH /work-products/:id`
 - `DELETE /work-products/:id`
 
 ### V1 mutation permissions
 
 - board can create/update/delete all
-- agents can create/update for issues they are assigned or currently executing
+- agents can create/update for tasks they are assigned or currently executing
 - deletion should generally archive rather than hard-delete once linked to historical output
 
-## 4. Issue routes
+## 4. Task routes
 
 Extend existing create/update payloads to accept:
 
@@ -570,7 +570,7 @@ Extend existing create/update payloads to accept:
 - `executionWorkspacePreference`
 - `executionWorkspaceId`
 
-Extend `GET /issues/:id` to return:
+Extend `GET /tasks/:id` to return:
 
 - `projectWorkspaceId`
 - `executionWorkspaceId`
@@ -600,7 +600,7 @@ Add section:
 When off:
 
 - hide new workspace-specific affordances
-- do not alter existing project or issue behavior
+- do not alter existing project or task behavior
 
 ## 2. Project properties
 
@@ -623,7 +623,7 @@ Ship inside existing project properties first.
 - only show git-specific fields when `sourceType=git_repo`
 - only show local-path-specific fields when not `remote_managed`
 
-## 3. Issue create dialog
+## 3. Task create dialog
 
 When the workspace experimental flag is on and the selected project has workspace automation or workspaces:
 
@@ -651,12 +651,12 @@ This control should query only:
 
 Do not expose all execution workspaces in a noisy unfiltered list.
 
-## 4. Issue detail
+## 4. Task detail
 
 Add a `Work Product` tab when:
 
 - the experimental flag is on, or
-- the issue already has work products
+- the task already has work products
 
 ### Show
 
@@ -679,15 +679,15 @@ Add a detail route but no nav item.
 
 Linked from:
 
-- issue work product tab
+- task work product tab
 - project workspace/execution panels
 
 ### Show
 
 - identity and status
 - project workspace origin
-- source issue
-- linked issues
+- source task
+- linked tasks
 - branch/ref/provider info
 - runtime services
 - work products
@@ -701,7 +701,7 @@ For local adapters:
 
 - continue to use existing cwd/worktree realization paths
 - persist the result as execution workspaces
-- attach runtime services and work product to the execution workspace and issue
+- attach runtime services and work product to the execution workspace and task
 
 ## 2. Remote or cloud adapters
 
@@ -737,7 +737,7 @@ V1 should support richer PR state tracking, but not a full review engine.
 
 ### Storage approach
 
-- represent these as `issue_work_products` with `type='pull_request'`
+- represent these as `task_work_products` with `type='pull_request'`
 - use `status` and `review_state`
 - store provider-specific details in `metadata`
 
@@ -750,7 +750,7 @@ The migration posture is backward-compatible by default.
 ### Guarantees
 
 - no existing project must be edited before it keeps working
-- no existing issue flow should start requiring workspace input
+- no existing task flow should start requiring workspace input
 - all new nullable columns must preserve current behavior when absent
 
 ## 2. Project workspace migration
@@ -763,15 +763,15 @@ Migrate `project_workspaces` in place.
 - copy `repo_ref` to `default_ref`
 - leave new optional fields null
 
-## 3. Issue migration
+## 3. Task migration
 
-Do not backfill `project_workspace_id` or `execution_workspace_id` on all existing issues.
+Do not backfill `project_workspace_id` or `execution_workspace_id` on all existing tasks.
 
 Reason:
 
 - the safest migration is to preserve current runtime behavior and bind explicitly only when new workspace-aware flows are used
 
-Interpret old issues as:
+Interpret old tasks as:
 
 - `executionWorkspacePreference = inherit`
 - compatibility/shared behavior
@@ -791,15 +791,15 @@ Instead:
 
 1. extend `project_workspaces`
 2. add `execution_workspaces`
-3. add `issue_work_products`
-4. extend `issues`
+3. add `task_work_products`
+4. extend `tasks`
 5. extend `workspace_runtime_services`
 6. update shared types and validators
 
 ## Phase 2: Service wiring
 
 1. update project workspace CRUD
-2. update issue create/update resolution
+2. update task create/update resolution
 3. refactor workspace realization to persist execution workspaces
 4. attach runtime services to execution workspaces
 5. add work product service and persistence
@@ -810,8 +810,8 @@ Instead:
 2. add work product routes
 3. add instance experimental settings toggle
 4. re-enable and revise project workspace UI behind the flag
-5. add issue create/update controls behind the flag
-6. add issue work product tab
+5. add task create/update controls behind the flag
+6. add task work product tab
 7. add execution workspace detail page
 
 ## Phase 4: Provider integrations
@@ -825,11 +825,11 @@ Instead:
 
 1. Existing installs continue to behave predictably with no required reconfiguration.
 2. Projects can define local, git, non-git, and remote-managed project workspaces.
-3. Issues can explicitly select a project workspace and execution preference.
-4. Each issue can point to one current execution workspace.
-5. Multiple issues can intentionally reuse the same execution workspace.
+3. Tasks can explicitly select a project workspace and execution preference.
+4. Each task can point to one current execution workspace.
+5. Multiple tasks can intentionally reuse the same execution workspace.
 6. Execution workspaces are persisted for both local and remote execution flows.
-7. Work products can be attached to issues with optional execution workspace linkage.
+7. Work products can be attached to tasks with optional execution workspace linkage.
 8. GitHub PRs can be represented with richer lifecycle states.
 9. The main UI remains simple when the experimental flag is off.
 10. No top-level workspace navigation is required for this first slice.
@@ -840,7 +840,7 @@ Instead:
 
 Mitigation:
 
-- keep issue UI to `Codebase` and `Execution mode`
+- keep task UI to `Codebase` and `Execution mode`
 - reserve execution workspace details for advanced pages
 
 ## Risk: breaking current projects on upgrade
@@ -873,10 +873,10 @@ If we want the narrowest useful implementation:
 
 1. extend `project_workspaces`
 2. add `execution_workspaces`
-3. extend `issues` with explicit workspace fields
+3. extend `tasks` with explicit workspace fields
 4. persist execution workspaces from existing local workspace realization
-5. add `issue_work_products`
-6. show project workspace controls and issue workspace controls behind the experimental flag
-7. add issue `Work Product` tab with PR/preview/runtime service display
+5. add `task_work_products`
+6. show project workspace controls and task workspace controls behind the experimental flag
+7. add task `Work Product` tab with PR/preview/runtime service display
 
 This slice is enough to validate the model without yet building every provider integration or cleanup workflow.

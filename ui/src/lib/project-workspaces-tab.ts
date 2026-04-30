@@ -1,4 +1,4 @@
-import type { ExecutionWorkspace, Issue, Project } from "@paperclipai/shared";
+import type { ExecutionWorkspace, Task, Project } from "@paperclipai/shared";
 
 type ProjectWorkspaceLike = Pick<Project, "workspaces" | "primaryWorkspace">;
 
@@ -18,7 +18,7 @@ export interface ProjectWorkspaceSummary {
   primaryServiceUrl: string | null;
   primaryServiceUrlRunning: boolean;
   hasRuntimeConfig: boolean;
-  issues: Issue[];
+  tasks: Task[];
 }
 
 function toDate(value: Date | string | null | undefined): Date | null {
@@ -45,11 +45,11 @@ function primaryWorkspaceId(project: ProjectWorkspaceLike): string | null {
 
 function isDefaultSharedExecutionWorkspace(input: {
   executionWorkspace: ExecutionWorkspace;
-  issue: Issue;
+  task: Task;
   primaryWorkspaceId: string | null;
 }) {
   const linkedProjectWorkspaceId =
-    input.executionWorkspace.projectWorkspaceId ?? input.issue.projectWorkspaceId ?? null;
+    input.executionWorkspace.projectWorkspaceId ?? input.task.projectWorkspaceId ?? null;
   return input.executionWorkspace.mode === "shared_workspace" && linkedProjectWorkspaceId === input.primaryWorkspaceId;
 }
 
@@ -73,7 +73,7 @@ function runtimeServiceSummary(
 
 export function buildProjectWorkspaceSummaries(input: {
   project: ProjectWorkspaceLike;
-  issues: Issue[];
+  tasks: Task[];
   executionWorkspaces: ExecutionWorkspace[];
 }): ProjectWorkspaceSummary[] {
   const primaryId = primaryWorkspaceId(input.project);
@@ -85,19 +85,19 @@ export function buildProjectWorkspaceSummaries(input: {
   );
   const summaries = new Map<string, ProjectWorkspaceSummary>();
 
-  for (const issue of input.issues) {
-    if (issue.executionWorkspaceId) {
-      const executionWorkspace = executionWorkspacesById.get(issue.executionWorkspaceId);
+  for (const task of input.tasks) {
+    if (task.executionWorkspaceId) {
+      const executionWorkspace = executionWorkspacesById.get(task.executionWorkspaceId);
       if (!executionWorkspace) continue;
       if (executionWorkspace.status === "archived") continue;
       if (isDefaultSharedExecutionWorkspace({
         executionWorkspace,
-        issue,
+        task,
         primaryWorkspaceId: primaryId,
       })) continue;
 
       const existing = summaries.get(`execution:${executionWorkspace.id}`);
-      const nextIssues = [...(existing?.issues ?? []), issue].sort(
+      const nextTasks = [...(existing?.tasks ?? []), task].sort(
         (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
       );
       const runtimeSummary = runtimeServiceSummary(executionWorkspace.runtimeServices);
@@ -113,27 +113,27 @@ export function buildProjectWorkspaceSummaries(input: {
           existing?.lastUpdatedAt,
           executionWorkspace.lastUsedAt,
           executionWorkspace.updatedAt,
-          issue.updatedAt,
+          task.updatedAt,
         ),
-        projectWorkspaceId: executionWorkspace.projectWorkspaceId ?? issue.projectWorkspaceId ?? null,
+        projectWorkspaceId: executionWorkspace.projectWorkspaceId ?? task.projectWorkspaceId ?? null,
         executionWorkspaceId: executionWorkspace.id,
         executionWorkspaceStatus: executionWorkspace.status,
         ...runtimeSummary,
         hasRuntimeConfig: Boolean(
           executionWorkspace.config?.workspaceRuntime
-          ?? projectWorkspacesById.get(executionWorkspace.projectWorkspaceId ?? issue.projectWorkspaceId ?? "")?.runtimeConfig?.workspaceRuntime,
+          ?? projectWorkspacesById.get(executionWorkspace.projectWorkspaceId ?? task.projectWorkspaceId ?? "")?.runtimeConfig?.workspaceRuntime,
         ),
-        issues: nextIssues,
+        tasks: nextTasks,
       });
       continue;
     }
 
-    if (!issue.projectWorkspaceId || issue.projectWorkspaceId === primaryId) continue;
-    const projectWorkspace = projectWorkspacesById.get(issue.projectWorkspaceId);
+    if (!task.projectWorkspaceId || task.projectWorkspaceId === primaryId) continue;
+    const projectWorkspace = projectWorkspacesById.get(task.projectWorkspaceId);
     if (!projectWorkspace) continue;
 
     const existing = summaries.get(`project:${projectWorkspace.id}`);
-    const nextIssues = [...(existing?.issues ?? []), issue].sort(
+    const nextTasks = [...(existing?.tasks ?? []), task].sort(
       (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
     );
     const runtimeSummary = runtimeServiceSummary(projectWorkspace.runtimeServices);
@@ -145,13 +145,13 @@ export function buildProjectWorkspaceSummaries(input: {
       workspaceName: projectWorkspace.name,
       cwd: projectWorkspace.cwd ?? null,
       branchName: projectWorkspace.repoRef ?? projectWorkspace.defaultRef ?? null,
-      lastUpdatedAt: maxDate(existing?.lastUpdatedAt, projectWorkspace.updatedAt, issue.updatedAt),
+      lastUpdatedAt: maxDate(existing?.lastUpdatedAt, projectWorkspace.updatedAt, task.updatedAt),
       projectWorkspaceId: projectWorkspace.id,
       executionWorkspaceId: null,
       executionWorkspaceStatus: null,
       ...runtimeSummary,
       hasRuntimeConfig: Boolean(projectWorkspace.runtimeConfig?.workspaceRuntime),
-      issues: nextIssues,
+      tasks: nextTasks,
     });
   }
 
@@ -177,7 +177,7 @@ export function buildProjectWorkspaceSummaries(input: {
       executionWorkspaceStatus: null,
       ...runtimeSummary,
       hasRuntimeConfig: Boolean(projectWorkspace.runtimeConfig?.workspaceRuntime),
-      issues: [],
+      tasks: [],
     });
   }
 

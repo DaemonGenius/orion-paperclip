@@ -4,35 +4,35 @@ Paperclip's execution policy system ensures tasks are completed with the right l
 
 ## Overview
 
-An execution policy is an optional structured object on any issue that defines what must happen after the executor finishes their work. It supports three layers of enforcement:
+An execution policy is an optional structured object on any task that defines what must happen after the executor finishes their work. It supports three layers of enforcement:
 
 | Layer | Purpose | Scope |
 |---|---|---|
-| **Comment required** | Every agent run must post a comment back to the issue | Runtime invariant (always on) |
-| **Review stage** | A reviewer checks quality/correctness and can request changes | Per-issue, optional |
-| **Approval stage** | A manager/stakeholder gives final sign-off | Per-issue, optional |
+| **Comment required** | Every agent run must post a comment back to the task | Runtime invariant (always on) |
+| **Review stage** | A reviewer checks quality/correctness and can request changes | Per-task, optional |
+| **Approval stage** | A manager/stakeholder gives final sign-off | Per-task, optional |
 
-These layers compose. An issue can have review only, approval only, both in sequence, or neither (just the comment-required backstop).
+These layers compose. An task can have review only, approval only, both in sequence, or neither (just the comment-required backstop).
 
 ## Data Model
 
-### Execution Policy (issue field: `executionPolicy`)
+### Execution Policy (task field: `executionPolicy`)
 
 ```ts
-interface IssueExecutionPolicy {
+interface TaskExecutionPolicy {
   mode: "normal" | "auto";
   commentRequired: boolean;       // always true, enforced by runtime
-  stages: IssueExecutionStage[];  // ordered list of review/approval stages
+  stages: TaskExecutionStage[];  // ordered list of review/approval stages
 }
 
-interface IssueExecutionStage {
+interface TaskExecutionStage {
   id: string;                                 // auto-generated UUID
   type: "review" | "approval";                // stage kind
   approvalsNeeded: 1;                         // multi-approval is not supported yet
-  participants: IssueExecutionStageParticipant[];
+  participants: TaskExecutionStageParticipant[];
 }
 
-interface IssueExecutionStageParticipant {
+interface TaskExecutionStageParticipant {
   id: string;
   type: "agent" | "user";
   agentId?: string | null;    // set when type is "agent"
@@ -42,33 +42,33 @@ interface IssueExecutionStageParticipant {
 
 Participants can be either agents or board users. Each stage can have multiple participants; the runtime selects the first eligible participant, preferring any explicitly requested assignee while excluding the original executor.
 
-### Execution State (issue field: `executionState`)
+### Execution State (task field: `executionState`)
 
-Tracks where the issue currently sits in its policy workflow:
+Tracks where the task currently sits in its policy workflow:
 
 ```ts
-interface IssueExecutionState {
+interface TaskExecutionState {
   status: "idle" | "pending" | "changes_requested" | "completed";
   currentStageId: string | null;
   currentStageIndex: number | null;
   currentStageType: "review" | "approval" | null;
-  currentParticipant: IssueExecutionStagePrincipal | null;
-  returnAssignee: IssueExecutionStagePrincipal | null;
+  currentParticipant: TaskExecutionStagePrincipal | null;
+  returnAssignee: TaskExecutionStagePrincipal | null;
   completedStageIds: string[];
   lastDecisionId: string | null;
   lastDecisionOutcome: "approved" | "changes_requested" | null;
 }
 ```
 
-### Execution Decisions (table: `issue_execution_decisions`)
+### Execution Decisions (table: `task_execution_decisions`)
 
 An audit trail of every review/approval action:
 
 ```ts
-interface IssueExecutionDecision {
+interface TaskExecutionDecision {
   id: string;
   companyId: string;
-  issueId: string;
+  taskId: string;
   stageId: string;
   stageType: "review" | "approval";
   actorAgentId: string | null;
@@ -91,20 +91,20 @@ interface IssueExecutionDecision {
 └──────────┘                 └───────────┘               └───────────┘               └──────┘
 ```
 
-1. **Issue created** with `executionPolicy` specifying a review stage (e.g., QA) and an approval stage (e.g., CTO).
-2. **Executor works** on the issue in `in_progress` status.
+1. **Task created** with `executionPolicy` specifying a review stage (e.g., QA) and an approval stage (e.g., CTO).
+2. **Executor works** on the task in `in_progress` status.
 3. **Executor transitions to `done`** — the runtime intercepts this:
    - Status changes to `in_review` (not `done`)
-   - Issue is reassigned to the first reviewer
+   - Task is reassigned to the first reviewer
    - `executionState` enters `pending` on the review stage
 4. **Reviewer reviews** and transitions to `done` with a comment:
    - A decision record is created: `{ outcome: "approved" }`
-   - Issue stays `in_review`, reassigned to the approver
+   - Task stays `in_review`, reassigned to the approver
    - `executionState` advances to the approval stage
 5. **Approver approves** and transitions to `done` with a comment:
    - A decision record is created: `{ outcome: "approved" }`
    - `executionState.status` becomes `completed`
-   - Issue reaches actual `done` status
+   - Task reaches actual `done` status
 
 ### Changes Requested Flow
 
@@ -151,12 +151,12 @@ Each stage supports multiple participants. The runtime selects one to act, exclu
 
 ## Comment Required Backstop
 
-Independent of review stages, every issue-bound agent run must leave a comment. This is enforced at the runtime level:
+Independent of review stages, every task-bound agent run must leave a comment. This is enforced at the runtime level:
 
 1. **Run completes** — runtime checks if the agent posted a comment for this run.
-2. **If no comment**: `issueCommentStatus` is set to `retry_queued`, and the agent is woken once more with reason `missing_issue_comment`.
-3. **If still no comment after retry**: `issueCommentStatus` is set to `retry_exhausted`. No further retries. The failure is recorded.
-4. **If comment posted**: `issueCommentStatus` is set to `satisfied` and linked to the comment ID.
+2. **If no comment**: `taskCommentStatus` is set to `retry_queued`, and the agent is woken once more with reason `missing_task_comment`.
+3. **If still no comment after retry**: `taskCommentStatus` is set to `retry_exhausted`. No further retries. The failure is recorded.
+4. **If comment posted**: `taskCommentStatus` is set to `satisfied` and linked to the comment ID.
 
 This prevents silent completions where an agent finishes work but leaves no trace of what happened.
 
@@ -164,22 +164,22 @@ This prevents silent completions where an agent finishes work but leaves no trac
 
 | Field | Description |
 |---|---|
-| `issueCommentStatus` | `satisfied`, `retry_queued`, or `retry_exhausted` |
-| `issueCommentSatisfiedByCommentId` | Links to the comment that fulfilled the requirement |
-| `issueCommentRetryQueuedAt` | Timestamp when the retry wake was scheduled |
+| `taskCommentStatus` | `satisfied`, `retry_queued`, or `retry_exhausted` |
+| `taskCommentSatisfiedByCommentId` | Links to the comment that fulfilled the requirement |
+| `taskCommentRetryQueuedAt` | Timestamp when the retry wake was scheduled |
 
 ## Access Control
 
 - Only the **active reviewer/approver** (the `currentParticipant` in execution state) can advance or reject the current stage.
-- Non-participants who attempt to transition the issue receive a `422 Unprocessable Entity` error.
+- Non-participants who attempt to transition the task receive a `422 Unprocessable Entity` error.
 - Both approvals and change requests **require a comment** — empty or whitespace-only comments are rejected.
 
 ## API Usage
 
-### Setting an execution policy on issue creation
+### Setting an execution policy on task creation
 
 ```bash
-POST /api/companies/{companyId}/issues
+POST /api/companies/{companyId}/tasks
 {
   "title": "Implement feature X",
   "assigneeAgentId": "coder-agent-id",
@@ -206,23 +206,23 @@ POST /api/companies/{companyId}/issues
 
 Stage IDs and participant IDs are auto-generated if omitted. Duplicate participants within a stage are automatically deduplicated. Stages with no valid participants are removed. If no valid stages remain, the policy is set to `null`.
 
-### Updating execution policy on an existing issue
+### Updating execution policy on an existing task
 
 ```bash
-PATCH /api/issues/{issueId}
+PATCH /api/tasks/{taskId}
 {
   "executionPolicy": { ... }
 }
 ```
 
-If the policy is removed (`null`) while a review is in progress, the execution state is cleared and the issue is returned to the original executor.
+If the policy is removed (`null`) while a review is in progress, the execution state is cleared and the task is returned to the original executor.
 
 ### Advancing a stage (reviewer/approver approves)
 
-The active reviewer or approver transitions the issue to `done` with a comment:
+The active reviewer or approver transitions the task to `done` with a comment:
 
 ```bash
-PATCH /api/issues/{issueId}
+PATCH /api/tasks/{taskId}
 {
   "status": "done",
   "comment": "Reviewed — implementation looks correct, tests pass."
@@ -236,7 +236,7 @@ The runtime determines whether this completes the workflow or advances to the ne
 The active reviewer transitions to any non-`done` status with a comment:
 
 ```bash
-PATCH /api/issues/{issueId}
+PATCH /api/tasks/{taskId}
 {
   "status": "in_progress",
   "comment": "Button alignment is off on mobile. Please fix the flex container."
@@ -247,23 +247,23 @@ The runtime reassigns to the original executor automatically.
 
 ## UI
 
-### New Issue Dialog
+### New Task Dialog
 
-When creating a new issue, **Reviewer** and **Approver** buttons appear alongside the assignee selector. Clicking either opens a participant picker with:
+When creating a new task, **Reviewer** and **Approver** buttons appear alongside the assignee selector. Clicking either opens a participant picker with:
 - "No reviewer" / "No approver" (to clear)
 - "Me" (current user)
 - Full list of agents and board users
 
 Selections build the `executionPolicy.stages` array automatically.
 
-### Issue Properties Pane
+### Task Properties Pane
 
-For existing issues, the properties panel shows editable **Reviewer** and **Approver** fields. Multiple participants can be added per stage. Changes persist to the issue's `executionPolicy` via the API.
+For existing tasks, the properties panel shows editable **Reviewer** and **Approver** fields. Multiple participants can be added per stage. Changes persist to the task's `executionPolicy` via the API.
 
 ## Design Principles
 
 1. **Runtime-enforced, not prompt-dependent.** Agents don't need to remember to hand off work. The runtime intercepts status transitions and routes accordingly.
 2. **Iterative, not terminal.** Review is a loop (request changes → revise → re-review), not a one-shot gate. The system returns to the same stage on re-submission.
 3. **Flexible roles.** Participants can be agents or users. Not every organization has "QA" — the reviewer/approver pattern is generic enough for peer review, manager sign-off, compliance checks, or any multi-party workflow.
-4. **Auditable.** Every decision is recorded with actor, outcome, comment, and run ID. The full review history is queryable per issue.
-5. **Single execution invariant preserved.** Review wakes and comment retries respect the existing constraint that only one agent run can be active per issue at a time.
+4. **Auditable.** Every decision is recorded with actor, outcome, comment, and run ID. The full review history is queryable per task.
+5. **Single execution invariant preserved.** Review wakes and comment retries respect the existing constraint that only one agent run can be active per task at a time.

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CompanyExternalAppBinding, ExternalAppProvider } from "@paperclipai/shared";
-import { CheckCircle2, Cloud, FileText, PlugZap, RefreshCw, Trash2, XCircle } from "lucide-react";
+import { CheckCircle2, Cloud, FileText, GitBranch, Github, PlugZap, RefreshCw, Trash2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -24,6 +24,12 @@ type ProviderForm = {
   notionRootPageId: string;
   notionWorkspaceName: string;
   obsidianVaultPath: string;
+  githubHost: string;
+  githubAccount: string;
+  githubToken: string;
+  bitbucketHost: string;
+  bitbucketUsername: string;
+  bitbucketToken: string;
 };
 
 const emptyForm: ProviderForm = {
@@ -31,6 +37,12 @@ const emptyForm: ProviderForm = {
   notionRootPageId: "",
   notionWorkspaceName: "",
   obsidianVaultPath: "",
+  githubHost: "github.com",
+  githubAccount: "DaemonGenius",
+  githubToken: "",
+  bitbucketHost: "bitbucket.org",
+  bitbucketUsername: "",
+  bitbucketToken: "",
 };
 
 function statusTone(binding: CompanyExternalAppBinding | undefined) {
@@ -77,6 +89,8 @@ export function ThirdPartyApps() {
   const bindings = appsQuery.data ?? [];
   const notion = useMemo(() => bindings.find((binding) => binding.provider === "notion"), [bindings]);
   const obsidian = useMemo(() => bindings.find((binding) => binding.provider === "obsidian"), [bindings]);
+  const github = useMemo(() => bindings.find((binding) => binding.provider === "github"), [bindings]);
+  const bitbucket = useMemo(() => bindings.find((binding) => binding.provider === "bitbucket"), [bindings]);
 
   useEffect(() => {
     setForm((current) => ({
@@ -84,8 +98,12 @@ export function ThirdPartyApps() {
       notionRootPageId: readStringConfig(notion, "rootPageId"),
       notionWorkspaceName: readStringConfig(notion, "workspaceName"),
       obsidianVaultPath: readStringConfig(obsidian, "vaultPath"),
+      githubHost: readStringConfig(github, "host") || "github.com",
+      githubAccount: readStringConfig(github, "account") || current.githubAccount || "DaemonGenius",
+      bitbucketHost: readStringConfig(bitbucket, "host") || "bitbucket.org",
+      bitbucketUsername: readStringConfig(bitbucket, "username"),
     }));
-  }, [notion, obsidian]);
+  }, [notion, obsidian, github, bitbucket]);
 
   const invalidate = () => {
     if (selectedCompanyId) {
@@ -109,6 +127,30 @@ export function ThirdPartyApps() {
           ? externalAppsApi.update(notion.id, payload)
           : externalAppsApi.create(selectedCompanyId, "notion", payload);
       }
+      if (provider === "github") {
+        const payload = {
+          token: form.githubToken.trim() || null,
+          config: {
+            host: form.githubHost.trim() || "github.com",
+            account: form.githubAccount.trim() || null,
+          },
+        };
+        return github
+          ? externalAppsApi.update(github.id, payload)
+          : externalAppsApi.create(selectedCompanyId, "github", payload);
+      }
+      if (provider === "bitbucket") {
+        const payload = {
+          token: form.bitbucketToken.trim() || null,
+          config: {
+            host: form.bitbucketHost.trim() || "bitbucket.org",
+            username: form.bitbucketUsername.trim(),
+          },
+        };
+        return bitbucket
+          ? externalAppsApi.update(bitbucket.id, payload)
+          : externalAppsApi.create(selectedCompanyId, "bitbucket", payload);
+      }
       const payload = {
         config: {
           mode: "local_vault_path",
@@ -120,7 +162,12 @@ export function ThirdPartyApps() {
         : externalAppsApi.create(selectedCompanyId, "obsidian", payload);
     },
     onSuccess: (_binding, provider) => {
-      setForm((current) => provider === "notion" ? { ...current, notionToken: "" } : current);
+      setForm((current) => {
+        if (provider === "notion") return { ...current, notionToken: "" };
+        if (provider === "github") return { ...current, githubToken: "" };
+        if (provider === "bitbucket") return { ...current, bitbucketToken: "" };
+        return current;
+      });
       invalidate();
       pushToast({ title: "Integration saved", body: `${provider} configuration was saved.`, tone: "success" });
     },
@@ -300,6 +347,119 @@ export function ThirdPartyApps() {
                 Index
               </Button>
               <Button variant="ghost" onClick={() => obsidian && removeMutation.mutate(obsidian)} disabled={!obsidian || removeMutation.isPending}>
+                <Trash2 className="h-4 w-4" />
+                Disconnect
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-lg">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Github className="h-5 w-5 text-muted-foreground" />
+              <CardTitle>GitHub</CardTitle>
+            </div>
+            <CardDescription>Repository access for project checkouts and feature branches.</CardDescription>
+            <CardAction>{renderStatus(github)}</CardAction>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <label className="block space-y-1.5 text-sm">
+              <span className="font-medium">Host</span>
+              <input
+                className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none"
+                type="text"
+                placeholder="github.com"
+                value={form.githubHost}
+                onChange={(event) => setForm((current) => ({ ...current, githubHost: event.target.value }))}
+              />
+            </label>
+            <label className="block space-y-1.5 text-sm">
+              <span className="font-medium">Account</span>
+              <input
+                className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none"
+                type="text"
+                placeholder="DaemonGenius"
+                value={form.githubAccount}
+                onChange={(event) => setForm((current) => ({ ...current, githubAccount: event.target.value }))}
+              />
+            </label>
+            <label className="block space-y-1.5 text-sm">
+              <span className="font-medium">Access token</span>
+              <input
+                className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none"
+                type="password"
+                placeholder={github?.secretId ? "Saved token configured" : "ghp_xxx"}
+                value={form.githubToken}
+                onChange={(event) => setForm((current) => ({ ...current, githubToken: event.target.value }))}
+              />
+            </label>
+            {github?.lastError ? <p className="text-xs text-red-400">{github.lastError}</p> : null}
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => saveMutation.mutate("github")} disabled={saveMutation.isPending}>
+                Save
+              </Button>
+              <Button variant="outline" onClick={() => github && testMutation.mutate(github)} disabled={!github || testMutation.isPending}>
+                <RefreshCw className="h-4 w-4" />
+                Test
+              </Button>
+              <Button variant="ghost" onClick={() => github && removeMutation.mutate(github)} disabled={!github || removeMutation.isPending}>
+                <Trash2 className="h-4 w-4" />
+                Disconnect
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-lg">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <GitBranch className="h-5 w-5 text-muted-foreground" />
+              <CardTitle>Bitbucket</CardTitle>
+            </div>
+            <CardDescription>Bitbucket Cloud or Server repository access for project codebases.</CardDescription>
+            <CardAction>{renderStatus(bitbucket)}</CardAction>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <label className="block space-y-1.5 text-sm">
+              <span className="font-medium">Host</span>
+              <input
+                className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none"
+                type="text"
+                placeholder="bitbucket.org"
+                value={form.bitbucketHost}
+                onChange={(event) => setForm((current) => ({ ...current, bitbucketHost: event.target.value }))}
+              />
+            </label>
+            <label className="block space-y-1.5 text-sm">
+              <span className="font-medium">Username</span>
+              <input
+                className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none"
+                type="text"
+                value={form.bitbucketUsername}
+                onChange={(event) => setForm((current) => ({ ...current, bitbucketUsername: event.target.value }))}
+              />
+            </label>
+            <label className="block space-y-1.5 text-sm">
+              <span className="font-medium">App password</span>
+              <input
+                className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none"
+                type="password"
+                placeholder={bitbucket?.secretId ? "Saved app password configured" : "app password"}
+                value={form.bitbucketToken}
+                onChange={(event) => setForm((current) => ({ ...current, bitbucketToken: event.target.value }))}
+              />
+            </label>
+            {bitbucket?.lastError ? <p className="text-xs text-red-400">{bitbucket.lastError}</p> : null}
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => saveMutation.mutate("bitbucket")} disabled={saveMutation.isPending}>
+                Save
+              </Button>
+              <Button variant="outline" onClick={() => bitbucket && testMutation.mutate(bitbucket)} disabled={!bitbucket || testMutation.isPending}>
+                <RefreshCw className="h-4 w-4" />
+                Test
+              </Button>
+              <Button variant="ghost" onClick={() => bitbucket && removeMutation.mutate(bitbucket)} disabled={!bitbucket || removeMutation.isPending}>
                 <Trash2 className="h-4 w-4" />
                 Disconnect
               </Button>

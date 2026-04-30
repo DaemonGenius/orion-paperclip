@@ -3,6 +3,7 @@ import type { Db } from "@paperclipai/db";
 import {
   createProjectSchema,
   createProjectWorkspaceSchema,
+  connectProjectRepositorySchema,
   findWorkspaceCommandDefinition,
   isUuidLike,
   matchWorkspaceRuntimeServiceToCommand,
@@ -15,7 +16,7 @@ import { trackProjectCreated } from "@paperclipai/shared/telemetry";
 import { validate } from "../middleware/validate.js";
 import { projectService, logActivity, workspaceOperationService } from "../services/index.js";
 import { conflict } from "../errors.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 import {
   buildWorkspaceRuntimeDesiredStatePatch,
   listConfiguredRuntimeServiceEntries,
@@ -34,6 +35,7 @@ import { appendWithCap } from "../adapters/utils.js";
 import { assertEnvironmentSelectionForCompany } from "./environment-selection.js";
 import { environmentService } from "../services/environments.js";
 import { secretService } from "../services/secrets.js";
+import { gitRepositoryService } from "../services/git-repositories.js";
 
 const WORKSPACE_CONTROL_OUTPUT_MAX_CHARS = 256 * 1024;
 
@@ -240,6 +242,156 @@ export function projectRoutes(db: Db) {
     res.json(workspaces);
   });
 
+  router.post("/projects/:id/repository/connect", validate(connectProjectRepositorySchema), async (req, res) => {
+    assertBoard(req);
+    const id = req.params.id as string;
+    const existing = await svc.getById(id);
+    if (!existing) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    assertCompanyAccess(req, existing.companyId);
+
+    const body = req.body as {
+      provider: "github" | "bitbucket";
+      repoUrl: string;
+      defaultRef?: string | null;
+      branchTemplate?: string | null;
+    };
+    const gitSvc = gitRepositoryService(db);
+    const operation = await gitSvc.prepareManagedCheckout({
+      companyId: existing.companyId,
+      projectId: existing.id,
+      provider: body.provider,
+      repoUrl: body.repoUrl,
+      defaultRef: body.defaultRef ?? null,
+      branchTemplate: body.branchTemplate ?? null,
+    });
+    const previousMetadata = existing.primaryWorkspace?.metadata ?? {};
+    const metadata = {
+      ...previousMetadata,
+      gitProvider: body.provider,
+      branchTemplate: operation.branchTemplate ?? "{{task.identifier}}-{{slug}}",
+      repositoryConnectedAt: new Date().toISOString(),
+      repositoryLastCheckedAt: operation.verifiedAt,
+      repositoryLastError: null,
+      repositoryRemoteHead: operation.remoteHead,
+      repositoryPushCheckOk: operation.pushCheckOk,
+      repositoryPushCheckMessage: operation.pushCheckMessage,
+    };
+    const workspacePayload = {
+      name: operation.repoUrl.split("/").filter(Boolean).pop()?.replace(/\.git$/i, "") ?? "Repository",
+      sourceType: "git_repo",
+      cwd: operation.cwd,
+      repoUrl: operation.repoUrl,
+      repoRef: operation.defaultRef,
+      defaultRef: operation.defaultRef,
+      metadata,
+      isPrimary: true,
+    };
+    const workspace = existing.primaryWorkspace
+      ? await svc.updateWorkspace(existing.id, existing.primaryWorkspace.id, workspacePayload)
+      : await svc.createWorkspace(existing.id, workspacePayload);
+    if (!workspace) {
+      res.status(422).json({ error: "Could not save project repository workspace" });
+      return;
+    }
+
+    const currentPolicy = existing.executionWorkspacePolicy ?? null;
+    await svc.update(existing.id, {
+      executionWorkspacePolicy: {
+        ...currentPolicy,
+        enabled: true,
+        defaultMode: "isolated_workspace",
+        allowTaskOverride: currentPolicy?.allowTaskOverride ?? true,
+        defaultProjectWorkspaceId: workspace.id,
+        workspaceStrategy: {
+          ...(currentPolicy?.workspaceStrategy ?? {}),
+          type: "git_worktree",
+          baseRef: operation.defaultRef,
+          branchTemplate: operation.branchTemplate ?? "{{task.identifier}}-{{slug}}",
+        },
+      },
+    });
+    const hydratedProject = await svc.getById(existing.id);
+
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: existing.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      action: "project.repository_connected",
+      entityType: "project",
+      entityId: existing.id,
+      details: {
+        provider: body.provider,
+        workspaceId: workspace.id,
+        repoUrl: operation.repoUrl,
+        defaultRef: operation.defaultRef,
+        pushCheckOk: operation.pushCheckOk,
+      },
+    });
+
+    res.status(201).json({ project: hydratedProject, workspace, operation });
+  });
+
+  async function verifyProjectRepository(req: Request, res: Response, action: "verified" | "fetched") {
+    assertBoard(req);
+    const id = req.params.id as string;
+    const existing = await svc.getById(id);
+    if (!existing) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    assertCompanyAccess(req, existing.companyId);
+    const workspace = existing.primaryWorkspace;
+    if (!workspace) {
+      res.status(422).json({ error: "Project has no linked repository workspace" });
+      return;
+    }
+    const operation = await gitRepositoryService(db).verifyProjectWorkspace({
+      companyId: existing.companyId,
+      projectId: existing.id,
+      workspaceId: workspace.id,
+    });
+    const updatedWorkspace = await svc.updateWorkspace(existing.id, workspace.id, {
+      metadata: {
+        ...(workspace.metadata ?? {}),
+        repositoryLastCheckedAt: operation.verifiedAt,
+        repositoryLastError: null,
+        repositoryRemoteHead: operation.remoteHead,
+        repositoryPushCheckOk: operation.pushCheckOk,
+        repositoryPushCheckMessage: operation.pushCheckMessage,
+      },
+    });
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: existing.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      action: `project.repository_${action}`,
+      entityType: "project",
+      entityId: existing.id,
+      details: {
+        workspaceId: workspace.id,
+        provider: operation.provider,
+        repoUrl: operation.repoUrl,
+        pushCheckOk: operation.pushCheckOk,
+      },
+    });
+    res.json({ workspace: updatedWorkspace, operation });
+  }
+
+  router.post("/projects/:id/repository/verify", async (req, res) => {
+    await verifyProjectRepository(req, res, "verified");
+  });
+
+  router.post("/projects/:id/repository/fetch", async (req, res) => {
+    await verifyProjectRepository(req, res, "fetched");
+  });
+
   router.post("/projects/:id/workspaces", validate(createProjectWorkspaceSchema), async (req, res) => {
     const id = req.params.id as string;
     const existing = await svc.getById(id);
@@ -436,7 +588,7 @@ export function projectRoutes(db: Db) {
               name: actor.actorType === "user" ? "Board" : "Agent",
               companyId: project.companyId,
             },
-            issue: null,
+            task: null,
             workspace: {
               baseCwd: workspaceCwd,
               source: "project_primary",
@@ -491,7 +643,7 @@ export function projectRoutes(db: Db) {
               name: actor.actorType === "user" ? "Board" : "Agent",
               companyId: project.companyId,
             },
-            issue: null,
+            task: null,
             workspace: {
               baseCwd: workspaceCwd,
               source: "project_primary",

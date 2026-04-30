@@ -43,7 +43,7 @@ const FILE_EXTENSION_REGEX = /\.[a-zA-Z0-9]{1,10}$/;
  * Tokens that look like paths but are almost certainly URL route segments
  * (e.g. `/projects/abc`, `/settings`, `/dashboard`).
  */
-const URL_ROUTE_PATTERN = /^\/(?:projects|issues|agents|settings|dashboard|plugins|api|auth|admin)\b/i;
+const URL_ROUTE_PATTERN = /^\/(?:projects|tasks|agents|settings|dashboard|plugins|api|auth|admin)\b/i;
 
 function extractFilePaths(body: string): string[] {
   const paths = new Set<string>();
@@ -78,11 +78,11 @@ const plugin = definePlugin({
     // Fetch a comment by ID and extract file-path-like tokens from its body.
     ctx.data.register("comment-file-links", async (params: Record<string, unknown>) => {
       const commentId = typeof params.commentId === "string" ? params.commentId : "";
-      const issueId = typeof params.issueId === "string" ? params.issueId : "";
+      const taskId = typeof params.taskId === "string" ? params.taskId : "";
       const companyId = typeof params.companyId === "string" ? params.companyId : "";
-      if (!commentId || !issueId || !companyId) return { links: [] };
+      if (!commentId || !taskId || !companyId) return { links: [] };
       try {
-        const comments = await ctx.issues.listComments(issueId, companyId);
+        const comments = await ctx.tasks.listComments(taskId, companyId);
         const comment = comments.find((c) => c.id === commentId);
         if (!comment?.body) return { links: [] };
         return { links: extractFilePaths(comment.body) };

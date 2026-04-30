@@ -1,7 +1,7 @@
 import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { feedbackVotes } from "./feedback_votes.js";
-import { issues } from "./issues.js";
+import { tasks } from "./tasks.js";
 import { projects } from "./projects.js";
 
 export const feedbackExports = pgTable(
@@ -10,7 +10,7 @@ export const feedbackExports = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id),
     feedbackVoteId: uuid("feedback_vote_id").notNull().references(() => feedbackVotes.id, { onDelete: "cascade" }),
-    issueId: uuid("issue_id").notNull().references(() => issues.id, { onDelete: "cascade" }),
+    taskId: uuid("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
     authorUserId: text("author_user_id").notNull(),
     targetType: text("target_type").notNull(),
@@ -38,7 +38,7 @@ export const feedbackExports = pgTable(
     voteUniqueIdx: uniqueIndex("feedback_exports_feedback_vote_idx").on(table.feedbackVoteId),
     companyCreatedIdx: index("feedback_exports_company_created_idx").on(table.companyId, table.createdAt),
     companyStatusIdx: index("feedback_exports_company_status_idx").on(table.companyId, table.status, table.createdAt),
-    companyIssueIdx: index("feedback_exports_company_issue_idx").on(table.companyId, table.issueId, table.createdAt),
+    companyTaskIdx: index("feedback_exports_company_task_idx").on(table.companyId, table.taskId, table.createdAt),
     companyProjectIdx: index("feedback_exports_company_project_idx").on(table.companyId, table.projectId, table.createdAt),
     companyAuthorIdx: index("feedback_exports_company_author_idx").on(table.companyId, table.authorUserId, table.createdAt),
   }),

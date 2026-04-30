@@ -8,14 +8,14 @@ const mockAgentService = vi.hoisted(() => ({
 
 const mockHeartbeatService = vi.hoisted(() => ({
   buildRunOutputSilence: vi.fn(),
-  getRunIssueSummary: vi.fn(),
-  getActiveRunIssueSummaryForAgent: vi.fn(),
+  getRunTaskSummary: vi.fn(),
+  getActiveRunTaskSummaryForAgent: vi.fn(),
   buildRunOutputSilence: vi.fn(),
   getRunLogAccess: vi.fn(),
   readLog: vi.fn(),
 }));
 
-const mockIssueService = vi.hoisted(() => ({
+const mockTaskService = vi.hoisted(() => ({
   getById: vi.fn(),
   getByIdentifier: vi.fn(),
 }));
@@ -42,8 +42,8 @@ function registerModuleMocks() {
     instanceSettingsService: () => mockInstanceSettingsService,
   }));
 
-  vi.doMock("../services/issues.js", () => ({
-    issueService: () => mockIssueService,
+  vi.doMock("../services/tasks.js", () => ({
+    taskService: () => mockTaskService,
   }));
 
   vi.doMock("../services/index.js", () => ({
@@ -54,8 +54,8 @@ function registerModuleMocks() {
     companySkillService: () => ({ listRuntimeSkillEntries: vi.fn() }),
     budgetService: () => ({}),
     heartbeatService: () => mockHeartbeatService,
-    issueApprovalService: () => ({}),
-    issueService: () => mockIssueService,
+    taskApprovalService: () => ({}),
+    taskService: () => mockTaskService,
     logActivity: vi.fn(),
     secretService: () => ({}),
     syncInstructionsBundleConfigFromFilePath: vi.fn((_agent, config) => config),
@@ -127,21 +127,21 @@ describe("agent live run routes", () => {
     vi.doUnmock("../services/heartbeat.js");
     vi.doUnmock("../services/index.js");
     vi.doUnmock("../services/instance-settings.js");
-    vi.doUnmock("../services/issues.js");
+    vi.doUnmock("../services/tasks.js");
     vi.doUnmock("../adapters/index.js");
     vi.doUnmock("../routes/agents.js");
     vi.doUnmock("../routes/authz.js");
     vi.doUnmock("../middleware/index.js");
     registerModuleMocks();
     vi.clearAllMocks();
-    mockIssueService.getByIdentifier.mockResolvedValue({
-      id: "issue-1",
+    mockTaskService.getByIdentifier.mockResolvedValue({
+      id: "task-1",
       companyId: "company-1",
       executionRunId: "run-1",
       assigneeAgentId: "agent-1",
       status: "in_progress",
     });
-    mockIssueService.getById.mockResolvedValue(null);
+    mockTaskService.getById.mockResolvedValue(null);
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
       companyId: "company-1",
@@ -162,7 +162,7 @@ describe("agent live run routes", () => {
     });
     mockInstanceSettingsService.listCompanyIds.mockResolvedValue(["company-1"]);
     mockHeartbeatService.buildRunOutputSilence.mockResolvedValue(null);
-    mockHeartbeatService.getRunIssueSummary.mockResolvedValue({
+    mockHeartbeatService.getRunTaskSummary.mockResolvedValue({
       id: "run-1",
       status: "running",
       invocationSource: "on_demand",
@@ -171,9 +171,9 @@ describe("agent live run routes", () => {
       finishedAt: null,
       createdAt: new Date("2026-04-10T09:29:59.000Z"),
       agentId: "agent-1",
-      issueId: "issue-1",
+      taskId: "task-1",
     });
-    mockHeartbeatService.getActiveRunIssueSummaryForAgent.mockResolvedValue(null);
+    mockHeartbeatService.getActiveRunTaskSummaryForAgent.mockResolvedValue(null);
     mockHeartbeatService.buildRunOutputSilence.mockResolvedValue(null);
     mockHeartbeatService.getRunLogAccess.mockResolvedValue({
       id: "run-1",
@@ -190,15 +190,15 @@ describe("agent live run routes", () => {
     });
   });
 
-  it("returns a compact active run payload for issue polling", async () => {
+  it("returns a compact active run payload for task polling", async () => {
     const res = await requestApp(
       await createApp(),
-      (baseUrl) => request(baseUrl).get("/api/issues/PAP-1295/active-run"),
+      (baseUrl) => request(baseUrl).get("/api/tasks/PAP-1295/active-run"),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(mockIssueService.getByIdentifier).toHaveBeenCalledWith("PAP-1295");
-    expect(mockHeartbeatService.getRunIssueSummary).toHaveBeenCalledWith("run-1");
+    expect(mockTaskService.getByIdentifier).toHaveBeenCalledWith("PAP-1295");
+    expect(mockHeartbeatService.getRunTaskSummary).toHaveBeenCalledWith("run-1");
     expect(res.body).toMatchObject({
       id: "run-1",
       status: "running",
@@ -208,7 +208,7 @@ describe("agent live run routes", () => {
       finishedAt: null,
       createdAt: "2026-04-10T09:29:59.000Z",
       agentId: "agent-1",
-      issueId: "issue-1",
+      taskId: "task-1",
       agentName: "Builder",
       adapterType: "codex_local",
       outputSilence: null,
@@ -218,8 +218,8 @@ describe("agent live run routes", () => {
     expect(res.body).not.toHaveProperty("logRef");
   }, 10_000);
 
-  it("ignores a stale execution run from another issue and falls back to the assignee's matching run", async () => {
-    mockHeartbeatService.getRunIssueSummary.mockResolvedValue({
+  it("ignores a stale execution run from another task and falls back to the assignee's matching run", async () => {
+    mockHeartbeatService.getRunTaskSummary.mockResolvedValue({
       id: "run-foreign",
       status: "running",
       invocationSource: "assignment",
@@ -228,9 +228,9 @@ describe("agent live run routes", () => {
       finishedAt: null,
       createdAt: new Date("2026-04-10T09:59:00.000Z"),
       agentId: "agent-1",
-      issueId: "issue-2",
+      taskId: "task-2",
     });
-    mockHeartbeatService.getActiveRunIssueSummaryForAgent.mockResolvedValue({
+    mockHeartbeatService.getActiveRunTaskSummaryForAgent.mockResolvedValue({
       id: "run-1",
       status: "running",
       invocationSource: "on_demand",
@@ -239,20 +239,20 @@ describe("agent live run routes", () => {
       finishedAt: null,
       createdAt: new Date("2026-04-10T09:29:59.000Z"),
       agentId: "agent-1",
-      issueId: "issue-1",
+      taskId: "task-1",
     });
 
     const res = await requestApp(
       await createApp(),
-      (baseUrl) => request(baseUrl).get("/api/issues/PAP-1295/active-run"),
+      (baseUrl) => request(baseUrl).get("/api/tasks/PAP-1295/active-run"),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(mockHeartbeatService.getRunIssueSummary).toHaveBeenCalledWith("run-1");
-    expect(mockHeartbeatService.getActiveRunIssueSummaryForAgent).toHaveBeenCalledWith("agent-1");
+    expect(mockHeartbeatService.getRunTaskSummary).toHaveBeenCalledWith("run-1");
+    expect(mockHeartbeatService.getActiveRunTaskSummaryForAgent).toHaveBeenCalledWith("agent-1");
     expect(res.body).toMatchObject({
       id: "run-1",
-      issueId: "issue-1",
+      taskId: "task-1",
       agentId: "agent-1",
       agentName: "Builder",
       adapterType: "codex_local",

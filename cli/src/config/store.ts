@@ -69,14 +69,14 @@ function migrateLegacyConfig(raw: unknown): unknown {
 }
 
 function formatValidationError(err: unknown): string {
-  const issues = (err as { issues?: Array<{ path?: unknown; message?: unknown }> })?.issues;
-  if (Array.isArray(issues) && issues.length > 0) {
-    return issues
-      .map((issue) => {
-        const pathParts = Array.isArray(issue.path) ? issue.path.map(String) : [];
-        const issuePath = pathParts.length > 0 ? pathParts.join(".") : "config";
-        const message = typeof issue.message === "string" ? issue.message : "Invalid value";
-        return `${issuePath}: ${message}`;
+  const tasks = (err as { tasks?: Array<{ path?: unknown; message?: unknown }> })?.tasks;
+  if (Array.isArray(tasks) && tasks.length > 0) {
+    return tasks
+      .map((task) => {
+        const pathParts = Array.isArray(task.path) ? task.path.map(String) : [];
+        const taskPath = pathParts.length > 0 ? pathParts.join(".") : "config";
+        const message = typeof task.message === "string" ? task.message : "Invalid value";
+        return `${taskPath}: ${message}`;
       })
       .join("; ");
   }

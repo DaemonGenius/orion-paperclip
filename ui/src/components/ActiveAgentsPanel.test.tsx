@@ -10,7 +10,7 @@ const mockHeartbeatsApi = vi.hoisted(() => ({
   liveRunsForCompany: vi.fn(),
 }));
 
-const mockIssuesApi = vi.hoisted(() => ({
+const mockTasksApi = vi.hoisted(() => ({
   list: vi.fn(),
 }));
 
@@ -26,8 +26,8 @@ vi.mock("../api/heartbeats", () => ({
   heartbeatsApi: mockHeartbeatsApi,
 }));
 
-vi.mock("../api/issues", () => ({
-  issuesApi: mockIssuesApi,
+vi.mock("../api/tasks", () => ({
+  tasksApi: mockTasksApi,
 }));
 
 vi.mock("./Identity", () => ({
@@ -67,7 +67,7 @@ function createRun(index: number) {
     agentId: `agent-${index}`,
     agentName: `Agent ${index}`,
     adapterType: "codex_local",
-    issueId: null,
+    taskId: null,
   };
 }
 
@@ -78,7 +78,7 @@ describe("ActiveAgentsPanel", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     mockHeartbeatsApi.liveRunsForCompany.mockResolvedValue([1, 2, 3, 4, 5].map(createRun));
-    mockIssuesApi.list.mockResolvedValue([]);
+    mockTasksApi.list.mockResolvedValue([]);
   });
 
   afterEach(() => {

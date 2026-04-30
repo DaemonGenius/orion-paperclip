@@ -256,12 +256,12 @@ describe("renderPaperclipWakePrompt", () => {
     expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("Start actionable work in this heartbeat");
     expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("do not stop at a plan");
     expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("Prefer the smallest verification that proves the change");
-    expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("Use child issues");
+    expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("Use child tasks");
     expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("instead of polling agents, sessions, or processes");
-    expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("Create child issues directly when you know what needs to be done");
-    expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("POST /api/issues/{issueId}/interactions");
+    expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("Create child tasks directly when you know what needs to be done");
+    expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("POST /api/tasks/{taskId}/interactions");
     expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("kind suggest_tasks, ask_user_questions, or request_confirmation");
-    expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("confirmation:{issueId}:plan:{revisionId}");
+    expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("confirmation:{taskId}:plan:{revisionId}");
     expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("Wait for acceptance before creating implementation subtasks");
     expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain(
       "Respect budget, pause/cancel, approval gates, and company boundaries",
@@ -270,9 +270,9 @@ describe("renderPaperclipWakePrompt", () => {
 
   it("adds the execution contract to scoped wake prompts", () => {
     const prompt = renderPaperclipWakePrompt({
-      reason: "issue_assigned",
-      issue: {
-        id: "issue-1",
+      reason: "task_assigned",
+      task: {
+        id: "task-1",
         identifier: "PAP-1580",
         title: "Update prompts",
         status: "in_progress",
@@ -288,21 +288,21 @@ describe("renderPaperclipWakePrompt", () => {
 
     expect(prompt).toContain("## Paperclip Wake Payload");
     expect(prompt).toContain("Execution contract: take concrete action in this heartbeat");
-    expect(prompt).toContain("use child issues instead of polling");
+    expect(prompt).toContain("use child tasks instead of polling");
     expect(prompt).toContain("mark blocked work with the unblock owner/action");
   });
 
   it("renders dependency-blocked interaction guidance", () => {
     const prompt = renderPaperclipWakePrompt({
-      reason: "issue_commented",
-      issue: {
-        id: "issue-1",
+      reason: "task_commented",
+      task: {
+        id: "task-1",
         identifier: "PAP-1703",
         title: "Blocked parent",
         status: "todo",
       },
       dependencyBlockedInteraction: true,
-      unresolvedBlockerIssueIds: ["blocker-1"],
+      unresolvedBlockerTaskIds: ["blocker-1"],
       unresolvedBlockerSummaries: [
         {
           id: "blocker-1",
@@ -331,8 +331,8 @@ describe("renderPaperclipWakePrompt", () => {
   it("renders loose review request instructions for execution handoffs", () => {
     const prompt = renderPaperclipWakePrompt({
       reason: "execution_review_requested",
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-2011",
         title: "Review request handoff",
         status: "in_review",
@@ -353,13 +353,13 @@ describe("renderPaperclipWakePrompt", () => {
 
     expect(prompt).toContain("Review request instructions:");
     expect(prompt).toContain("Please focus on edge cases and leave a short risk summary.");
-    expect(prompt).toContain("You are waking as the active reviewer for this issue.");
+    expect(prompt).toContain("You are waking as the active reviewer for this task.");
   });
 
-  it("includes continuation and child issue summaries in structured wake context", () => {
+  it("includes continuation and child task summaries in structured wake context", () => {
     const payload = {
-      reason: "issue_children_completed",
-      issue: {
+      reason: "task_children_completed",
+      task: {
         id: "parent-1",
         identifier: "PAP-100",
         title: "Integrate child work",
@@ -380,7 +380,7 @@ describe("renderPaperclipWakePrompt", () => {
         reason: "Run described future work without concrete action evidence",
         instruction: "Take the first concrete action now.",
       },
-      childIssueSummaries: [
+      childTaskSummaries: [
         {
           id: "child-1",
           identifier: "PAP-101",
@@ -403,7 +403,7 @@ describe("renderPaperclipWakePrompt", () => {
         state: "plan_only",
         instruction: "Take the first concrete action now.",
       },
-      childIssueSummaries: [
+      childTaskSummaries: [
         {
           identifier: "PAP-101",
           summary: "Added the helper route and tests.",
@@ -412,7 +412,7 @@ describe("renderPaperclipWakePrompt", () => {
     });
 
     const prompt = renderPaperclipWakePrompt(payload);
-    expect(prompt).toContain("Issue continuation summary:");
+    expect(prompt).toContain("Task continuation summary:");
     expect(prompt).toContain("Integrate child outputs.");
     expect(prompt).toContain("Run liveness continuation:");
     expect(prompt).toContain("- attempt: 2/2");
@@ -420,7 +420,7 @@ describe("renderPaperclipWakePrompt", () => {
     expect(prompt).toContain("- liveness state: plan_only");
     expect(prompt).toContain("- reason: Run described future work without concrete action evidence");
     expect(prompt).toContain("- instruction: Take the first concrete action now.");
-    expect(prompt).toContain("Direct child issue summaries:");
+    expect(prompt).toContain("Direct child task summaries:");
     expect(prompt).toContain("PAP-101 Implement helper (done)");
     expect(prompt).toContain("Added the helper route and tests.");
   });

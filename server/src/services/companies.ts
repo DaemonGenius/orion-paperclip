@@ -9,15 +9,15 @@ import {
   agentRuntimeState,
   agentTaskSessions,
   agentWakeupRequests,
-  issues,
-  issueComments,
+  tasks,
+  taskComments,
   projects,
   goals,
   heartbeatRuns,
   heartbeatRunEvents,
   costEvents,
   financeEvents,
-  issueReadStates,
+  taskReadStates,
   approvalComments,
   approvals,
   activityLog,
@@ -33,7 +33,7 @@ import { notFound, unprocessable } from "../errors.js";
 import { environmentService } from "./environments.js";
 
 export function companyService(db: Db) {
-  const ISSUE_PREFIX_FALLBACK = "CMP";
+  const TASK_PREFIX_FALLBACK = "CMP";
   const environmentsSvc = environmentService(db);
 
   const companySelection = {
@@ -41,8 +41,8 @@ export function companyService(db: Db) {
     name: companies.name,
     description: companies.description,
     status: companies.status,
-    issuePrefix: companies.issuePrefix,
-    issueCounter: companies.issueCounter,
+    taskPrefix: companies.taskPrefix,
+    taskCounter: companies.taskCounter,
     budgetMonthlyCents: companies.budgetMonthlyCents,
     spentMonthlyCents: companies.spentMonthlyCents,
     requireBoardApprovalForNewAgents: companies.requireBoardApprovalForNewAgents,
@@ -113,9 +113,9 @@ export function companyService(db: Db) {
       .leftJoin(companyLogos, eq(companyLogos.companyId, companies.id));
   }
 
-  function deriveIssuePrefixBase(name: string) {
+  function deriveTaskPrefixBase(name: string) {
     const normalized = name.toUpperCase().replace(/[^A-Z]/g, "");
-    return normalized.slice(0, 3) || ISSUE_PREFIX_FALLBACK;
+    return normalized.slice(0, 3) || TASK_PREFIX_FALLBACK;
   }
 
   function suffixForAttempt(attempt: number) {
@@ -123,7 +123,7 @@ export function companyService(db: Db) {
     return "A".repeat(attempt - 1);
   }
 
-  function isIssuePrefixConflict(error: unknown) {
+  function isTaskPrefixConflict(error: unknown) {
     const constraint = typeof error === "object" && error !== null && "constraint" in error
       ? (error as { constraint?: string }).constraint
       : typeof error === "object" && error !== null && "constraint_name" in error
@@ -133,26 +133,26 @@ export function companyService(db: Db) {
       && error !== null
       && "code" in error
       && (error as { code?: string }).code === "23505"
-      && constraint === "companies_issue_prefix_idx";
+      && constraint === "companies_task_prefix_idx";
   }
 
   async function createCompanyWithUniquePrefix(data: typeof companies.$inferInsert) {
-    const base = deriveIssuePrefixBase(data.name);
+    const base = deriveTaskPrefixBase(data.name);
     let suffix = 1;
     while (suffix < 10000) {
       const candidate = `${base}${suffixForAttempt(suffix)}`;
       try {
         const rows = await db
           .insert(companies)
-          .values({ ...data, issuePrefix: candidate })
+          .values({ ...data, taskPrefix: candidate })
           .returning();
         return rows[0];
       } catch (error) {
-        if (!isIssuePrefixConflict(error)) throw error;
+        if (!isTaskPrefixConflict(error)) throw error;
       }
       suffix += 1;
     }
-    throw new Error("Unable to allocate unique issue prefix");
+    throw new Error("Unable to allocate unique task prefix");
   }
 
   return {
@@ -271,7 +271,7 @@ export function companyService(db: Db) {
         await tx.delete(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, id));
         await tx.delete(agentApiKeys).where(eq(agentApiKeys.companyId, id));
         await tx.delete(agentRuntimeState).where(eq(agentRuntimeState.companyId, id));
-        await tx.delete(issueComments).where(eq(issueComments.companyId, id));
+        await tx.delete(taskComments).where(eq(taskComments.companyId, id));
         await tx.delete(costEvents).where(eq(costEvents.companyId, id));
         await tx.delete(financeEvents).where(eq(financeEvents.companyId, id));
         await tx.delete(approvalComments).where(eq(approvalComments.companyId, id));
@@ -282,9 +282,9 @@ export function companyService(db: Db) {
         await tx.delete(principalPermissionGrants).where(eq(principalPermissionGrants.companyId, id));
         await tx.delete(companyMemberships).where(eq(companyMemberships.companyId, id));
         await tx.delete(companySkills).where(eq(companySkills.companyId, id));
-        await tx.delete(issueReadStates).where(eq(issueReadStates.companyId, id));
+        await tx.delete(taskReadStates).where(eq(taskReadStates.companyId, id));
         await tx.delete(documents).where(eq(documents.companyId, id));
-        await tx.delete(issues).where(eq(issues.companyId, id));
+        await tx.delete(tasks).where(eq(tasks.companyId, id));
         await tx.delete(companyLogos).where(eq(companyLogos.companyId, id));
         await tx.delete(assets).where(eq(assets.companyId, id));
         await tx.delete(goals).where(eq(goals.companyId, id));
@@ -304,19 +304,19 @@ export function companyService(db: Db) {
           .from(agents)
           .groupBy(agents.companyId),
         db
-          .select({ companyId: issues.companyId, count: count() })
-          .from(issues)
-          .groupBy(issues.companyId),
-      ]).then(([agentRows, issueRows]) => {
-        const result: Record<string, { agentCount: number; issueCount: number }> = {};
+          .select({ companyId: tasks.companyId, count: count() })
+          .from(tasks)
+          .groupBy(tasks.companyId),
+      ]).then(([agentRows, taskRows]) => {
+        const result: Record<string, { agentCount: number; taskCount: number }> = {};
         for (const row of agentRows) {
-          result[row.companyId] = { agentCount: row.count, issueCount: 0 };
+          result[row.companyId] = { agentCount: row.count, taskCount: 0 };
         }
-        for (const row of issueRows) {
+        for (const row of taskRows) {
           if (result[row.companyId]) {
-            result[row.companyId].issueCount = row.count;
+            result[row.companyId].taskCount = row.count;
           } else {
-            result[row.companyId] = { agentCount: 0, issueCount: row.count };
+            result[row.companyId] = { agentCount: 0, taskCount: row.count };
           }
         }
         return result;

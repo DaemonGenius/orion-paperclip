@@ -3,7 +3,7 @@ import { api } from "./client";
 
 export type { RunLivenessState } from "@paperclipai/shared";
 
-export interface RunForIssue {
+export interface RunForTask {
   runId: string;
   status: string;
   agentId: string;
@@ -46,8 +46,8 @@ export interface RunForIssue {
   } | null;
 }
 
-export interface IssueForRun {
-  issueId: string;
+export interface TaskForRun {
+  taskId: string;
   identifier: string | null;
   title: string;
   status: string;
@@ -64,7 +64,7 @@ export const activityApi = {
     const qs = params.toString();
     return api.get<ActivityEvent[]>(`/companies/${companyId}/activity${qs ? `?${qs}` : ""}`);
   },
-  forIssue: (issueId: string) => api.get<ActivityEvent[]>(`/issues/${issueId}/activity`),
-  runsForIssue: (issueId: string) => api.get<RunForIssue[]>(`/issues/${issueId}/runs`),
-  issuesForRun: (runId: string) => api.get<IssueForRun[]>(`/heartbeat-runs/${runId}/issues`),
+  forTask: (taskId: string) => api.get<ActivityEvent[]>(`/tasks/${taskId}/activity`),
+  runsForTask: (taskId: string) => api.get<RunForTask[]>(`/tasks/${taskId}/runs`),
+  tasksForRun: (runId: string) => api.get<TaskForRun[]>(`/heartbeat-runs/${runId}/tasks`),
 };

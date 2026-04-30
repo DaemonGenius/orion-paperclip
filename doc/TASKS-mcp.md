@@ -5,16 +5,16 @@ operations available to agents (and external tools) via MCP. Refer to
 [TASKS.md](./TASKS.md) for the underlying data model.
 
 All operations return JSON. IDs are UUIDs. Timestamps are ISO 8601.
-Issue identifiers (e.g. `ENG-123`) are accepted anywhere an issue `id` is
+Task identifiers (e.g. `ENG-123`) are accepted anywhere an task `id` is
 expected.
 
 ---
 
-## Issues
+## Tasks
 
-### `list_issues`
+### `list_tasks`
 
-List and filter issues in the workspace.
+List and filter tasks in the workspace.
 
 | Parameter         | Type     | Required | Notes                                                                                           |
 | ----------------- | -------- | -------- | ----------------------------------------------------------------------------------------------- |
@@ -24,47 +24,47 @@ List and filter issues in the workspace.
 | `stateType`       | string   | no       | Filter by state category: `triage`, `backlog`, `unstarted`, `started`, `completed`, `cancelled` |
 | `assigneeId`      | string   | no       | Filter by assignee (agent id)                                                                   |
 | `projectId`       | string   | no       | Filter by project                                                                               |
-| `parentId`        | string   | no       | Filter by parent issue (returns sub-issues)                                                     |
-| `labelIds`        | string[] | no       | Filter to issues with ALL of these labels                                                       |
+| `parentId`        | string   | no       | Filter by parent task (returns sub-tasks)                                                     |
+| `labelIds`        | string[] | no       | Filter to tasks with ALL of these labels                                                       |
 | `priority`        | number   | no       | Filter by priority (0-4)                                                                        |
-| `includeArchived` | boolean  | no       | Include archived issues. Default: false                                                         |
+| `includeArchived` | boolean  | no       | Include archived tasks. Default: false                                                         |
 | `orderBy`         | string   | no       | `created`, `updated`, `priority`, `due_date`. Default: `created`                                |
 | `limit`           | number   | no       | Max results. Default: 50                                                                        |
 | `after`           | string   | no       | Cursor for forward pagination                                                                   |
 | `before`          | string   | no       | Cursor for backward pagination                                                                  |
 
-**Returns:** `{ issues: Issue[], pageInfo: { hasNextPage, endCursor, hasPreviousPage, startCursor } }`
+**Returns:** `{ tasks: Task[], pageInfo: { hasNextPage, endCursor, hasPreviousPage, startCursor } }`
 
 ---
 
-### `get_issue`
+### `get_task`
 
-Retrieve a single issue by ID or identifier, with all relations expanded.
+Retrieve a single task by ID or identifier, with all relations expanded.
 
 | Parameter | Type   | Required | Notes                                              |
 | --------- | ------ | -------- | -------------------------------------------------- |
 | `id`      | string | yes      | UUID or human-readable identifier (e.g. `ENG-123`) |
 
-**Returns:** Full `Issue` object including:
+**Returns:** Full `Task` object including:
 
 - `state` (expanded WorkflowState)
 - `assignee` (expanded Agent, if set)
 - `labels` (expanded Label[])
-- `relations` (IssueRelation[] with expanded related issues)
-- `children` (sub-issue summaries: id, identifier, title, state, assignee)
-- `parent` (summary, if this is a sub-issue)
+- `relations` (TaskRelation[] with expanded related tasks)
+- `children` (sub-task summaries: id, identifier, title, state, assignee)
+- `parent` (summary, if this is a sub-task)
 - `comments` (Comment[], most recent first)
 
 ---
 
-### `create_issue`
+### `create_task`
 
-Create a new issue.
+Create a new task.
 
 | Parameter     | Type     | Required | Notes                                         |
 | ------------- | -------- | -------- | --------------------------------------------- |
 | `title`       | string   | yes      |                                               |
-| `teamId`      | string   | yes      | Team the issue belongs to                     |
+| `teamId`      | string   | yes      | Team the task belongs to                     |
 | `description` | string   | no       | Markdown                                      |
 | `status`     | string   | no       | Workflow state. Default: team's default state |
 | `priority`    | number   | no       | 0-4. Default: 0 (none)                        |
@@ -73,12 +73,12 @@ Create a new issue.
 | `assigneeId`  | string   | no       | Agent to assign                               |
 | `projectId`   | string   | no       | Project to associate with                     |
 | `milestoneId` | string   | no       | Milestone within the project                  |
-| `parentId`    | string   | no       | Parent issue (makes this a sub-issue)         |
+| `parentId`    | string   | no       | Parent task (makes this a sub-task)         |
 | `goalId`      | string   | no       | Linked goal/objective                         |
 | `labelIds`    | string[] | no       | Labels to apply                               |
 | `sortOrder`   | number   | no       | Ordering within views                         |
 
-**Returns:** Created `Issue` object with computed fields (`identifier`, `createdAt`, etc.)
+**Returns:** Created `Task` object with computed fields (`identifier`, `createdAt`, etc.)
 
 **Side effects:**
 
@@ -87,9 +87,9 @@ Create a new issue.
 
 ---
 
-### `update_issue`
+### `update_task`
 
-Update an existing issue.
+Update an existing task.
 
 | Parameter     | Type     | Required | Notes                                        |
 | ------------- | -------- | -------- | -------------------------------------------- |
@@ -109,21 +109,21 @@ Update an existing issue.
 | `teamId`      | string   | no       | Move to a different team                     |
 | `sortOrder`   | number   | no       | Ordering within views                        |
 
-**Returns:** Updated `Issue` object.
+**Returns:** Updated `Task` object.
 
 **Side effects:**
 
 - Changing `status` to a state with category `started` sets `startedAt` (if not already set)
 - Changing `status` to `completed` sets `completedAt`
 - Changing `status` to `cancelled` sets `cancelledAt`
-- Moving to `completed`/`cancelled` with sub-issue auto-close enabled completes open sub-issues
+- Moving to `completed`/`cancelled` with sub-task auto-close enabled completes open sub-tasks
 - Changing `teamId` re-assigns the identifier (e.g. `ENG-42` → `DES-18`); old identifier preserved in `previousIdentifiers`
 
 ---
 
-### `archive_issue`
+### `archive_task`
 
-Soft-archive an issue. Sets `archivedAt`. Does not delete.
+Soft-archive an task. Sets `archivedAt`. Does not delete.
 
 | Parameter | Type   | Required |
 | --------- | ------ | -------- |
@@ -133,19 +133,19 @@ Soft-archive an issue. Sets `archivedAt`. Does not delete.
 
 ---
 
-### `list_my_issues`
+### `list_my_tasks`
 
-List issues assigned to a specific agent. Convenience wrapper around
-`list_issues` with `assigneeId` pre-filled.
+List tasks assigned to a specific agent. Convenience wrapper around
+`list_tasks` with `assigneeId` pre-filled.
 
 | Parameter   | Type   | Required | Notes                          |
 | ----------- | ------ | -------- | ------------------------------ |
-| `agentId`   | string | yes      | The agent whose issues to list |
+| `agentId`   | string | yes      | The agent whose tasks to list |
 | `stateType` | string | no       | Filter by state category       |
 | `orderBy`   | string | no       | Default: `priority`            |
 | `limit`     | number | no       | Default: 50                    |
 
-**Returns:** Same shape as `list_issues`.
+**Returns:** Same shape as `list_tasks`.
 
 ---
 
@@ -210,7 +210,7 @@ List projects in the workspace.
 
 | Parameter         | Type    | Required | Notes                                                                           |
 | ----------------- | ------- | -------- | ------------------------------------------------------------------------------- |
-| `teamId`          | string  | no       | Filter to projects containing issues from this team                             |
+| `teamId`          | string  | no       | Filter to projects containing tasks from this team                             |
 | `status`          | string  | no       | Filter by status: `backlog`, `planned`, `in_progress`, `completed`, `cancelled` |
 | `includeArchived` | boolean | no       | Default: false                                                                  |
 | `limit`           | number  | no       | Default: 50                                                                     |
@@ -228,7 +228,7 @@ Get a project by name or ID.
 | --------- | ------ | -------- |
 | `query`   | string | yes      |
 
-**Returns:** Single `Project` object including `milestones[]` and issue count by state category.
+**Returns:** Single `Project` object including `milestones[]` and task count by state category.
 
 ---
 
@@ -296,7 +296,7 @@ Get a milestone by ID.
 | --------- | ------ | -------- |
 | `id`      | string | yes      |
 
-**Returns:** Single `Milestone` object with issue count by state category.
+**Returns:** Single `Milestone` object with task count by state category.
 
 ---
 
@@ -381,43 +381,43 @@ Get a label by name or ID.
 
 ---
 
-## Issue Relations
+## Task Relations
 
-### `list_issue_relations`
+### `list_task_relations`
 
-List all relations for an issue.
+List all relations for an task.
 
 | Parameter | Type   | Required |
 | --------- | ------ | -------- |
-| `issueId` | string | yes      |
+| `taskId` | string | yes      |
 
-**Returns:** `{ relations: IssueRelation[] }` -- each with expanded `relatedIssue` summary (id, identifier, title, state).
+**Returns:** `{ relations: TaskRelation[] }` -- each with expanded `relatedTask` summary (id, identifier, title, state).
 
 ---
 
-### `create_issue_relation`
+### `create_task_relation`
 
-Create a relation between two issues.
+Create a relation between two tasks.
 
 | Parameter        | Type   | Required | Notes                                          |
 | ---------------- | ------ | -------- | ---------------------------------------------- |
-| `issueId`        | string | yes      | Source issue                                   |
-| `relatedIssueId` | string | yes      | Target issue                                   |
+| `taskId`        | string | yes      | Source task                                   |
+| `relatedTaskId` | string | yes      | Target task                                   |
 | `type`           | string | yes      | `related`, `blocks`, `blocked_by`, `duplicate` |
 
-**Returns:** Created `IssueRelation` object.
+**Returns:** Created `TaskRelation` object.
 
 **Side effects:**
 
-- `duplicate` auto-transitions the source issue to a cancelled state
+- `duplicate` auto-transitions the source task to a cancelled state
 - Creating `blocks` from A->B implicitly means B is `blocked_by` A (both
-  directions visible when querying either issue)
+  directions visible when querying either task)
 
 ---
 
-### `delete_issue_relation`
+### `delete_task_relation`
 
-Remove a relation between two issues.
+Remove a relation between two tasks.
 
 | Parameter | Type   | Required |
 | --------- | ------ | -------- |
@@ -431,11 +431,11 @@ Remove a relation between two issues.
 
 ### `list_comments`
 
-List comments on an issue.
+List comments on an task.
 
 | Parameter | Type   | Required | Notes       |
 | --------- | ------ | -------- | ----------- |
-| `issueId` | string | yes      |             |
+| `taskId` | string | yes      |             |
 | `limit`   | number | no       | Default: 50 |
 
 **Returns:** `{ comments: Comment[] }` -- threaded (top-level comments with nested `children`).
@@ -444,11 +444,11 @@ List comments on an issue.
 
 ### `create_comment`
 
-Add a comment to an issue.
+Add a comment to an task.
 
 | Parameter  | Type   | Required | Notes                                 |
 | ---------- | ------ | -------- | ------------------------------------- |
-| `issueId`  | string | yes      |                                       |
+| `taskId`  | string | yes      |                                       |
 | `body`     | string | yes      | Markdown                              |
 | `parentId` | string | no       | Reply to an existing comment (thread) |
 
@@ -500,7 +500,7 @@ Mark a comment thread as resolved.
 | --------- | ------ | -------- |
 | `query`   | string | yes      |
 
-**Returns:** Single `Initiative` object with expanded `projects[]` (summaries with status and issue count).
+**Returns:** Single `Initiative` object with expanded `projects[]` (summaries with status and task count).
 
 ---
 
@@ -550,18 +550,18 @@ Soft-archive an initiative. Sets `archivedAt`. Does not delete.
 
 | Entity        | list | get | create | update | delete/archive |
 | ------------- | ---- | --- | ------ | ------ | -------------- |
-| Issue         | x    | x   | x      | x      | archive        |
+| Task         | x    | x   | x      | x      | archive        |
 | WorkflowState | x    | x   | --     | --     | --             |
 | Team          | x    | x   | --     | --     | --             |
 | Project       | x    | x   | x      | x      | archive        |
 | Milestone     | x    | x   | x      | x      | --             |
 | Label         | x    | x   | x      | x      | --             |
-| IssueRelation | x    | --  | x      | --     | x              |
+| TaskRelation | x    | --  | x      | --     | x              |
 | Comment       | x    | --  | x      | x      | resolve        |
 | Initiative    | x    | x   | x      | x      | archive        |
 
 **Total: 35 operations**
 
 Workflow states and teams are admin-configured, not created through the MCP.
-The MCP is primarily for agents to manage their work: create issues, update
+The MCP is primarily for agents to manage their work: create tasks, update
 status, coordinate via relations and comments, and understand project context.

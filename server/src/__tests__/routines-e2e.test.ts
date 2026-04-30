@@ -14,7 +14,7 @@ import {
   heartbeatRunEvents,
   heartbeatRuns,
   instanceSettings,
-  issues,
+  tasks,
   principalPermissionGrants,
   projectWorkspaces,
   projects,
@@ -38,36 +38,36 @@ function registerRoutineServiceMock() {
         actual.routineService(db, {
           heartbeat: {
             wakeup: async (agentId: string, wakeupOpts: any) => {
-              const issueId =
-                (typeof wakeupOpts?.payload?.issueId === "string" && wakeupOpts.payload.issueId) ||
-                (typeof wakeupOpts?.contextSnapshot?.issueId === "string" && wakeupOpts.contextSnapshot.issueId) ||
+              const taskId =
+                (typeof wakeupOpts?.payload?.taskId === "string" && wakeupOpts.payload.taskId) ||
+                (typeof wakeupOpts?.contextSnapshot?.taskId === "string" && wakeupOpts.contextSnapshot.taskId) ||
                 null;
-              if (!issueId) return null;
+              if (!taskId) return null;
 
-              const issue = await db
-                .select({ companyId: issues.companyId })
-                .from(issues)
-                .where(eq(issues.id, issueId))
+              const task = await db
+                .select({ companyId: tasks.companyId })
+                .from(tasks)
+                .where(eq(tasks.id, taskId))
                 .then((rows: Array<{ companyId: string }>) => rows[0] ?? null);
-              if (!issue) return null;
+              if (!task) return null;
 
               const queuedRunId = randomUUID();
               await db.insert(heartbeatRuns).values({
                 id: queuedRunId,
-                companyId: issue.companyId,
+                companyId: task.companyId,
                 agentId,
                 invocationSource: wakeupOpts?.source ?? "assignment",
                 triggerDetail: wakeupOpts?.triggerDetail ?? null,
                 status: "queued",
-                contextSnapshot: { ...(wakeupOpts?.contextSnapshot ?? {}), issueId },
+                contextSnapshot: { ...(wakeupOpts?.contextSnapshot ?? {}), taskId },
               });
               await db
-                .update(issues)
+                .update(tasks)
                 .set({
                   executionRunId: queuedRunId,
                   executionLockedAt: new Date(),
                 })
-                .where(eq(issues.id, issueId));
+                .where(eq(tasks.id, taskId));
               return { id: queuedRunId };
             },
           },
@@ -101,7 +101,7 @@ describeEmbeddedPostgres("routine routes end-to-end", () => {
     await db.delete(heartbeatRunEvents);
     await db.delete(heartbeatRuns);
     await db.delete(agentWakeupRequests);
-    await db.delete(issues);
+    await db.delete(tasks);
     await db.delete(executionWorkspaces);
     await db.delete(projectWorkspaces);
     await db.delete(principalPermissionGrants);
@@ -122,7 +122,7 @@ describeEmbeddedPostgres("routine routes end-to-end", () => {
     vi.doUnmock("@paperclipai/shared/telemetry");
     vi.doUnmock("../telemetry.js");
     vi.doUnmock("../services/access.js");
-    vi.doUnmock("../services/issues.js");
+    vi.doUnmock("../services/tasks.js");
     vi.doUnmock("../services/companies.js");
     vi.doUnmock("../services/projects.js");
     vi.doUnmock("../services/company-skills.js");
@@ -177,12 +177,12 @@ describeEmbeddedPostgres("routine routes end-to-end", () => {
     const agentId = randomUUID();
     const projectId = randomUUID();
     const userId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+    const taskPrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix,
+      taskPrefix,
       requireBoardApprovalForNewAgents: false,
     });
 
@@ -266,9 +266,9 @@ describeEmbeddedPostgres("routine routes end-to-end", () => {
     });
 
     expect(runRes.status).toBe(202);
-    expect(runRes.body.status).toBe("issue_created");
+    expect(runRes.body.status).toBe("task_created");
     expect(runRes.body.source).toBe("manual");
-    expect(runRes.body.linkedIssueId).toBeTruthy();
+    expect(runRes.body.linkedTaskId).toBeTruthy();
 
     const listRes = await request(app).get(`/api/companies/${companyId}/routines`);
     expect(listRes.status).toBe(200);
@@ -284,7 +284,7 @@ describeEmbeddedPostgres("routine routes end-to-end", () => {
     expect(detailRes.body.triggers[0]?.id).toBe(createdTrigger.id);
     expect(detailRes.body.recentRuns).toHaveLength(1);
     expect(detailRes.body.recentRuns[0]?.id).toBe(runRes.body.id);
-    expect(detailRes.body.activeIssue?.id).toBe(runRes.body.linkedIssueId);
+    expect(detailRes.body.activeTask?.id).toBe(runRes.body.linkedTaskId);
 
     const runsRes = await request(app).get(`/api/routines/${routineId}/runs?limit=10`);
     expect(runsRes.status).toBe(200);
@@ -294,22 +294,22 @@ describeEmbeddedPostgres("routine routes end-to-end", () => {
       .where(eq(routineRuns.id, runRes.body.id));
     expect(persistedRun?.id).toBe(runRes.body.id);
 
-    const [issue] = await db
+    const [task] = await db
       .select({
-        id: issues.id,
-        originId: issues.originId,
-        originKind: issues.originKind,
-        executionRunId: issues.executionRunId,
+        id: tasks.id,
+        originId: tasks.originId,
+        originKind: tasks.originKind,
+        executionRunId: tasks.executionRunId,
       })
-      .from(issues)
-      .where(eq(issues.id, runRes.body.linkedIssueId));
+      .from(tasks)
+      .where(eq(tasks.id, runRes.body.linkedTaskId));
 
-    expect(issue).toMatchObject({
-      id: runRes.body.linkedIssueId,
+    expect(task).toMatchObject({
+      id: runRes.body.linkedTaskId,
       originId: routineId,
       originKind: "routine_execution",
     });
-    expect(issue?.executionRunId).toBeTruthy();
+    expect(task?.executionRunId).toBeTruthy();
 
     const actions = await db
       .select({
@@ -327,7 +327,7 @@ describeEmbeddedPostgres("routine routes end-to-end", () => {
     );
   }, 15_000);
 
-  it("runs routines with variable inputs and interpolates the execution issue description", async () => {
+  it("runs routines with variable inputs and interpolates the execution task description", async () => {
     const { companyId, agentId, projectId, userId } = await seedFixture();
     const app = await createApp({
       type: "board",
@@ -365,12 +365,12 @@ describeEmbeddedPostgres("routine routes end-to-end", () => {
       },
     });
 
-    const [issue] = await db
-      .select({ description: issues.description })
-      .from(issues)
-      .where(eq(issues.id, runRes.body.linkedIssueId));
+    const [task] = await db
+      .select({ description: tasks.description })
+      .from(tasks)
+      .where(eq(tasks.id, runRes.body.linkedTaskId));
 
-    expect(issue?.description).toBe("Review paperclip for high bugs");
+    expect(task?.description).toBe("Review paperclip for high bugs");
   });
 
   it("allows drafting a routine without defaults and running it with one-off overrides", async () => {
@@ -402,17 +402,17 @@ describeEmbeddedPostgres("routine routes end-to-end", () => {
     });
 
     expect(runRes.status).toBe(202);
-    expect(runRes.body.status).toBe("issue_created");
+    expect(runRes.body.status).toBe("task_created");
 
-    const [issue] = await db
+    const [task] = await db
       .select({
-        projectId: issues.projectId,
-        assigneeAgentId: issues.assigneeAgentId,
+        projectId: tasks.projectId,
+        assigneeAgentId: tasks.assigneeAgentId,
       })
-      .from(issues)
-      .where(eq(issues.id, runRes.body.linkedIssueId));
+      .from(tasks)
+      .where(eq(tasks.id, runRes.body.linkedTaskId));
 
-    expect(issue).toEqual({
+    expect(task).toEqual({
       projectId,
       assigneeAgentId: agentId,
     });
@@ -482,17 +482,17 @@ describeEmbeddedPostgres("routine routes end-to-end", () => {
 
     expect(runRes.status).toBe(202);
 
-    const [issue] = await db
+    const [task] = await db
       .select({
-        projectWorkspaceId: issues.projectWorkspaceId,
-        executionWorkspaceId: issues.executionWorkspaceId,
-        executionWorkspacePreference: issues.executionWorkspacePreference,
-        executionWorkspaceSettings: issues.executionWorkspaceSettings,
+        projectWorkspaceId: tasks.projectWorkspaceId,
+        executionWorkspaceId: tasks.executionWorkspaceId,
+        executionWorkspacePreference: tasks.executionWorkspacePreference,
+        executionWorkspaceSettings: tasks.executionWorkspaceSettings,
       })
-      .from(issues)
-      .where(eq(issues.id, runRes.body.linkedIssueId));
+      .from(tasks)
+      .where(eq(tasks.id, runRes.body.linkedTaskId));
 
-    expect(issue).toEqual({
+    expect(task).toEqual({
       projectWorkspaceId,
       executionWorkspaceId,
       executionWorkspacePreference: "reuse_existing",

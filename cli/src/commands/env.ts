@@ -24,7 +24,7 @@ type EnvVarRow = {
 };
 
 const DEFAULT_AGENT_JWT_TTL_SECONDS = "172800";
-const DEFAULT_AGENT_JWT_ISSUER = "paperclip";
+const DEFAULT_AGENT_JWT_TASKR = "paperclip";
 const DEFAULT_AGENT_JWT_AUDIENCE = "paperclip-api";
 const DEFAULT_HEARTBEAT_SCHEDULER_INTERVAL_MS = "30000";
 const DEFAULT_SECRETS_PROVIDER = "local_encrypted";
@@ -241,11 +241,11 @@ function collectDeploymentEnvRows(config: PaperclipConfig | null, configPath: st
       note: "JWT lifetime in seconds",
     },
     {
-      key: "PAPERCLIP_AGENT_JWT_ISSUER",
-      value: process.env.PAPERCLIP_AGENT_JWT_ISSUER ?? DEFAULT_AGENT_JWT_ISSUER,
-      source: process.env.PAPERCLIP_AGENT_JWT_ISSUER ? "env" : "default",
+      key: "PAPERCLIP_AGENT_JWT_TASKR",
+      value: process.env.PAPERCLIP_AGENT_JWT_TASKR ?? DEFAULT_AGENT_JWT_TASKR,
+      source: process.env.PAPERCLIP_AGENT_JWT_TASKR ? "env" : "default",
       required: false,
-      note: "JWT issuer",
+      note: "JWT taskr",
     },
     {
       key: "PAPERCLIP_AGENT_JWT_AUDIENCE",

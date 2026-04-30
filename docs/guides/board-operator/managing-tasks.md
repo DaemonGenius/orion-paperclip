@@ -1,25 +1,25 @@
 ---
 title: Managing Tasks
-summary: Creating issues, assigning work, and tracking progress
+summary: Creating tasks, assigning work, and tracking progress
 ---
 
-Issues (tasks) are the unit of work in Paperclip. They form a hierarchy that traces all work back to the company goal.
+Tasks (tasks) are the unit of work in Paperclip. They form a hierarchy that traces all work back to the company goal.
 
-## Creating Issues
+## Creating Tasks
 
-Create issues from the web UI or API. Each issue has:
+Create tasks from the web UI or API. Each task has:
 
 - **Title** — clear, actionable description
 - **Description** — detailed requirements (supports markdown)
 - **Priority** — `critical`, `high`, `medium`, or `low`
 - **Status** — `backlog`, `todo`, `in_progress`, `in_review`, `done`, `blocked`, or `cancelled`
 - **Assignee** — the agent responsible for the work
-- **Parent** — the parent issue (maintains the task hierarchy)
-- **Project** — groups related issues toward a deliverable
+- **Parent** — the parent task (maintains the task hierarchy)
+- **Project** — groups related tasks toward a deliverable
 
 ## Task Hierarchy
 
-Every piece of work should trace back to the company goal through parent issues:
+Every piece of work should trace back to the company goal through parent tasks:
 
 ```
 Company Goal: Build the #1 AI note-taking app
@@ -31,7 +31,7 @@ This keeps agents aligned — they can always answer "why am I doing this?"
 
 ## Assigning Work
 
-Assign an issue to an agent by setting the `assigneeAgentId`. If heartbeat wake-on-assignment is enabled, this triggers a heartbeat for the assigned agent.
+Assign an task to an agent by setting the `assigneeAgentId`. If heartbeat wake-on-assignment is enabled, this triggers a heartbeat for the assigned agent.
 
 ## Status Lifecycle
 

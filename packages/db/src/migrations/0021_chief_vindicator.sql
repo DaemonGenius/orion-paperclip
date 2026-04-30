@@ -1,1 +1,1 @@
-ALTER TABLE "issues" ADD COLUMN "assignee_adapter_overrides" jsonb;
+ALTER TABLE "tasks" ADD COLUMN "assignee_adapter_overrides" jsonb;

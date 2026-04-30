@@ -49,7 +49,7 @@ import { pluginLifecycleManager } from "../services/plugin-lifecycle.js";
 import { getPluginUiContributionMetadata, pluginLoader } from "../services/plugin-loader.js";
 import { logActivity } from "../services/activity-log.js";
 import { publishGlobalLiveEvent } from "../services/live-events.js";
-import { issueService } from "../services/issues.js";
+import { taskService } from "../services/tasks.js";
 import type { PluginJobScheduler } from "../services/plugin-job-scheduler.js";
 import type { PluginJobStore } from "../services/plugin-job-store.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
@@ -169,7 +169,7 @@ const BUNDLED_PLUGIN_EXAMPLES: AvailablePluginExample[] = [
     packageName: "@paperclipai/plugin-orchestration-smoke-example",
     pluginKey: "paperclipai.plugin-orchestration-smoke-example",
     displayName: "Orchestration Smoke (Example)",
-    description: "Acceptance fixture for scoped plugin routes, restricted database namespaces, issue orchestration, documents, wakeups, summaries, and UI status surfaces.",
+    description: "Acceptance fixture for scoped plugin routes, restricted database namespaces, task orchestration, documents, wakeups, summaries, and UI status surfaces.",
     localPath: "packages/plugins/examples/plugin-orchestration-smoke-example",
     tag: "example",
   },
@@ -305,7 +305,7 @@ interface PluginScopedApiResponse {
 
 /** Request body for POST /api/plugins/tools/execute */
 interface PluginToolExecuteRequest {
-  /** Fully namespaced tool name (e.g., "acme.linear:search-issues"). */
+  /** Fully namespaced tool name (e.g., "acme.linear:search-tasks"). */
   tool: string;
   /** Parameters matching the tool's declared JSON Schema. */
   parameters?: unknown;
@@ -371,7 +371,7 @@ export function pluginRoutes(
     loader,
     workerManager: bridgeDeps?.workerManager ?? webhookDeps?.workerManager,
   });
-  const issuesSvc = issueService(db);
+  const tasksSvc = taskService(db);
 
   function matchScopedApiRoute(route: PluginApiRouteDeclaration, method: string, requestPath: string) {
     if (route.method !== method) return null;
@@ -458,10 +458,10 @@ export function pluginRoutes(
       return typeof value === "string" ? value : null;
     }
 
-    const issueId = params[resolution.param ?? ""];
-    if (!issueId) return null;
-    const issue = await issuesSvc.getById(issueId);
-    return issue?.companyId ?? null;
+    const taskId = params[resolution.param ?? ""];
+    if (!taskId) return null;
+    const task = await tasksSvc.getById(taskId);
+    return task?.companyId ?? null;
   }
 
   function assertScopedApiAuth(req: Request, route: PluginApiRouteDeclaration) {
@@ -491,16 +491,16 @@ export function pluginRoutes(
   ) {
     const policy = route.checkoutPolicy ?? "none";
     if (policy === "none" || req.actor.type !== "agent") return;
-    const issueId = params.issueId;
-    if (!issueId) {
-      throw unprocessable("Checkout-protected plugin API routes require an issueId route parameter");
+    const taskId = params.taskId;
+    if (!taskId) {
+      throw unprocessable("Checkout-protected plugin API routes require an taskId route parameter");
     }
-    const issue = await issuesSvc.getById(issueId);
-    if (!issue || issue.companyId !== companyId) {
-      throw notFound("Issue not found");
+    const task = await tasksSvc.getById(taskId);
+    if (!task || task.companyId !== companyId) {
+      throw notFound("Task not found");
     }
     if (policy === "required-for-agent-in-progress") {
-      if (issue.status !== "in_progress" || issue.assigneeAgentId !== req.actor.agentId) return;
+      if (task.status !== "in_progress" || task.assigneeAgentId !== req.actor.agentId) return;
     }
     const runId = req.actor.runId?.trim();
     if (!runId) {
@@ -509,7 +509,7 @@ export function pluginRoutes(
     if (!req.actor.agentId) {
       throw forbidden("Agent authentication required");
     }
-    await issuesSvc.assertCheckoutOwner(issueId, req.actor.agentId, runId);
+    await tasksSvc.assertCheckoutOwner(taskId, req.actor.agentId, runId);
   }
 
   async function resolvePluginAuditCompanyIds(req: Request): Promise<string[]> {
@@ -749,7 +749,7 @@ export function pluginRoutes(
    * plugin tools during an agent run.
    *
    * Request body:
-   * - `tool`: Fully namespaced tool name (e.g., "acme.linear:search-issues")
+   * - `tool`: Fully namespaced tool name (e.g., "acme.linear:search-tasks")
    * - `parameters`: Parameters matching the tool's declared JSON Schema
    * - `runContext`: Agent run context with agentId, runId, companyId, projectId
    *

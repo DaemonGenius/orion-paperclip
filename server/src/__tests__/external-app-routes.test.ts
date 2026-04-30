@@ -70,7 +70,7 @@ describeEmbeddedPostgres("external app routes", () => {
       .insert(companies)
       .values({
         name: "Genesis",
-        issuePrefix: `X${suffix}`,
+        taskPrefix: `X${suffix}`,
         requireBoardApprovalForNewAgents: false,
       })
       .returning();
@@ -207,5 +207,108 @@ describeEmbeddedPostgres("external app routes", () => {
     expect(health.status, JSON.stringify(health.body)).toBe(200);
     expect(health.body.result.status).toBe("healthy");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("stores and tests a GitHub token without returning the secret value", async () => {
+    await seedCompany();
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ login: "paperclip-bot" }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const create = await request(app)
+      .post(`/api/companies/${companyId}/external-apps/github`)
+      .send({ token: "github-token", config: { host: "github.com" } });
+    expect(create.status, JSON.stringify(create.body)).toBe(201);
+    expect(create.body.provider).toBe("github");
+    expect(create.body.secretId).toEqual(expect.any(String));
+    expect(JSON.stringify(create.body)).not.toContain("github-token");
+
+    const health = await request(app).post(`/api/external-apps/${create.body.id}/test`).send({});
+    expect(health.status, JSON.stringify(health.body)).toBe(200);
+    expect(health.body.result.status).toBe("healthy");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.github.com/user",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer github-token" }),
+      }),
+    );
+  });
+
+  it("lists GitHub repositories for the configured account", async () => {
+    await seedCompany();
+    const fetchMock = vi.fn(async (url: string) => ({
+      ok: true,
+      status: 200,
+      json: async () => url.includes("/user/repos")
+        ? [
+            {
+              full_name: "DaemonGenius/ShootersUnion",
+              name: "ShootersUnion",
+              clone_url: "https://github.com/DaemonGenius/ShootersUnion.git",
+              default_branch: "main",
+              private: true,
+              archived: false,
+              description: "Project repo",
+              updated_at: "2026-04-29T00:00:00Z",
+              owner: { login: "DaemonGenius" },
+            },
+            {
+              full_name: "OtherOrg/Hidden",
+              name: "Hidden",
+              clone_url: "https://github.com/OtherOrg/Hidden.git",
+              default_branch: "main",
+              private: false,
+              archived: false,
+              owner: { login: "OtherOrg" },
+            },
+          ]
+        : { login: "paperclip-bot" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const create = await request(app)
+      .post(`/api/companies/${companyId}/external-apps/github`)
+      .send({ token: "github-token", config: { host: "github.com", account: "DaemonGenius" } });
+    expect(create.status, JSON.stringify(create.body)).toBe(201);
+
+    const repos = await request(app).get(`/api/external-apps/${create.body.id}/repositories?q=shooters`).send();
+    expect(repos.status, JSON.stringify(repos.body)).toBe(200);
+    expect(repos.body.repositories).toEqual([
+      expect.objectContaining({
+        fullName: "DaemonGenius/ShootersUnion",
+        cloneUrl: "https://github.com/DaemonGenius/ShootersUnion.git",
+        defaultBranch: "main",
+      }),
+    ]);
+  });
+
+  it("stores and tests a Bitbucket app password without returning the secret value", async () => {
+    await seedCompany();
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ username: "paperclip-bot" }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const create = await request(app)
+      .post(`/api/companies/${companyId}/external-apps/bitbucket`)
+      .send({ token: "bitbucket-token", config: { host: "bitbucket.org", username: "paperclip" } });
+    expect(create.status, JSON.stringify(create.body)).toBe(201);
+    expect(create.body.provider).toBe("bitbucket");
+    expect(JSON.stringify(create.body)).not.toContain("bitbucket-token");
+
+    const health = await request(app).post(`/api/external-apps/${create.body.id}/test`).send({});
+    expect(health.status, JSON.stringify(health.body)).toBe(200);
+    expect(health.body.result.status).toBe("healthy");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.bitbucket.org/2.0/user",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: expect.stringMatching(/^Basic /) }),
+      }),
+    );
   });
 });

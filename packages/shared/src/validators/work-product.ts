@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const issueWorkProductTypeSchema = z.enum([
+export const taskWorkProductTypeSchema = z.enum([
   "preview_url",
   "runtime_service",
   "pull_request",
@@ -10,7 +10,7 @@ export const issueWorkProductTypeSchema = z.enum([
   "document",
 ]);
 
-export const issueWorkProductStatusSchema = z.enum([
+export const taskWorkProductStatusSchema = z.enum([
   "active",
   "ready_for_review",
   "approved",
@@ -22,24 +22,24 @@ export const issueWorkProductStatusSchema = z.enum([
   "draft",
 ]);
 
-export const issueWorkProductReviewStateSchema = z.enum([
+export const taskWorkProductReviewStateSchema = z.enum([
   "none",
   "needs_board_review",
   "approved",
   "changes_requested",
 ]);
 
-export const createIssueWorkProductSchema = z.object({
+export const createTaskWorkProductSchema = z.object({
   projectId: z.string().uuid().optional().nullable(),
   executionWorkspaceId: z.string().uuid().optional().nullable(),
   runtimeServiceId: z.string().uuid().optional().nullable(),
-  type: issueWorkProductTypeSchema,
+  type: taskWorkProductTypeSchema,
   provider: z.string().min(1),
   externalId: z.string().optional().nullable(),
   title: z.string().min(1),
   url: z.string().url().optional().nullable(),
-  status: issueWorkProductStatusSchema.default("active"),
-  reviewState: issueWorkProductReviewStateSchema.optional().default("none"),
+  status: taskWorkProductStatusSchema.default("active"),
+  reviewState: taskWorkProductReviewStateSchema.optional().default("none"),
   isPrimary: z.boolean().optional().default(false),
   healthStatus: z.enum(["unknown", "healthy", "unhealthy"]).optional().default("unknown"),
   summary: z.string().optional().nullable(),
@@ -47,8 +47,8 @@ export const createIssueWorkProductSchema = z.object({
   createdByRunId: z.string().uuid().optional().nullable(),
 });
 
-export type CreateIssueWorkProduct = z.infer<typeof createIssueWorkProductSchema>;
+export type CreateTaskWorkProduct = z.infer<typeof createTaskWorkProductSchema>;
 
-export const updateIssueWorkProductSchema = createIssueWorkProductSchema.partial();
+export const updateTaskWorkProductSchema = createTaskWorkProductSchema.partial();
 
-export type UpdateIssueWorkProduct = z.infer<typeof updateIssueWorkProductSchema>;
+export type UpdateTaskWorkProduct = z.infer<typeof updateTaskWorkProductSchema>;

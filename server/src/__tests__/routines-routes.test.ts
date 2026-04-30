@@ -13,7 +13,7 @@ const routine = {
   companyId,
   projectId,
   goalId: null,
-  parentIssueId: null,
+  parentTaskId: null,
   title: "Daily routine",
   description: null,
   assigneeAgentId: agentId,
@@ -152,7 +152,7 @@ describe("routine routes", () => {
     mockRoutineService.runRoutine.mockResolvedValue({
       id: "run-1",
       source: "manual",
-      status: "issue_created",
+      status: "task_created",
     });
     mockAccessService.canUser.mockResolvedValue(false);
     mockLogActivity.mockResolvedValue(undefined);

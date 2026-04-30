@@ -1,12 +1,12 @@
 import { and, asc, desc, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { documentRevisions, documents, issueDocuments, issues } from "@paperclipai/db";
-import { isSystemIssueDocumentKey, issueDocumentKeySchema } from "@paperclipai/shared";
+import { documentRevisions, documents, taskDocuments, tasks } from "@paperclipai/db";
+import { isSystemTaskDocumentKey, taskDocumentKeySchema } from "@paperclipai/shared";
 import { conflict, notFound, unprocessable } from "../errors.js";
 
 function normalizeDocumentKey(key: string) {
   const normalized = key.trim().toLowerCase();
-  const parsed = issueDocumentKeySchema.safeParse(normalized);
+  const parsed = taskDocumentKeySchema.safeParse(normalized);
   if (!parsed.success) {
     throw unprocessable("Invalid document key", parsed.error.issues);
   }
@@ -25,11 +25,11 @@ export function extractLegacyPlanBody(description: string | null | undefined) {
   return body ? body : null;
 }
 
-function mapIssueDocumentRow(
+function mapTaskDocumentRow(
   row: {
     id: string;
     companyId: string;
-    issueId: string;
+    taskId: string;
     key: string;
     title: string | null;
     format: string;
@@ -48,7 +48,7 @@ function mapIssueDocumentRow(
   return {
     id: row.id,
     companyId: row.companyId,
-    issueId: row.issueId,
+    taskId: row.taskId,
     key: row.key,
     title: row.title,
     format: row.format,
@@ -64,11 +64,11 @@ function mapIssueDocumentRow(
   };
 }
 
-const issueDocumentSelect = {
+const taskDocumentSelect = {
   id: documents.id,
   companyId: documents.companyId,
-  issueId: issueDocuments.issueId,
-  key: issueDocuments.key,
+  taskId: taskDocuments.taskId,
+  key: taskDocuments.key,
   title: documents.title,
   format: documents.format,
   latestBody: documents.latestBody,
@@ -84,74 +84,74 @@ const issueDocumentSelect = {
 
 export function documentService(db: Db) {
   const filterSystemDocuments = <T extends { key: string }>(rows: T[], includeSystem: boolean) =>
-    includeSystem ? rows : rows.filter((row) => !isSystemIssueDocumentKey(row.key));
+    includeSystem ? rows : rows.filter((row) => !isSystemTaskDocumentKey(row.key));
 
   return {
-    getIssueDocumentPayload: async (
-      issue: { id: string; description: string | null },
+    getTaskDocumentPayload: async (
+      task: { id: string; description: string | null },
       options: { includeSystem?: boolean } = {},
     ) => {
       const [planDocument, documentSummaries] = await Promise.all([
         db
-          .select(issueDocumentSelect)
-          .from(issueDocuments)
-          .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
-          .where(and(eq(issueDocuments.issueId, issue.id), eq(issueDocuments.key, "plan")))
+          .select(taskDocumentSelect)
+          .from(taskDocuments)
+          .innerJoin(documents, eq(taskDocuments.documentId, documents.id))
+          .where(and(eq(taskDocuments.taskId, task.id), eq(taskDocuments.key, "plan")))
           .then((rows) => rows[0] ?? null),
         db
-          .select(issueDocumentSelect)
-          .from(issueDocuments)
-          .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
-          .where(eq(issueDocuments.issueId, issue.id))
-          .orderBy(asc(issueDocuments.key), desc(documents.updatedAt)),
+          .select(taskDocumentSelect)
+          .from(taskDocuments)
+          .innerJoin(documents, eq(taskDocuments.documentId, documents.id))
+          .where(eq(taskDocuments.taskId, task.id))
+          .orderBy(asc(taskDocuments.key), desc(documents.updatedAt)),
       ]);
 
-      const legacyPlanBody = planDocument ? null : extractLegacyPlanBody(issue.description);
+      const legacyPlanBody = planDocument ? null : extractLegacyPlanBody(task.description);
 
       return {
-        planDocument: planDocument ? mapIssueDocumentRow(planDocument, true) : null,
+        planDocument: planDocument ? mapTaskDocumentRow(planDocument, true) : null,
         documentSummaries: filterSystemDocuments(documentSummaries, options.includeSystem ?? false)
-          .map((row) => mapIssueDocumentRow(row, false)),
+          .map((row) => mapTaskDocumentRow(row, false)),
         legacyPlanDocument: legacyPlanBody
           ? {
               key: "plan" as const,
               body: legacyPlanBody,
-              source: "issue_description" as const,
+              source: "task_description" as const,
             }
           : null,
       };
     },
 
-    listIssueDocuments: async (issueId: string, options: { includeSystem?: boolean } = {}) => {
+    listTaskDocuments: async (taskId: string, options: { includeSystem?: boolean } = {}) => {
       const rows = await db
-        .select(issueDocumentSelect)
-        .from(issueDocuments)
-        .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
-        .where(eq(issueDocuments.issueId, issueId))
-        .orderBy(asc(issueDocuments.key), desc(documents.updatedAt));
-      return filterSystemDocuments(rows, options.includeSystem ?? false).map((row) => mapIssueDocumentRow(row, true));
+        .select(taskDocumentSelect)
+        .from(taskDocuments)
+        .innerJoin(documents, eq(taskDocuments.documentId, documents.id))
+        .where(eq(taskDocuments.taskId, taskId))
+        .orderBy(asc(taskDocuments.key), desc(documents.updatedAt));
+      return filterSystemDocuments(rows, options.includeSystem ?? false).map((row) => mapTaskDocumentRow(row, true));
     },
 
-    getIssueDocumentByKey: async (issueId: string, rawKey: string) => {
+    getTaskDocumentByKey: async (taskId: string, rawKey: string) => {
       const key = normalizeDocumentKey(rawKey);
       const row = await db
-        .select(issueDocumentSelect)
-        .from(issueDocuments)
-        .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
-        .where(and(eq(issueDocuments.issueId, issueId), eq(issueDocuments.key, key)))
+        .select(taskDocumentSelect)
+        .from(taskDocuments)
+        .innerJoin(documents, eq(taskDocuments.documentId, documents.id))
+        .where(and(eq(taskDocuments.taskId, taskId), eq(taskDocuments.key, key)))
         .then((rows) => rows[0] ?? null);
-      return row ? mapIssueDocumentRow(row, true) : null;
+      return row ? mapTaskDocumentRow(row, true) : null;
     },
 
-    listIssueDocumentRevisions: async (issueId: string, rawKey: string) => {
+    listTaskDocumentRevisions: async (taskId: string, rawKey: string) => {
       const key = normalizeDocumentKey(rawKey);
       return db
         .select({
           id: documentRevisions.id,
           companyId: documentRevisions.companyId,
           documentId: documentRevisions.documentId,
-          issueId: issueDocuments.issueId,
-          key: issueDocuments.key,
+          taskId: taskDocuments.taskId,
+          key: taskDocuments.key,
           revisionNumber: documentRevisions.revisionNumber,
           title: documentRevisions.title,
           format: documentRevisions.format,
@@ -161,15 +161,15 @@ export function documentService(db: Db) {
           createdByUserId: documentRevisions.createdByUserId,
           createdAt: documentRevisions.createdAt,
         })
-        .from(issueDocuments)
-        .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
+        .from(taskDocuments)
+        .innerJoin(documents, eq(taskDocuments.documentId, documents.id))
         .innerJoin(documentRevisions, eq(documentRevisions.documentId, documents.id))
-        .where(and(eq(issueDocuments.issueId, issueId), eq(issueDocuments.key, key)))
+        .where(and(eq(taskDocuments.taskId, taskId), eq(taskDocuments.key, key)))
         .orderBy(desc(documentRevisions.revisionNumber));
     },
 
-    upsertIssueDocument: async (input: {
-      issueId: string;
+    upsertTaskDocument: async (input: {
+      taskId: string;
       key: string;
       title?: string | null;
       format: string;
@@ -181,12 +181,12 @@ export function documentService(db: Db) {
       createdByRunId?: string | null;
     }) => {
       const key = normalizeDocumentKey(input.key);
-      const issue = await db
-        .select({ id: issues.id, companyId: issues.companyId })
-        .from(issues)
-        .where(eq(issues.id, input.issueId))
+      const task = await db
+        .select({ id: tasks.id, companyId: tasks.companyId })
+        .from(tasks)
+        .where(eq(tasks.id, input.taskId))
         .then((rows) => rows[0] ?? null);
-      if (!issue) throw notFound("Issue not found");
+      if (!task) throw notFound("Task not found");
 
       try {
         return await db.transaction(async (tx) => {
@@ -195,8 +195,8 @@ export function documentService(db: Db) {
             .select({
               id: documents.id,
               companyId: documents.companyId,
-              issueId: issueDocuments.issueId,
-              key: issueDocuments.key,
+              taskId: taskDocuments.taskId,
+              key: taskDocuments.key,
               title: documents.title,
               format: documents.format,
               latestBody: documents.latestBody,
@@ -209,9 +209,9 @@ export function documentService(db: Db) {
               createdAt: documents.createdAt,
               updatedAt: documents.updatedAt,
             })
-            .from(issueDocuments)
-            .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
-            .where(and(eq(issueDocuments.issueId, issue.id), eq(issueDocuments.key, key)))
+            .from(taskDocuments)
+            .innerJoin(documents, eq(taskDocuments.documentId, documents.id))
+            .where(and(eq(taskDocuments.taskId, task.id), eq(taskDocuments.key, key)))
             .then((rows) => rows[0] ?? null);
 
           if (existing) {
@@ -230,7 +230,7 @@ export function documentService(db: Db) {
             const [revision] = await tx
               .insert(documentRevisions)
               .values({
-                companyId: issue.companyId,
+                companyId: task.companyId,
                 documentId: existing.id,
                 revisionNumber: nextRevisionNumber,
                 title: input.title ?? null,
@@ -259,9 +259,9 @@ export function documentService(db: Db) {
               .where(eq(documents.id, existing.id));
 
             await tx
-              .update(issueDocuments)
+              .update(taskDocuments)
               .set({ updatedAt: now })
-              .where(eq(issueDocuments.documentId, existing.id));
+              .where(eq(taskDocuments.documentId, existing.id));
 
             return {
               created: false as const,
@@ -286,7 +286,7 @@ export function documentService(db: Db) {
           const [document] = await tx
             .insert(documents)
             .values({
-              companyId: issue.companyId,
+              companyId: task.companyId,
               title: input.title ?? null,
               format: input.format,
               latestBody: input.body,
@@ -304,7 +304,7 @@ export function documentService(db: Db) {
           const [revision] = await tx
             .insert(documentRevisions)
             .values({
-              companyId: issue.companyId,
+              companyId: task.companyId,
               documentId: document.id,
               revisionNumber: 1,
               title: input.title ?? null,
@@ -323,9 +323,9 @@ export function documentService(db: Db) {
             .set({ latestRevisionId: revision.id })
             .where(eq(documents.id, document.id));
 
-          await tx.insert(issueDocuments).values({
-            companyId: issue.companyId,
-            issueId: issue.id,
+          await tx.insert(taskDocuments).values({
+            companyId: task.companyId,
+            taskId: task.id,
             documentId: document.id,
             key,
             createdAt: now,
@@ -336,8 +336,8 @@ export function documentService(db: Db) {
             created: true as const,
             document: {
               id: document.id,
-              companyId: issue.companyId,
-              issueId: issue.id,
+              companyId: task.companyId,
+              taskId: task.id,
               key,
               title: document.title,
               format: document.format,
@@ -355,14 +355,14 @@ export function documentService(db: Db) {
         });
       } catch (error) {
         if (isUniqueViolation(error)) {
-          throw conflict("Document key already exists on this issue", { key });
+          throw conflict("Document key already exists on this task", { key });
         }
         throw error;
       }
     },
 
-    restoreIssueDocumentRevision: async (input: {
-      issueId: string;
+    restoreTaskDocumentRevision: async (input: {
+      taskId: string;
       key: string;
       revisionId: string;
       createdByAgentId?: string | null;
@@ -371,10 +371,10 @@ export function documentService(db: Db) {
       const key = normalizeDocumentKey(input.key);
       return db.transaction(async (tx) => {
         const existing = await tx
-          .select(issueDocumentSelect)
-          .from(issueDocuments)
-          .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
-          .where(and(eq(issueDocuments.issueId, input.issueId), eq(issueDocuments.key, key)))
+          .select(taskDocumentSelect)
+          .from(taskDocuments)
+          .innerJoin(documents, eq(taskDocuments.documentId, documents.id))
+          .where(and(eq(taskDocuments.taskId, input.taskId), eq(taskDocuments.key, key)))
           .then((rows) => rows[0] ?? null);
 
         if (!existing) throw notFound("Document not found");
@@ -433,9 +433,9 @@ export function documentService(db: Db) {
           .where(eq(documents.id, existing.id));
 
         await tx
-          .update(issueDocuments)
+          .update(taskDocuments)
           .set({ updatedAt: now })
-          .where(eq(issueDocuments.documentId, existing.id));
+          .where(eq(taskDocuments.documentId, existing.id));
 
         return {
           restoredFromRevisionId: revision.id,
@@ -455,19 +455,19 @@ export function documentService(db: Db) {
       });
     },
 
-    deleteIssueDocument: async (issueId: string, rawKey: string) => {
+    deleteTaskDocument: async (taskId: string, rawKey: string) => {
       const key = normalizeDocumentKey(rawKey);
       return db.transaction(async (tx) => {
         const existing = await tx
-          .select(issueDocumentSelect)
-          .from(issueDocuments)
-          .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
-          .where(and(eq(issueDocuments.issueId, issueId), eq(issueDocuments.key, key)))
+          .select(taskDocumentSelect)
+          .from(taskDocuments)
+          .innerJoin(documents, eq(taskDocuments.documentId, documents.id))
+          .where(and(eq(taskDocuments.taskId, taskId), eq(taskDocuments.key, key)))
           .then((rows) => rows[0] ?? null);
 
         if (!existing) return null;
 
-        await tx.delete(issueDocuments).where(eq(issueDocuments.documentId, existing.id));
+        await tx.delete(taskDocuments).where(eq(taskDocuments.documentId, existing.id));
         await tx.delete(documents).where(eq(documents.id, existing.id));
 
         return {

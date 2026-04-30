@@ -6,9 +6,9 @@
 
 The motivating use case is strong:
 
-- when an issue starts, a local coding agent may want its own isolated checkout
+- when an task starts, a local coding agent may want its own isolated checkout
 - the agent may need a dedicated branch and a predictable path to push later
-- the agent may need to start one or more long-lived workspace runtime services, discover reachable ports or URLs, and report them back into the issue
+- the agent may need to start one or more long-lived workspace runtime services, discover reachable ports or URLs, and report them back into the task
 - the workflow should reuse the same Paperclip instance and embedded database instead of creating a blank environment
 - local agent auth should remain low-friction
 
@@ -27,7 +27,7 @@ Paperclip should model **execution workspaces**, not **worktrees**.
 More specifically:
 
 - the durable anchor is the **project workspace** or repo checkout
-- an issue may derive a temporary **execution workspace** from that project workspace
+- an task may derive a temporary **execution workspace** from that project workspace
 - one implementation of an execution workspace is a **git worktree**
 - adapters decide whether and how to use that derived workspace
 
@@ -50,13 +50,13 @@ This also keeps the abstraction valid for non-local adapters:
 
 They should be treated as **repo/project-scoped infrastructure**, not agent identity.
 
-The stable object is the project workspace. Agents come and go, ownership changes, and the same issue may be reassigned. A git worktree is a derived checkout of a repo workspace for a specific task or issue. The agent uses it, but should not own the abstraction.
+The stable object is the project workspace. Agents come and go, ownership changes, and the same task may be reassigned. A git worktree is a derived checkout of a repo workspace for a specific task or task. The agent uses it, but should not own the abstraction.
 
 If Paperclip makes worktrees agent-first, it will blur:
 
 - agent home directories
 - project repo roots
-- issue-specific branches/checkouts
+- task-specific branches/checkouts
 
 That makes reuse, reassignment, cleanup, and UI visibility harder.
 
@@ -93,7 +93,7 @@ It also avoids forcing a host-filesystem model onto cloud agents. A cloud adapte
 The current technical model is directionally right, but the product surface needs clearer separation between:
 
 - the generic cross-adapter concept of an **execution workspace**
-- the user-visible local-git implementation concept of an **isolated issue checkout**
+- the user-visible local-git implementation concept of an **isolated task checkout**
 - the specific git implementation detail of a **git worktree**
 
 Those should not be collapsed into one label in the UI.
@@ -103,7 +103,7 @@ Those should not be collapsed into one label in the UI.
 For product/UI copy:
 
 - use **execution workspace** for the generic cross-adapter concept
-- use **isolated issue checkout** for the user-facing feature when we want to say "this issue gets its own branch/checkout"
+- use **isolated task checkout** for the user-facing feature when we want to say "this task gets its own branch/checkout"
 - reserve **git worktree** for advanced or implementation detail views
 
 That gives Paperclip room to support:
@@ -120,20 +120,20 @@ The main place this should be configured is the **project**, not the agent form.
 
 Reasoning:
 
-- whether a repo/project wants isolated issue checkouts is primarily a project workflow decision
+- whether a repo/project wants isolated task checkouts is primarily a project workflow decision
 - most operators do not want to configure runtime JSON per agent
 - agents should inherit the project's workspace policy unless there is a strong adapter-specific override
 - the board needs a place to express repo workflow defaults such as branching, PRs, cleanup, and preview lifecycle
 
 So the project should own a setting like:
 
-- `isolatedIssueCheckouts.enabled` or equivalent
+- `isolatedTaskCheckouts.enabled` or equivalent
 
-and that should be the default driver for new issues in that project.
+and that should be the default driver for new tasks in that project.
 
-### Issue-level use should stay optional
+### Task-level use should stay optional
 
-Even when a project supports isolated issue checkouts, not every issue should be forced into one.
+Even when a project supports isolated task checkouts, not every task should be forced into one.
 
 Examples:
 
@@ -143,11 +143,11 @@ Examples:
 
 So the model should be:
 
-- project defines whether isolated issue checkouts are available and what the defaults are
-- each issue can opt in or out when created
-- the default issue value can be inherited from the project
+- project defines whether isolated task checkouts are available and what the defaults are
+- each task can opt in or out when created
+- the default task value can be inherited from the project
 
-This should not require showing advanced adapter config in normal issue creation flows.
+This should not require showing advanced adapter config in normal task creation flows.
 
 ### Runtime services should usually be hidden from the agent form
 
@@ -167,7 +167,7 @@ So the UI recommendation is:
 
 ### Pull request workflow needs explicit ownership and approval rules
 
-Once Paperclip is creating isolated issue checkouts, it is implicitly touching a bigger workflow:
+Once Paperclip is creating isolated task checkouts, it is implicitly touching a bigger workflow:
 
 - branch creation
 - runtime service start/stop
@@ -190,7 +190,7 @@ And likely three distinct decision points:
 
 Those should not be buried inside adapter prompts. They are workflow policy.
 
-### Human operator workflows are different from issue-isolation workflows
+### Human operator workflows are different from task-isolation workflows
 
 A human operator may want a long-lived personal integration branch such as `dotta` and may not want every task to create a new branch/workspace dance.
 
@@ -198,12 +198,12 @@ That is a legitimate workflow and should be supported directly.
 
 So Paperclip should distinguish:
 
-- **isolated issue checkout workflows**: optimized for agent parallelism and issue-scoped isolation
+- **isolated task checkout workflows**: optimized for agent parallelism and task-scoped isolation
 - **personal branch workflows**: optimized for a human or operator making multiple related changes on a long-lived branch and creating PRs back to the main branch when convenient
 
 This implies:
 
-- isolated issue checkouts should be optional even when available
+- isolated task checkouts should be optional even when available
 - project workflow settings should support a "use base branch directly" or "use preferred operator branch" path
 - PR policy should not assume that every unit of work maps 1:1 to a new branch or PR
 
@@ -216,8 +216,8 @@ Projects should have a dedicated settings area for workspace automation.
 Suggested structure:
 
 - `Execution Workspaces`
-  - `Enable isolated issue checkouts`
-  - `Default for new issues`
+  - `Enable isolated task checkouts`
+  - `Default for new tasks`
   - `Checkout implementation`
   - `Branch and PR behavior`
   - `Runtime services`
@@ -225,18 +225,18 @@ Suggested structure:
 
 For a local git-backed project, the visible language can be more concrete:
 
-- `Enable isolated issue checkouts`
+- `Enable isolated task checkouts`
 - `Implementation: Git worktree`
 
 For remote or adapter-managed projects, the same section can instead say:
 
 - `Implementation: Adapter-managed workspace`
 
-### 2. Issue creation should expose a simple opt-in
+### 2. Task creation should expose a simple opt-in
 
-When creating an issue inside a project with execution workspace support enabled:
+When creating an task inside a project with execution workspace support enabled:
 
-- show a checkbox or toggle such as `Use isolated issue checkout`
+- show a checkbox or toggle such as `Use isolated task checkout`
 - default it from the project setting
 - hide advanced workspace controls unless the operator has expanded an advanced section
 
@@ -258,7 +258,7 @@ That means the common case becomes:
 
 - configure the project once
 - assign a local coding agent
-- create issues with optional isolated checkout behavior
+- create tasks with optional isolated checkout behavior
 
 ### 4. Advanced implementation detail can still exist
 
@@ -277,23 +277,23 @@ But that should be treated like an expert/debugging surface, not the default men
 Suggested policy values:
 
 - `shared_project_workspace`
-- `isolated_issue_checkout`
+- `isolated_task_checkout`
 - `adapter_managed_isolated_workspace`
 
-For local git projects, `isolated_issue_checkout` may map to `git_worktree`.
+For local git projects, `isolated_task_checkout` may map to `git_worktree`.
 
 ### Branch policy
 
 Suggested project-level branch policy fields:
 
 - `baseBranch`
-- `branchMode`: `issue_scoped | operator_branch | project_primary`
-- `branchTemplate` for issue-scoped branches
+- `branchMode`: `task_scoped | operator_branch | project_primary`
+- `branchTemplate` for task-scoped branches
 - `operatorPreferredBranch` for human/operator workflows
 
 This allows:
 
-- strict issue branches for agents
+- strict task branches for agents
 - long-lived personal branches for humans
 - direct use of the project primary workspace when desired
 
@@ -316,7 +316,7 @@ Suggested project-level cleanup fields:
 - `stopRuntimeServicesOnDone`
 - `removeIsolatedCheckoutOnDone`
 - `removeIsolatedCheckoutOnMerged`
-- `deleteIssueBranchOnMerged`
+- `deleteTaskBranchOnMerged`
 - `retainFailedWorkspaceForInspection`
 
 These matter because workspace automation is not just setup. The cleanup path is part of the product.
@@ -335,14 +335,14 @@ Based on the concerns above, the UI should change in these ways:
 ### Project UI
 
 - add a project-level execution workspace settings section
-- allow enabling isolated issue checkouts for that project
-- store default issue behavior there
+- allow enabling isolated task checkouts for that project
+- store default task behavior there
 - expose branch, PR, runtime service, and cleanup defaults there
 
-### Issue creation UI
+### Task creation UI
 
-- only show `Use isolated issue checkout` when the project has execution workspace support enabled
-- keep it as an issue-level opt-in/out, defaulted from the project
+- only show `Use isolated task checkout` when the project has execution workspace support enabled
+- keep it as an task-level opt-in/out, defaulted from the project
 - hide advanced execution workspace details unless requested
 
 ## Consequences for the Spec
@@ -350,7 +350,7 @@ Based on the concerns above, the UI should change in these ways:
 This changes the emphasis of the plan in a useful way:
 
 - the project becomes the main workflow configuration owner
-- the issue becomes the unit of opt-in/out for isolated checkout behavior
+- the task becomes the unit of opt-in/out for isolated checkout behavior
 - the agent becomes an executor that usually inherits the workflow policy
 - raw runtime JSON becomes an advanced/internal representation, not the main UX
 
@@ -364,7 +364,7 @@ This section turns the product requirements above into a concrete implementation
 
 The runtime decision order should become:
 
-1. issue-level execution workspace override
+1. task-level execution workspace override
 2. project-level execution workspace policy
 3. agent-level adapter override
 4. current default behavior
@@ -380,11 +380,11 @@ Add a project-owned execution workspace policy object. Suggested shared shape:
 ```ts
 type ProjectExecutionWorkspacePolicy = {
   enabled: boolean;
-  defaultMode: "inherit_project_default" | "shared_project_workspace" | "isolated_issue_checkout";
+  defaultMode: "inherit_project_default" | "shared_project_workspace" | "isolated_task_checkout";
   implementation: "git_worktree" | "adapter_managed";
   branchPolicy: {
     baseBranch: string | null;
-    branchMode: "issue_scoped" | "operator_branch" | "project_primary";
+    branchMode: "task_scoped" | "operator_branch" | "project_primary";
     branchTemplate: string | null;
     operatorPreferredBranch: string | null;
   };
@@ -399,7 +399,7 @@ type ProjectExecutionWorkspacePolicy = {
     stopRuntimeServicesOnDone: boolean;
     removeExecutionWorkspaceOnDone: boolean;
     removeExecutionWorkspaceOnMerged: boolean;
-    deleteIssueBranchOnMerged: boolean;
+    deleteTaskBranchOnMerged: boolean;
     retainFailedWorkspaceForInspection: boolean;
   };
   runtimeServices: {
@@ -411,18 +411,18 @@ type ProjectExecutionWorkspacePolicy = {
 
 Notes:
 
-- `enabled` controls whether the project exposes isolated issue checkout behavior at all
-- `defaultMode` controls issue creation defaults
+- `enabled` controls whether the project exposes isolated task checkout behavior at all
+- `defaultMode` controls task creation defaults
 - `implementation` stays generic enough for local or remote adapters
 - runtime service config stays nested here, not in the default agent form
 
-### Issue-level fields
+### Task-level fields
 
-Add issue-owned opt-in/override fields. Suggested shape:
+Add task-owned opt-in/override fields. Suggested shape:
 
 ```ts
-type IssueExecutionWorkspaceSettings = {
-  mode?: "inherit_project_default" | "shared_project_workspace" | "isolated_issue_checkout";
+type TaskExecutionWorkspaceSettings = {
+  mode?: "inherit_project_default" | "shared_project_workspace" | "isolated_task_checkout";
   branchOverride?: string | null;
   pullRequestModeOverride?: "inherit" | "none" | "agent_may_open" | "agent_auto_open" | "approval_required";
 };
@@ -430,7 +430,7 @@ type IssueExecutionWorkspaceSettings = {
 
 This should usually be hidden behind simple UI:
 
-- a checkbox like `Use isolated issue checkout`
+- a checkbox like `Use isolated task checkout`
 - advanced controls only when needed
 
 ### Agent-level fields
@@ -439,7 +439,7 @@ Keep agent-level workspace/runtime configuration, but reposition it as advanced 
 
 Suggested semantics:
 
-- if absent, inherit project + issue policy
+- if absent, inherit project + task policy
 - if present, override only the implementation detail needed for that adapter
 
 ## Shared Type and API Changes
@@ -455,36 +455,36 @@ Add:
 
 - `executionWorkspacePolicy?: ProjectExecutionWorkspacePolicy | null`
 
-### 2. Shared issue types
+### 2. Shared task types
 
 Files to change:
 
-- `packages/shared/src/types/issue.ts`
-- `packages/shared/src/validators/issue.ts`
+- `packages/shared/src/types/task.ts`
+- `packages/shared/src/validators/task.ts`
 
 Add:
 
-- `executionWorkspaceSettings?: IssueExecutionWorkspaceSettings | null`
+- `executionWorkspaceSettings?: TaskExecutionWorkspaceSettings | null`
 
 ### 3. DB schema
 
 If we want these fields persisted directly on existing entities instead of living in opaque JSON:
 
 - `packages/db/src/schema/projects.ts`
-- `packages/db/src/schema/issues.ts`
+- `packages/db/src/schema/tasks.ts`
 - migration generation in `packages/db/src/migrations/`
 
 Recommended first cut:
 
 - store project policy as JSONB on `projects`
-- store issue setting override as JSONB on `issues`
+- store task setting override as JSONB on `tasks`
 
 That minimizes schema churn while the product model is still moving.
 
 Suggested columns:
 
 - `projects.execution_workspace_policy jsonb`
-- `issues.execution_workspace_settings jsonb`
+- `tasks.execution_workspace_settings jsonb`
 
 ## Server-Side Resolution Changes
 
@@ -501,18 +501,18 @@ Tasks:
 - return it from project API payloads
 - enforce company scoping as usual
 
-### 5. Issue service create/update path
+### 5. Task service create/update path
 
 Files:
 
-- `server/src/services/issues.ts`
-- `server/src/routes/issues.ts`
+- `server/src/services/tasks.ts`
+- `server/src/routes/tasks.ts`
 
 Tasks:
 
-- accept issue-level `executionWorkspaceSettings`
-- when creating an issue in a project with execution workspaces enabled, default the issue setting from the project policy if not explicitly provided
-- keep issue payload simple for normal clients; advanced fields may be optional
+- accept task-level `executionWorkspaceSettings`
+- when creating an task in a project with execution workspaces enabled, default the task setting from the project policy if not explicitly provided
+- keep task payload simple for normal clients; advanced fields may be optional
 
 ### 6. Heartbeat and run resolution
 
@@ -522,14 +522,14 @@ Primary file:
 
 Current behavior should be refactored so workspace resolution is based on:
 
-- issue setting
+- task setting
 - then project policy
 - then adapter override
 
 Specific technical work:
 
 - load project execution workspace policy during run resolution
-- load issue execution workspace settings during run resolution
+- load task execution workspace settings during run resolution
 - derive an effective execution workspace decision object before adapter launch
 - keep adapter config as override only
 
@@ -537,7 +537,7 @@ Suggested internal helper:
 
 ```ts
 type EffectiveExecutionWorkspaceDecision = {
-  mode: "shared_project_workspace" | "isolated_issue_checkout";
+  mode: "shared_project_workspace" | "isolated_task_checkout";
   implementation: "git_worktree" | "adapter_managed" | "project_primary";
   branchPolicy: {...};
   pullRequestPolicy: {...};
@@ -559,8 +559,8 @@ Likely files:
 Add a project-owned section:
 
 - `Execution Workspaces`
-  - enable isolated issue checkouts
-  - default for new issues
+  - enable isolated task checkouts
+  - default for new tasks
   - implementation type
   - branch settings
   - PR settings
@@ -572,16 +572,16 @@ Important UX rule:
 - runtime service config should not default to raw JSON
 - if the first cut must use JSON internally, wrap it in a minimal structured form or advanced disclosure
 
-### 8. Issue creation/edit UI
+### 8. Task creation/edit UI
 
 Likely files:
 
-- issue create UI components and issue detail edit surfaces in `ui/src/pages/`
-- issue API client in `ui/src/api/issues.ts`
+- task create UI components and task detail edit surfaces in `ui/src/pages/`
+- task API client in `ui/src/api/tasks.ts`
 
 Add:
 
-- `Use isolated issue checkout` toggle, only when project policy enables it
+- `Use isolated task checkout` toggle, only when project policy enables it
 - advanced workspace behavior controls only when expanded
 
 Do not show:
@@ -589,7 +589,7 @@ Do not show:
 - raw runtime service JSON
 - raw strategy payloads
 
-in the default issue creation flow.
+in the default task creation flow.
 
 ### 9. Agent UI cleanup
 
@@ -629,7 +629,7 @@ Files:
 
 Tasks:
 
-- accept runtime service defaults from the effective project/issue policy
+- accept runtime service defaults from the effective project/task policy
 - keep adapter-config runtime service JSON as override-only
 - preserve portability for remote adapters
 
@@ -646,7 +646,7 @@ Likely files:
 
 Needed decisions:
 
-- when issue moves to done, should Paperclip auto-commit?
+- when task moves to done, should Paperclip auto-commit?
 - should it auto-push?
 - should it auto-open a PR?
 - should PR open/ready be approval-gated?
@@ -654,7 +654,7 @@ Needed decisions:
 Suggested approach:
 
 - store PR policy on project
-- resolve effective PR policy per issue/run
+- resolve effective PR policy per task/run
 - emit explicit workflow actions rather than relying on prompt text alone
 
 ### 13. Cleanup policy execution
@@ -677,8 +677,8 @@ Needed behaviors:
 To integrate these ideas without destabilizing the system, implement in this order:
 
 1. Add project policy fields to shared types, validators, DB, services, routes, and project UI.
-2. Add issue-level execution workspace setting fields to shared types, validators, DB, services, routes, and issue create/edit UI.
-3. Refactor heartbeat to compute effective execution workspace policy from issue -> project -> agent override.
+2. Add task-level execution workspace setting fields to shared types, validators, DB, services, routes, and task create/edit UI.
+3. Refactor heartbeat to compute effective execution workspace policy from task -> project -> agent override.
 4. Change local-agent UI so workspace/runtime JSON becomes advanced-only.
 5. Move default runtime service behavior to project settings.
 6. Add explicit PR policy storage and resolution.
@@ -689,9 +689,9 @@ To integrate these ideas without destabilizing the system, implement in this ord
 This design shift is complete when all are true:
 
 - project settings own the default workspace policy
-- issue creation exposes a simple opt-in/out when available
+- task creation exposes a simple opt-in/out when available
 - local agent forms no longer require raw runtime JSON for common cases
-- heartbeat resolves effective workspace behavior from project + issue + override precedence
+- heartbeat resolves effective workspace behavior from project + task + override precedence
 - PR and cleanup behavior are modeled as explicit policy, not implied prompt behavior
 - the UI language distinguishes execution workspace from local git worktree implementation details
 
@@ -788,9 +788,9 @@ Because of that, Paperclip should separate:
 Paperclip should be able to express intentions such as:
 
 - use the project's primary workspace directly
-- create an isolated issue-scoped checkout
+- create an isolated task-scoped checkout
 - base work on a given repo ref
-- derive a branch name from the issue
+- derive a branch name from the task
 - expose one or more reachable preview or service URLs if runtime services are started
 
 ### Adapter realization
@@ -824,7 +824,7 @@ Examples:
 
 ### 2. Execution workspace
 
-Derived runtime checkout for a specific issue/run.
+Derived runtime checkout for a specific task/run.
 
 Examples:
 
@@ -872,7 +872,7 @@ Or:
   "workspaceStrategy": {
     "type": "git_worktree",
     "baseRef": "origin/main",
-    "branchTemplate": "{{issue.identifier}}-{{slug}}",
+    "branchTemplate": "{{task.identifier}}-{{slug}}",
     "worktreeParentDir": ".paperclip/instances/default/worktrees/projects/{{project.id}}",
     "cleanupPolicy": "on_merged",
     "startDevServer": true,
@@ -890,7 +890,7 @@ Remote adapters may instead use shapes like:
     "type": "isolated_checkout",
     "provider": "adapter_managed",
     "baseRef": "origin/main",
-    "branchTemplate": "{{issue.identifier}}-{{slug}}"
+    "branchTemplate": "{{task.identifier}}-{{slug}}"
   }
 }
 ```
@@ -970,7 +970,7 @@ Examples:
 
 Paperclip should normalize the reported metadata without requiring every adapter to look like a host-local process.
 
-Keep issue-level overrides possible through the existing `assigneeAdapterOverrides` shape in `packages/shared/src/types/issue.ts`.
+Keep task-level overrides possible through the existing `assigneeAdapterOverrides` shape in `packages/shared/src/types/task.ts`.
 
 ## Responsibilities by Layer
 
@@ -978,7 +978,7 @@ Keep issue-level overrides possible through the existing `assigneeAdapterOverrid
 
 Paperclip core should:
 
-- resolve the base project workspace for the issue
+- resolve the base project workspace for the task
 - resolve or request an execution workspace
 - resolve or request workspace runtime services when configured
 - inject execution workspace metadata into run context
@@ -1052,7 +1052,7 @@ For runtime services:
 
 Do not create a fully first-class `worktrees` table yet.
 
-Start smaller by recording derived execution workspace metadata on runs, issues, or both.
+Start smaller by recording derived execution workspace metadata on runs, tasks, or both.
 
 Suggested fields to introduce:
 
@@ -1140,7 +1140,7 @@ Acceptance:
 1. Create a server-side helper module for local repo checkout strategies.
 2. Implement `git_worktree` strategy:
    - validate git repo at base workspace cwd
-   - derive branch name from issue
+   - derive branch name from task
    - create or reuse a worktree path
    - detect collisions cleanly
 3. Return structured metadata:
@@ -1152,7 +1152,7 @@ Acceptance:
 Acceptance:
 
 - helper is reusable outside a single adapter
-- worktree creation is deterministic for a given issue/config
+- worktree creation is deterministic for a given task/config
 - remote adapters remain unaffected by this helper
 
 ## Phase 4: Optional Dev Server Lifecycle
@@ -1171,12 +1171,12 @@ Rename this phase conceptually to **workspace runtime service lifecycle**.
 4. For remote services:
    - let the adapter return normalized service metadata after provisioning
    - do not assume PID or localhost access
-5. Post or update issue-visible metadata with the service URLs and labels.
+5. Post or update task-visible metadata with the service URLs and labels.
 
 Acceptance:
 
 - runtime service startup remains opt-in
-- failures produce actionable run logs and issue comments
+- failures produce actionable run logs and task comments
 - same embedded DB / Paperclip instance can be reused through env/config injection when appropriate
 - remote service realizations are represented without pretending to be local processes
 
@@ -1241,9 +1241,9 @@ Acceptance:
 - remote adapters can implement equivalent isolation without pretending to be local worktrees
 - adapters can report service URLs and lifecycle metadata in a normalized shape
 
-## Phase 7: Visibility and Issue Comments
+## Phase 7: Visibility and Task Comments
 
-1. Expose execution workspace metadata in run details and optionally issue detail UI:
+1. Expose execution workspace metadata in run details and optionally task detail UI:
    - strategy
    - cwd
    - branch
@@ -1255,7 +1255,7 @@ Acceptance:
    - scope
    - owner
    - health
-3. Add standard issue comment output when a worktree-backed or remotely isolated run starts:
+3. Add standard task comment output when a worktree-backed or remotely isolated run starts:
    - branch
    - worktree path
    - service URLs if present
@@ -1264,7 +1264,7 @@ Acceptance:
 
 - board can see where the agent is working
 - board can see what runtime services exist for that workspace
-- issue thread becomes the handoff surface for branch names and reachable URLs
+- task thread becomes the handoff surface for branch names and reachable URLs
 
 ## Phase 8: Cleanup Policies
 
@@ -1306,7 +1306,7 @@ This should likely take the form of a local operator bootstrap flow, not a weake
 
 1. Worktree behavior is optional, not a global requirement.
 2. Project workspaces remain the canonical repo anchor.
-3. Local coding agents can opt into isolated issue-scoped execution workspaces.
+3. Local coding agents can opt into isolated task-scoped execution workspaces.
 4. The same model works for both `codex_local` and `claude_local` without forcing a tool-specific abstraction into core.
 5. Remote adapters can consume the same execution workspace intent without requiring host-local filesystem access.
 6. Session continuity remains correct because each adapter resumes relative to its realized execution workspace.

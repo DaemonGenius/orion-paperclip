@@ -47,7 +47,7 @@ export const executionWorkspaceCloseActionSchema = z.object({
   command: z.string().nullable(),
 }).strict();
 
-export const executionWorkspaceCloseLinkedIssueSchema = z.object({
+export const executionWorkspaceCloseLinkedTaskSchema = z.object({
   id: z.string().uuid(),
   identifier: z.string().nullable(),
   title: z.string(),
@@ -76,7 +76,7 @@ export const workspaceRuntimeServiceSchema = z.object({
   projectId: z.string().uuid().nullable(),
   projectWorkspaceId: z.string().uuid().nullable(),
   executionWorkspaceId: z.string().uuid().nullable(),
-  issueId: z.string().uuid().nullable(),
+  taskId: z.string().uuid().nullable(),
   scopeType: z.enum(["project_workspace", "execution_workspace", "run", "agent"]),
   scopeId: z.string().nullable(),
   serviceName: z.string(),
@@ -105,7 +105,7 @@ export const executionWorkspaceCloseReadinessSchema = z.object({
   state: executionWorkspaceCloseReadinessStateSchema,
   blockingReasons: z.array(z.string()),
   warnings: z.array(z.string()),
-  linkedIssues: z.array(executionWorkspaceCloseLinkedIssueSchema),
+  linkedTasks: z.array(executionWorkspaceCloseLinkedTaskSchema),
   plannedActions: z.array(executionWorkspaceCloseActionSchema),
   isDestructiveCloseAllowed: z.boolean(),
   isSharedWorkspace: z.boolean(),

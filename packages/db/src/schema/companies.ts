@@ -9,8 +9,8 @@ export const companies = pgTable(
     status: text("status").notNull().default("active"),
     pauseReason: text("pause_reason"),
     pausedAt: timestamp("paused_at", { withTimezone: true }),
-    issuePrefix: text("issue_prefix").notNull().default("PAP"),
-    issueCounter: integer("issue_counter").notNull().default(0),
+    taskPrefix: text("task_prefix").notNull().default("PAP"),
+    taskCounter: integer("task_counter").notNull().default(0),
     budgetMonthlyCents: integer("budget_monthly_cents").notNull().default(0),
     spentMonthlyCents: integer("spent_monthly_cents").notNull().default(0),
     requireBoardApprovalForNewAgents: boolean("require_board_approval_for_new_agents")
@@ -27,6 +27,6 @@ export const companies = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    issuePrefixUniqueIdx: uniqueIndex("companies_issue_prefix_idx").on(table.issuePrefix),
+    taskPrefixUniqueIdx: uniqueIndex("companies_task_prefix_idx").on(table.taskPrefix),
   }),
 );

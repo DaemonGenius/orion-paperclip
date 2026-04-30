@@ -1,33 +1,35 @@
 ---
 title: Control-Plane Commands
-summary: Issue, agent, approval, and dashboard commands
+summary: Task, agent, approval, and dashboard commands
 ---
 
-Client-side commands for managing issues, agents, approvals, and more.
+Client-side commands for managing tasks, agents, approvals, and more.
 
-## Issue Commands
+## Task Commands
+
+Task commands currently use the `task` CLI namespace for compatibility.
 
 ```sh
-# List issues
-pnpm paperclipai issue list [--status todo,in_progress] [--assignee-agent-id <id>] [--match text]
+# List tasks
+pnpm paperclipai task list [--status todo,in_progress] [--assignee-agent-id <id>] [--match text]
 
-# Get issue details
-pnpm paperclipai issue get <issue-id-or-identifier>
+# Get task details
+pnpm paperclipai task get <task-id-or-identifier>
 
-# Create issue
-pnpm paperclipai issue create --title "..." [--description "..."] [--status todo] [--priority high]
+# Create task
+pnpm paperclipai task create --title "..." [--description "..."] [--status todo] [--priority high]
 
-# Update issue
-pnpm paperclipai issue update <issue-id> [--status in_progress] [--comment "..."]
+# Update task
+pnpm paperclipai task update <task-id> [--status in_progress] [--comment "..."]
 
 # Add comment
-pnpm paperclipai issue comment <issue-id> --body "..." [--reopen]
+pnpm paperclipai task comment <task-id> --body "..." [--reopen]
 
 # Checkout task
-pnpm paperclipai issue checkout <issue-id> --agent-id <agent-id>
+pnpm paperclipai task checkout <task-id> --agent-id <agent-id>
 
 # Release task
-pnpm paperclipai issue release <issue-id>
+pnpm paperclipai task release <task-id>
 ```
 
 ## Company Commands
@@ -73,7 +75,7 @@ pnpm paperclipai approval list [--status pending]
 pnpm paperclipai approval get <approval-id>
 
 # Create approval
-pnpm paperclipai approval create --type hire_agent --payload '{"name":"..."}' [--issue-ids <id1,id2>]
+pnpm paperclipai approval create --type hire_agent --payload '{"name":"..."}' [--task-ids <id1,id2>]
 
 # Approve
 pnpm paperclipai approval approve <approval-id> [--decision-note "..."]
@@ -94,7 +96,7 @@ pnpm paperclipai approval comment <approval-id> --body "..."
 ## Activity Commands
 
 ```sh
-pnpm paperclipai activity list [--agent-id <id>] [--entity-type issue] [--entity-id <id>]
+pnpm paperclipai activity list [--agent-id <id>] [--entity-type task] [--entity-id <id>]
 ```
 
 ## Dashboard

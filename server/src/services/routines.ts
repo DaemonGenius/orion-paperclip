@@ -7,7 +7,7 @@ import {
   executionWorkspaces,
   goals,
   heartbeatRuns,
-  issues,
+  tasks,
   projects,
   routineRuns,
   routines,
@@ -39,17 +39,17 @@ import { trackRoutineRun } from "@paperclipai/shared/telemetry";
 import { conflict, forbidden, notFound, unauthorized, unprocessable } from "../errors.js";
 import { logger } from "../middleware/logger.js";
 import { getTelemetryClient } from "../telemetry.js";
-import { issueService } from "./issues.js";
+import { taskService } from "./tasks.js";
 import { secretService } from "./secrets.js";
 import { parseCron, validateCron } from "./cron.js";
 import { heartbeatService } from "./heartbeat.js";
-import { queueIssueAssignmentWakeup, type IssueAssignmentWakeupDeps } from "./issue-assignment-wakeup.js";
+import { queueTaskAssignmentWakeup, type TaskAssignmentWakeupDeps } from "./task-assignment-wakeup.js";
 import { logActivity } from "./activity-log.js";
 import type { PluginWorkerManager } from "./plugin-worker-manager.js";
 
-const OPEN_ISSUE_STATUSES = ["backlog", "todo", "in_progress", "in_review", "blocked"];
+const OPEN_TASK_STATUSES = ["backlog", "todo", "in_progress", "in_review", "blocked"];
 const LIVE_HEARTBEAT_RUN_STATUSES = ["queued", "running", "scheduled_retry"];
-const TERMINAL_ISSUE_STATUSES = new Set(["done", "cancelled"]);
+const TERMINAL_TASK_STATUSES = new Set(["done", "cancelled"]);
 const MAX_CATCH_UP_RUNS = 25;
 const WEEKDAY_INDEX: Record<string, number> = {
   Sun: 0,
@@ -136,11 +136,11 @@ function nextCronTickInTimeZone(expression: string, timeZone: string, after: Dat
   return null;
 }
 
-function nextResultText(status: string, issueId?: string | null) {
-  if (status === "issue_created" && issueId) return `Created execution issue ${issueId}`;
-  if (status === "coalesced") return "Coalesced into an existing live execution issue";
-  if (status === "skipped") return "Skipped because a live execution issue already exists";
-  if (status === "completed") return "Execution issue completed";
+function nextResultText(status: string, taskId?: string | null) {
+  if (status === "task_created" && taskId) return `Created execution task ${taskId}`;
+  if (status === "coalesced") return "Coalesced into an existing live execution task";
+  if (status === "skipped") return "Skipped because a live execution task already exists";
+  if (status === "completed") return "Execution task completed";
   if (status === "failed") return "Execution failed";
   return status;
 }
@@ -360,11 +360,11 @@ function routineUsesWorkspaceBranch(routine: typeof routines.$inferSelect) {
 export function routineService(
   db: Db,
   deps: {
-    heartbeat?: IssueAssignmentWakeupDeps;
+    heartbeat?: TaskAssignmentWakeupDeps;
     pluginWorkerManager?: PluginWorkerManager;
   } = {},
 ) {
-  const issueSvc = issueService(db);
+  const taskSvc = taskService(db);
   const secretsSvc = secretService(db);
   const heartbeat = deps.heartbeat ?? heartbeatService(db, {
     pluginWorkerManager: deps.pluginWorkerManager,
@@ -427,14 +427,14 @@ export function routineService(
     if (goal.companyId !== companyId) throw unprocessable("Goal must belong to same company");
   }
 
-  async function assertParentIssue(companyId: string, issueId: string) {
-    const parentIssue = await db
-      .select({ id: issues.id, companyId: issues.companyId })
-      .from(issues)
-      .where(eq(issues.id, issueId))
+  async function assertParentTask(companyId: string, taskId: string) {
+    const parentTask = await db
+      .select({ id: tasks.id, companyId: tasks.companyId })
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
       .then((rows) => rows[0] ?? null);
-    if (!parentIssue) throw notFound("Parent issue not found");
-    if (parentIssue.companyId !== companyId) throw unprocessable("Parent issue must belong to same company");
+    if (!parentTask) throw notFound("Parent task not found");
+    if (parentTask.companyId !== companyId) throw unprocessable("Parent task must belong to same company");
   }
 
   async function listTriggersForRoutineIds(companyId: string, routineIds: string[]) {
@@ -467,7 +467,7 @@ export function routineService(
         idempotencyKey: routineRuns.idempotencyKey,
         triggerPayload: routineRuns.triggerPayload,
         dispatchFingerprint: routineRuns.dispatchFingerprint,
-        linkedIssueId: routineRuns.linkedIssueId,
+        linkedTaskId: routineRuns.linkedTaskId,
         coalescedIntoRunId: routineRuns.coalescedIntoRunId,
         failureReason: routineRuns.failureReason,
         completedAt: routineRuns.completedAt,
@@ -475,15 +475,15 @@ export function routineService(
         updatedAt: routineRuns.updatedAt,
         triggerKind: routineTriggers.kind,
         triggerLabel: routineTriggers.label,
-        issueIdentifier: issues.identifier,
-        issueTitle: issues.title,
-        issueStatus: issues.status,
-        issuePriority: issues.priority,
-        issueUpdatedAt: issues.updatedAt,
+        taskIdentifier: tasks.identifier,
+        taskTitle: tasks.title,
+        taskStatus: tasks.status,
+        taskPriority: tasks.priority,
+        taskUpdatedAt: tasks.updatedAt,
       })
       .from(routineRuns)
       .leftJoin(routineTriggers, eq(routineRuns.triggerId, routineTriggers.id))
-      .leftJoin(issues, eq(routineRuns.linkedIssueId, issues.id))
+      .leftJoin(tasks, eq(routineRuns.linkedTaskId, tasks.id))
       .where(and(eq(routineRuns.companyId, companyId), inArray(routineRuns.routineId, routineIds)))
       .orderBy(routineRuns.routineId, desc(routineRuns.createdAt), desc(routineRuns.id));
 
@@ -500,20 +500,20 @@ export function routineService(
         idempotencyKey: row.idempotencyKey,
         triggerPayload: row.triggerPayload as Record<string, unknown> | null,
         dispatchFingerprint: row.dispatchFingerprint,
-        linkedIssueId: row.linkedIssueId,
+        linkedTaskId: row.linkedTaskId,
         coalescedIntoRunId: row.coalescedIntoRunId,
         failureReason: row.failureReason,
         completedAt: row.completedAt,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
-        linkedIssue: row.linkedIssueId
+        linkedTask: row.linkedTaskId
           ? {
-            id: row.linkedIssueId,
-            identifier: row.issueIdentifier,
-            title: row.issueTitle ?? "Routine execution",
-            status: row.issueStatus ?? "todo",
-            priority: row.issuePriority ?? "medium",
-            updatedAt: row.issueUpdatedAt ?? row.updatedAt,
+            id: row.linkedTaskId,
+            identifier: row.taskIdentifier,
+            title: row.taskTitle ?? "Routine execution",
+            status: row.taskStatus ?? "todo",
+            priority: row.taskPriority ?? "medium",
+            updatedAt: row.taskUpdatedAt ?? row.updatedAt,
           }
           : null,
         trigger: row.triggerId
@@ -528,36 +528,36 @@ export function routineService(
     return map;
   }
 
-  async function listLiveIssueByRoutineIds(companyId: string, routineIds: string[]) {
-    if (routineIds.length === 0) return new Map<string, RoutineListItem["activeIssue"]>();
+  async function listLiveTaskByRoutineIds(companyId: string, routineIds: string[]) {
+    if (routineIds.length === 0) return new Map<string, RoutineListItem["activeTask"]>();
     const executionBoundRows = await db
-      .selectDistinctOn([issues.originId], {
-        originId: issues.originId,
-        id: issues.id,
-        identifier: issues.identifier,
-        title: issues.title,
-        status: issues.status,
-        priority: issues.priority,
-        updatedAt: issues.updatedAt,
+      .selectDistinctOn([tasks.originId], {
+        originId: tasks.originId,
+        id: tasks.id,
+        identifier: tasks.identifier,
+        title: tasks.title,
+        status: tasks.status,
+        priority: tasks.priority,
+        updatedAt: tasks.updatedAt,
       })
-      .from(issues)
+      .from(tasks)
       .innerJoin(
         heartbeatRuns,
         and(
-          eq(heartbeatRuns.id, issues.executionRunId),
+          eq(heartbeatRuns.id, tasks.executionRunId),
           inArray(heartbeatRuns.status, LIVE_HEARTBEAT_RUN_STATUSES),
         ),
       )
       .where(
         and(
-          eq(issues.companyId, companyId),
-          eq(issues.originKind, "routine_execution"),
-          inArray(issues.originId, routineIds),
-          inArray(issues.status, OPEN_ISSUE_STATUSES),
-          isNull(issues.hiddenAt),
+          eq(tasks.companyId, companyId),
+          eq(tasks.originKind, "routine_execution"),
+          inArray(tasks.originId, routineIds),
+          inArray(tasks.status, OPEN_TASK_STATUSES),
+          isNull(tasks.hiddenAt),
         ),
       )
-      .orderBy(issues.originId, desc(issues.updatedAt), desc(issues.createdAt));
+      .orderBy(tasks.originId, desc(tasks.updatedAt), desc(tasks.createdAt));
 
     const rowsByOriginId = new Map<string, (typeof executionBoundRows)[number]>();
     for (const row of executionBoundRows) {
@@ -568,34 +568,34 @@ export function routineService(
     const missingRoutineIds = routineIds.filter((routineId) => !rowsByOriginId.has(routineId));
     if (missingRoutineIds.length > 0) {
       const legacyRows = await db
-        .selectDistinctOn([issues.originId], {
-          originId: issues.originId,
-          id: issues.id,
-          identifier: issues.identifier,
-          title: issues.title,
-          status: issues.status,
-          priority: issues.priority,
-          updatedAt: issues.updatedAt,
+        .selectDistinctOn([tasks.originId], {
+          originId: tasks.originId,
+          id: tasks.id,
+          identifier: tasks.identifier,
+          title: tasks.title,
+          status: tasks.status,
+          priority: tasks.priority,
+          updatedAt: tasks.updatedAt,
         })
-        .from(issues)
+        .from(tasks)
         .innerJoin(
           heartbeatRuns,
           and(
-            eq(heartbeatRuns.companyId, issues.companyId),
+            eq(heartbeatRuns.companyId, tasks.companyId),
             inArray(heartbeatRuns.status, LIVE_HEARTBEAT_RUN_STATUSES),
-            sql`${heartbeatRuns.contextSnapshot} ->> 'issueId' = cast(${issues.id} as text)`,
+            sql`${heartbeatRuns.contextSnapshot} ->> 'taskId' = cast(${tasks.id} as text)`,
           ),
         )
         .where(
           and(
-            eq(issues.companyId, companyId),
-            eq(issues.originKind, "routine_execution"),
-            inArray(issues.originId, missingRoutineIds),
-            inArray(issues.status, OPEN_ISSUE_STATUSES),
-            isNull(issues.hiddenAt),
+            eq(tasks.companyId, companyId),
+            eq(tasks.originKind, "routine_execution"),
+            inArray(tasks.originId, missingRoutineIds),
+            inArray(tasks.status, OPEN_TASK_STATUSES),
+            isNull(tasks.hiddenAt),
           ),
         )
-        .orderBy(issues.originId, desc(issues.updatedAt), desc(issues.createdAt));
+        .orderBy(tasks.originId, desc(tasks.updatedAt), desc(tasks.createdAt));
 
       for (const row of legacyRows) {
         if (!row.originId) continue;
@@ -603,7 +603,7 @@ export function routineService(
       }
     }
 
-    const map = new Map<string, RoutineListItem["activeIssue"]>();
+    const map = new Map<string, RoutineListItem["activeTask"]>();
     for (const row of rowsByOriginId.values()) {
       if (!row.originId) continue;
       map.set(row.originId, {
@@ -623,14 +623,14 @@ export function routineService(
     triggerId?: string | null;
     triggeredAt: Date;
     status: string;
-    issueId?: string | null;
+    taskId?: string | null;
     nextRunAt?: Date | null;
   }, executor: Db = db) {
     await executor
       .update(routines)
       .set({
         lastTriggeredAt: input.triggeredAt,
-        lastEnqueuedAt: input.issueId ? input.triggeredAt : undefined,
+        lastEnqueuedAt: input.taskId ? input.triggeredAt : undefined,
         updatedAt: new Date(),
       })
       .where(eq(routines.id, input.routineId));
@@ -640,7 +640,7 @@ export function routineService(
         .update(routineTriggers)
         .set({
           lastFiredAt: input.triggeredAt,
-          lastResult: nextResultText(input.status, input.issueId),
+          lastResult: nextResultText(input.status, input.taskId),
           nextRunAt: input.nextRunAt === undefined ? undefined : input.nextRunAt,
           updatedAt: new Date(),
         })
@@ -650,69 +650,69 @@ export function routineService(
 
   function routineExecutionFingerprintCondition(dispatchFingerprint?: string | null) {
     if (!dispatchFingerprint) return null;
-    // The "default" arm preserves coalescing against pre-migration open issues.
-    // It becomes inert once those legacy routine execution issues drain out.
+    // The "default" arm preserves coalescing against pre-migration open tasks.
+    // It becomes inert once those legacy routine execution tasks drain out.
     return or(
-      eq(issues.originFingerprint, dispatchFingerprint),
-      eq(issues.originFingerprint, "default"),
+      eq(tasks.originFingerprint, dispatchFingerprint),
+      eq(tasks.originFingerprint, "default"),
     );
   }
 
-  async function findLiveExecutionIssue(
+  async function findLiveExecutionTask(
     routine: typeof routines.$inferSelect,
     executor: Db = db,
     dispatchFingerprint?: string | null,
   ) {
     const fingerprintCondition = routineExecutionFingerprintCondition(dispatchFingerprint);
-    const executionBoundIssue = await executor
+    const executionBoundTask = await executor
       .select()
-      .from(issues)
+      .from(tasks)
       .innerJoin(
         heartbeatRuns,
         and(
-          eq(heartbeatRuns.id, issues.executionRunId),
+          eq(heartbeatRuns.id, tasks.executionRunId),
           inArray(heartbeatRuns.status, LIVE_HEARTBEAT_RUN_STATUSES),
         ),
       )
       .where(
         and(
-          eq(issues.companyId, routine.companyId),
-          eq(issues.originKind, "routine_execution"),
-          eq(issues.originId, routine.id),
-          inArray(issues.status, OPEN_ISSUE_STATUSES),
-          isNull(issues.hiddenAt),
+          eq(tasks.companyId, routine.companyId),
+          eq(tasks.originKind, "routine_execution"),
+          eq(tasks.originId, routine.id),
+          inArray(tasks.status, OPEN_TASK_STATUSES),
+          isNull(tasks.hiddenAt),
           ...(fingerprintCondition ? [fingerprintCondition] : []),
         ),
       )
-      .orderBy(desc(issues.updatedAt), desc(issues.createdAt))
+      .orderBy(desc(tasks.updatedAt), desc(tasks.createdAt))
       .limit(1)
-      .then((rows) => rows[0]?.issues ?? null);
-    if (executionBoundIssue) return executionBoundIssue;
+      .then((rows) => rows[0]?.tasks ?? null);
+    if (executionBoundTask) return executionBoundTask;
 
     return executor
       .select()
-      .from(issues)
+      .from(tasks)
       .innerJoin(
         heartbeatRuns,
         and(
-          eq(heartbeatRuns.companyId, issues.companyId),
+          eq(heartbeatRuns.companyId, tasks.companyId),
           inArray(heartbeatRuns.status, LIVE_HEARTBEAT_RUN_STATUSES),
-          sql`${heartbeatRuns.contextSnapshot} ->> 'issueId' = cast(${issues.id} as text)`,
+          sql`${heartbeatRuns.contextSnapshot} ->> 'taskId' = cast(${tasks.id} as text)`,
         ),
       )
       .where(
         and(
-          eq(issues.companyId, routine.companyId),
-          eq(issues.originKind, "routine_execution"),
-          eq(issues.originId, routine.id),
-          inArray(issues.status, OPEN_ISSUE_STATUSES),
-          isNull(issues.hiddenAt),
+          eq(tasks.companyId, routine.companyId),
+          eq(tasks.originKind, "routine_execution"),
+          eq(tasks.originId, routine.id),
+          inArray(tasks.status, OPEN_TASK_STATUSES),
+          isNull(tasks.hiddenAt),
           ...(fingerprintCondition ? [fingerprintCondition] : []),
         ),
       )
-      .orderBy(desc(issues.updatedAt), desc(issues.createdAt))
+      .orderBy(desc(tasks.updatedAt), desc(tasks.createdAt))
       .limit(1)
-      .then((rows) => rows[0]?.issues ?? null);
+      .then((rows) => rows[0]?.tasks ?? null);
   }
 
   async function finalizeRun(runId: string, patch: Partial<typeof routineRuns.$inferInsert>, executor: Db = db) {
@@ -859,15 +859,15 @@ export function routineService(
         ? nextCronTickInTimeZone(input.trigger.cronExpression, input.trigger.timezone, triggeredAt)
         : undefined;
 
-      let createdIssue: Awaited<ReturnType<typeof issueSvc.create>> | null = null;
+      let createdTask: Awaited<ReturnType<typeof taskSvc.create>> | null = null;
       try {
-        const activeIssue = await findLiveExecutionIssue(input.routine, txDb, dispatchFingerprint);
-        if (activeIssue && input.routine.concurrencyPolicy !== "always_enqueue") {
+        const activeTask = await findLiveExecutionTask(input.routine, txDb, dispatchFingerprint);
+        if (activeTask && input.routine.concurrencyPolicy !== "always_enqueue") {
           const status = input.routine.concurrencyPolicy === "skip_if_active" ? "skipped" : "coalesced";
           const updated = await finalizeRun(createdRun.id, {
             status,
-            linkedIssueId: activeIssue.id,
-            coalescedIntoRunId: activeIssue.originRunId,
+            linkedTaskId: activeTask.id,
+            coalescedIntoRunId: activeTask.originRunId,
             completedAt: triggeredAt,
           }, txDb);
           await updateRoutineTouchedState({
@@ -875,17 +875,17 @@ export function routineService(
             triggerId: input.trigger?.id ?? null,
             triggeredAt,
             status,
-            issueId: activeIssue.id,
+            taskId: activeTask.id,
             nextRunAt,
           }, txDb);
           return updated ?? createdRun;
         }
 
         try {
-          createdIssue = await issueSvc.create(input.routine.companyId, {
+          createdTask = await taskSvc.create(input.routine.companyId, {
             projectId,
             goalId: input.routine.goalId,
-            parentId: input.routine.parentIssueId,
+            parentId: input.routine.parentTaskId,
             title,
             description,
             status: "todo",
@@ -906,18 +906,18 @@ export function routineService(
             "code" in error &&
             (error as { code?: string }).code === "23505" &&
             "constraint" in error &&
-            (error as { constraint?: string }).constraint === "issues_open_routine_execution_uq";
+            (error as { constraint?: string }).constraint === "tasks_open_routine_execution_uq";
           if (!isOpenExecutionConflict || input.routine.concurrencyPolicy === "always_enqueue") {
             throw error;
           }
 
-          const existingIssue = await findLiveExecutionIssue(input.routine, txDb, dispatchFingerprint);
-          if (!existingIssue) throw error;
+          const existingTask = await findLiveExecutionTask(input.routine, txDb, dispatchFingerprint);
+          if (!existingTask) throw error;
           const status = input.routine.concurrencyPolicy === "skip_if_active" ? "skipped" : "coalesced";
           const updated = await finalizeRun(createdRun.id, {
             status,
-            linkedIssueId: existingIssue.id,
-            coalescedIntoRunId: existingIssue.originRunId,
+            linkedTaskId: existingTask.id,
+            coalescedIntoRunId: existingTask.originRunId,
             completedAt: triggeredAt,
           }, txDb);
           await updateRoutineTouchedState({
@@ -925,38 +925,38 @@ export function routineService(
             triggerId: input.trigger?.id ?? null,
             triggeredAt,
             status,
-            issueId: existingIssue.id,
+            taskId: existingTask.id,
             nextRunAt,
           }, txDb);
           return updated ?? createdRun;
         }
 
-        // Keep the dispatch lock until the issue is linked to a queued heartbeat run.
-        await queueIssueAssignmentWakeup({
+        // Keep the dispatch lock until the task is linked to a queued heartbeat run.
+        await queueTaskAssignmentWakeup({
           heartbeat,
-          issue: createdIssue,
-          reason: "issue_assigned",
+          task: createdTask,
+          reason: "task_assigned",
           mutation: "create",
           contextSource: "routine.dispatch",
           requestedByActorType: input.source === "schedule" ? "system" : undefined,
           rethrowOnError: true,
         });
         const updated = await finalizeRun(createdRun.id, {
-          status: "issue_created",
-          linkedIssueId: createdIssue.id,
+          status: "task_created",
+          linkedTaskId: createdTask.id,
         }, txDb);
         await updateRoutineTouchedState({
           routineId: input.routine.id,
           triggerId: input.trigger?.id ?? null,
           triggeredAt,
-          status: "issue_created",
-          issueId: createdIssue.id,
+          status: "task_created",
+          taskId: createdTask.id,
           nextRunAt,
         }, txDb);
         return updated ?? createdRun;
       } catch (error) {
-        if (createdIssue) {
-          await txDb.delete(issues).where(eq(issues.id, createdIssue.id));
+        if (createdTask) {
+          await txDb.delete(tasks).where(eq(tasks.id, createdTask.id));
         }
         const failureReason = error instanceof Error ? error.message : String(error);
         const failed = await finalizeRun(createdRun.id, {
@@ -1019,10 +1019,10 @@ export function routineService(
         .where(eq(routines.companyId, companyId))
         .orderBy(desc(routines.updatedAt), asc(routines.title));
       const routineIds = rows.map((row) => row.id);
-      const [triggersByRoutine, latestRunByRoutine, activeIssueByRoutine] = await Promise.all([
+      const [triggersByRoutine, latestRunByRoutine, activeTaskByRoutine] = await Promise.all([
         listTriggersForRoutineIds(companyId, routineIds),
         listLatestRunByRoutineIds(companyId, routineIds),
-        listLiveIssueByRoutineIds(companyId, routineIds),
+        listLiveTaskByRoutineIds(companyId, routineIds),
       ]);
       return rows.map((row) => ({
         ...row,
@@ -1038,21 +1038,21 @@ export function routineService(
           lastResult: trigger.lastResult,
         })),
         lastRun: latestRunByRoutine.get(row.id) ?? null,
-        activeIssue: activeIssueByRoutine.get(row.id) ?? null,
+        activeTask: activeTaskByRoutine.get(row.id) ?? null,
       }));
     },
 
     getDetail: async (id: string): Promise<RoutineDetail | null> => {
       const row = await getRoutineById(id);
       if (!row) return null;
-      const [project, assignee, parentIssue, triggers, recentRuns, activeIssue] = await Promise.all([
+      const [project, assignee, parentTask, triggers, recentRuns, activeTask] = await Promise.all([
         row.projectId
           ? db.select().from(projects).where(eq(projects.id, row.projectId)).then((rows) => rows[0] ?? null)
           : null,
         row.assigneeAgentId
           ? db.select().from(agents).where(eq(agents.id, row.assigneeAgentId)).then((rows) => rows[0] ?? null)
           : null,
-        row.parentIssueId ? issueSvc.getById(row.parentIssueId) : null,
+        row.parentTaskId ? taskSvc.getById(row.parentTaskId) : null,
         db.select().from(routineTriggers).where(eq(routineTriggers.routineId, row.id)).orderBy(asc(routineTriggers.createdAt)),
         db
           .select({
@@ -1066,7 +1066,7 @@ export function routineService(
             idempotencyKey: routineRuns.idempotencyKey,
             triggerPayload: routineRuns.triggerPayload,
             dispatchFingerprint: routineRuns.dispatchFingerprint,
-            linkedIssueId: routineRuns.linkedIssueId,
+            linkedTaskId: routineRuns.linkedTaskId,
             coalescedIntoRunId: routineRuns.coalescedIntoRunId,
             failureReason: routineRuns.failureReason,
             completedAt: routineRuns.completedAt,
@@ -1074,15 +1074,15 @@ export function routineService(
             updatedAt: routineRuns.updatedAt,
             triggerKind: routineTriggers.kind,
             triggerLabel: routineTriggers.label,
-            issueIdentifier: issues.identifier,
-            issueTitle: issues.title,
-            issueStatus: issues.status,
-            issuePriority: issues.priority,
-            issueUpdatedAt: issues.updatedAt,
+            taskIdentifier: tasks.identifier,
+            taskTitle: tasks.title,
+            taskStatus: tasks.status,
+            taskPriority: tasks.priority,
+            taskUpdatedAt: tasks.updatedAt,
           })
           .from(routineRuns)
           .leftJoin(routineTriggers, eq(routineRuns.triggerId, routineTriggers.id))
-          .leftJoin(issues, eq(routineRuns.linkedIssueId, issues.id))
+          .leftJoin(tasks, eq(routineRuns.linkedTaskId, tasks.id))
           .where(eq(routineRuns.routineId, row.id))
           .orderBy(desc(routineRuns.createdAt))
           .limit(25)
@@ -1098,20 +1098,20 @@ export function routineService(
               idempotencyKey: run.idempotencyKey,
               triggerPayload: run.triggerPayload as Record<string, unknown> | null,
               dispatchFingerprint: run.dispatchFingerprint,
-              linkedIssueId: run.linkedIssueId,
+              linkedTaskId: run.linkedTaskId,
               coalescedIntoRunId: run.coalescedIntoRunId,
               failureReason: run.failureReason,
               completedAt: run.completedAt,
               createdAt: run.createdAt,
               updatedAt: run.updatedAt,
-              linkedIssue: run.linkedIssueId
+              linkedTask: run.linkedTaskId
                 ? {
-                  id: run.linkedIssueId,
-                  identifier: run.issueIdentifier,
-                  title: run.issueTitle ?? "Routine execution",
-                  status: run.issueStatus ?? "todo",
-                  priority: run.issuePriority ?? "medium",
-                  updatedAt: run.issueUpdatedAt ?? run.updatedAt,
+                  id: run.linkedTaskId,
+                  identifier: run.taskIdentifier,
+                  title: run.taskTitle ?? "Routine execution",
+                  status: run.taskStatus ?? "todo",
+                  priority: run.taskPriority ?? "medium",
+                  updatedAt: run.taskUpdatedAt ?? run.updatedAt,
                 }
                 : null,
               trigger: run.triggerId
@@ -1123,17 +1123,17 @@ export function routineService(
                 : null,
             })),
           ),
-        findLiveExecutionIssue(row),
+        findLiveExecutionTask(row),
       ]);
 
       return {
         ...row,
         project,
         assignee,
-        parentIssue,
+        parentTask,
         triggers: triggers as RoutineTrigger[],
         recentRuns,
-        activeIssue,
+        activeTask,
       };
     },
 
@@ -1141,7 +1141,7 @@ export function routineService(
       await assertProject(companyId, input.projectId ?? null);
       await assertAssignableAgent(companyId, input.assigneeAgentId ?? null);
       if (input.goalId) await assertGoal(companyId, input.goalId);
-      if (input.parentIssueId) await assertParentIssue(companyId, input.parentIssueId);
+      if (input.parentTaskId) await assertParentTask(companyId, input.parentTaskId);
       const variables = syncRoutineVariablesWithTemplate(
         [input.title, input.description],
         sanitizeRoutineVariableInputs(input.variables),
@@ -1154,7 +1154,7 @@ export function routineService(
           companyId,
           projectId: input.projectId ?? null,
           goalId: input.goalId ?? null,
-          parentIssueId: input.parentIssueId ?? null,
+          parentTaskId: input.parentTaskId ?? null,
           title: input.title,
           description: input.description ?? null,
           assigneeAgentId: input.assigneeAgentId ?? null,
@@ -1193,7 +1193,7 @@ export function routineService(
       if (patch.projectId !== undefined) await assertProject(existing.companyId, nextProjectId);
       if (patch.assigneeAgentId !== undefined) await assertAssignableAgent(existing.companyId, nextAssigneeAgentId);
       if (patch.goalId) await assertGoal(existing.companyId, patch.goalId);
-      if (patch.parentIssueId) await assertParentIssue(existing.companyId, patch.parentIssueId);
+      if (patch.parentTaskId) await assertParentTask(existing.companyId, patch.parentTaskId);
       assertRoutineVariableDefinitions(nextVariables);
       const enabledScheduleTriggers = await db
         .select({ id: routineTriggers.id })
@@ -1215,7 +1215,7 @@ export function routineService(
         .set({
           projectId: nextProjectId,
           goalId: patch.goalId === undefined ? existing.goalId : patch.goalId,
-          parentIssueId: patch.parentIssueId === undefined ? existing.parentIssueId : patch.parentIssueId,
+          parentTaskId: patch.parentTaskId === undefined ? existing.parentTaskId : patch.parentTaskId,
           title: nextTitle,
           description: nextDescription,
           assigneeAgentId: nextAssigneeAgentId,
@@ -1511,7 +1511,7 @@ export function routineService(
           idempotencyKey: routineRuns.idempotencyKey,
           triggerPayload: routineRuns.triggerPayload,
           dispatchFingerprint: routineRuns.dispatchFingerprint,
-          linkedIssueId: routineRuns.linkedIssueId,
+          linkedTaskId: routineRuns.linkedTaskId,
           coalescedIntoRunId: routineRuns.coalescedIntoRunId,
           failureReason: routineRuns.failureReason,
           completedAt: routineRuns.completedAt,
@@ -1519,15 +1519,15 @@ export function routineService(
           updatedAt: routineRuns.updatedAt,
           triggerKind: routineTriggers.kind,
           triggerLabel: routineTriggers.label,
-          issueIdentifier: issues.identifier,
-          issueTitle: issues.title,
-          issueStatus: issues.status,
-          issuePriority: issues.priority,
-          issueUpdatedAt: issues.updatedAt,
+          taskIdentifier: tasks.identifier,
+          taskTitle: tasks.title,
+          taskStatus: tasks.status,
+          taskPriority: tasks.priority,
+          taskUpdatedAt: tasks.updatedAt,
         })
         .from(routineRuns)
         .leftJoin(routineTriggers, eq(routineRuns.triggerId, routineTriggers.id))
-        .leftJoin(issues, eq(routineRuns.linkedIssueId, issues.id))
+        .leftJoin(tasks, eq(routineRuns.linkedTaskId, tasks.id))
         .where(eq(routineRuns.routineId, routineId))
         .orderBy(desc(routineRuns.createdAt))
         .limit(cappedLimit);
@@ -1543,20 +1543,20 @@ export function routineService(
         idempotencyKey: row.idempotencyKey,
         triggerPayload: row.triggerPayload as Record<string, unknown> | null,
         dispatchFingerprint: row.dispatchFingerprint,
-        linkedIssueId: row.linkedIssueId,
+        linkedTaskId: row.linkedTaskId,
         coalescedIntoRunId: row.coalescedIntoRunId,
         failureReason: row.failureReason,
         completedAt: row.completedAt,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
-        linkedIssue: row.linkedIssueId
+        linkedTask: row.linkedTaskId
           ? {
-            id: row.linkedIssueId,
-            identifier: row.issueIdentifier,
-            title: row.issueTitle ?? "Routine execution",
-            status: row.issueStatus ?? "todo",
-            priority: row.issuePriority ?? "medium",
-            updatedAt: row.issueUpdatedAt ?? row.updatedAt,
+            id: row.linkedTaskId,
+            identifier: row.taskIdentifier,
+            title: row.taskTitle ?? "Routine execution",
+            status: row.taskStatus ?? "todo",
+            priority: row.taskPriority ?? "medium",
+            updatedAt: row.taskUpdatedAt ?? row.updatedAt,
           }
           : null,
         trigger: row.triggerId
@@ -1635,28 +1635,28 @@ export function routineService(
       return { triggered };
     },
 
-    syncRunStatusForIssue: async (issueId: string) => {
-      const issue = await db
+    syncRunStatusForTask: async (taskId: string) => {
+      const task = await db
         .select({
-          id: issues.id,
-          status: issues.status,
-          originKind: issues.originKind,
-          originRunId: issues.originRunId,
+          id: tasks.id,
+          status: tasks.status,
+          originKind: tasks.originKind,
+          originRunId: tasks.originRunId,
         })
-        .from(issues)
-        .where(eq(issues.id, issueId))
+        .from(tasks)
+        .where(eq(tasks.id, taskId))
         .then((rows) => rows[0] ?? null);
-      if (!issue || issue.originKind !== "routine_execution" || !issue.originRunId) return null;
-      if (issue.status === "done") {
-        return finalizeRun(issue.originRunId, {
+      if (!task || task.originKind !== "routine_execution" || !task.originRunId) return null;
+      if (task.status === "done") {
+        return finalizeRun(task.originRunId, {
           status: "completed",
           completedAt: new Date(),
         });
       }
-      if (issue.status === "blocked" || issue.status === "cancelled") {
-        return finalizeRun(issue.originRunId, {
+      if (task.status === "blocked" || task.status === "cancelled") {
+        return finalizeRun(task.originRunId, {
           status: "failed",
-          failureReason: `Execution issue moved to ${issue.status}`,
+          failureReason: `Execution task moved to ${task.status}`,
           completedAt: new Date(),
         });
       }

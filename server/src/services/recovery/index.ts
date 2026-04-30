@@ -2,9 +2,9 @@ export {
   RECOVERY_KEY_PREFIXES,
   RECOVERY_ORIGIN_KINDS,
   RECOVERY_REASON_KINDS,
-  buildIssueGraphLivenessIncidentKey,
-  buildIssueGraphLivenessLeafKey,
-  parseIssueGraphLivenessIncidentKey,
+  buildTaskGraphLivenessIncidentKey,
+  buildTaskGraphLivenessLeafKey,
+  parseTaskGraphLivenessIncidentKey,
 } from "./origins.js";
 export type {
   RecoveryKeyPrefix,
@@ -12,21 +12,21 @@ export type {
   RecoveryReasonKind,
 } from "./origins.js";
 export {
-  classifyIssueGraphLiveness,
-} from "./issue-graph-liveness.js";
+  classifyTaskGraphLiveness,
+} from "./task-graph-liveness.js";
 export type {
-  IssueGraphLivenessInput,
-  IssueLivenessAgentInput,
-  IssueLivenessDependencyPathEntry,
-  IssueLivenessExecutionPathInput,
-  IssueLivenessFinding,
-  IssueLivenessIssueInput,
-  IssueLivenessOwnerCandidate,
-  IssueLivenessOwnerCandidateReason,
-  IssueLivenessRelationInput,
-  IssueLivenessSeverity,
-  IssueLivenessState,
-} from "./issue-graph-liveness.js";
+  TaskGraphLivenessInput,
+  TaskLivenessAgentInput,
+  TaskLivenessDependencyPathEntry,
+  TaskLivenessExecutionPathInput,
+  TaskLivenessFinding,
+  TaskLivenessTaskInput,
+  TaskLivenessOwnerCandidate,
+  TaskLivenessOwnerCandidateReason,
+  TaskLivenessRelationInput,
+  TaskLivenessSeverity,
+  TaskLivenessState,
+} from "./task-graph-liveness.js";
 export {
   recoveryService,
 } from "./service.js";

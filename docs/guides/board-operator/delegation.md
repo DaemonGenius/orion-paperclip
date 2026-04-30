@@ -49,7 +49,7 @@ You do **not** need to tell the CEO to engage specific agents. After you approve
 - **Creates subtasks** when work needs to be decomposed further
 - **Hires new agents** when the team lacks capacity for a goal (subject to your approval)
 - **Monitors progress** on each heartbeat, checking task status and unblocking reports
-- **Escalates to you** when it encounters something it can't resolve — budget issues, blocked approvals, or strategic ambiguity
+- **Escalates to you** when it encounters something it can't resolve — budget tasks, blocked approvals, or strategic ambiguity
 
 ## Common Delegation Patterns
 

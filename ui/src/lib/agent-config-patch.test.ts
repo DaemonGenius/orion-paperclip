@@ -24,7 +24,7 @@ function makeAgent(): Agent {
           value: "secret",
         },
       },
-      promptTemplate: "Work the issue.",
+      promptTemplate: "Work the task.",
     },
     runtimeConfig: {
       heartbeat: {
@@ -71,7 +71,7 @@ describe("buildAgentUpdatePatch", () => {
     expect(patch).toEqual({
       adapterConfig: {
         model: "claude-sonnet-4-6",
-        promptTemplate: "Work the issue.",
+        promptTemplate: "Work the task.",
       },
       replaceAdapterConfig: true,
     });
@@ -98,7 +98,7 @@ describe("buildAgentUpdatePatch", () => {
             value: "secret",
           },
         },
-        promptTemplate: "Work the issue.",
+        promptTemplate: "Work the task.",
         model: "gpt-5.4",
         dangerouslyBypassApprovalsAndSandbox: true,
       },

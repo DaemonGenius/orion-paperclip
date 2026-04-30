@@ -94,7 +94,7 @@ Use these exact patterns — do not invent new ones:
 | Body | `text-sm` | Default body text |
 | Muted | `text-sm text-muted-foreground` | Descriptions, secondary text |
 | Tiny label | `text-xs text-muted-foreground` | Metadata, timestamps, property labels |
-| Mono identifier | `text-xs font-mono text-muted-foreground` | Issue keys (PAP-001), CSS vars |
+| Mono identifier | `text-xs font-mono text-muted-foreground` | Task keys (PAP-001), CSS vars |
 | Large stat | `text-2xl font-bold` | Dashboard metric values |
 | Code/log | `font-mono text-xs` | Log output, code snippets |
 
@@ -108,15 +108,15 @@ Defined in `StatusBadge.tsx` and `StatusIcon.tsx`:
 
 | Status | Color | Entity types |
 |--------|-------|-------------|
-| active, achieved, completed, succeeded, approved, done | Green shades | Agents, goals, issues, approvals |
+| active, achieved, completed, succeeded, approved, done | Green shades | Agents, goals, tasks, approvals |
 | running | Cyan | Agents |
 | paused | Orange | Agents |
 | idle, pending | Yellow | Agents, approvals |
-| failed, error, rejected, blocked | Red shades | Runs, agents, approvals, issues |
+| failed, error, rejected, blocked | Red shades | Runs, agents, approvals, tasks |
 | archived, planned, backlog, cancelled | Neutral gray | Various |
-| todo | Blue | Issues |
-| in_progress | Indigo | Issues |
-| in_review | Violet | Issues |
+| todo | Blue | Tasks |
+| in_progress | Indigo | Tasks |
+| in_review | Violet | Tasks |
 
 ### Priority Icons
 
@@ -158,7 +158,7 @@ These patterns describe how components work together. They may not be their own 
 
 ### Entity Row with Status + Priority
 
-The standard list item for issues and similar entities:
+The standard list item for tasks and similar entities:
 
 ```tsx
 <EntityRow
@@ -175,7 +175,7 @@ Leading slot always: StatusIcon first, then PriorityIcon. Trailing slot: StatusB
 
 ### Grouped List
 
-Issues grouped by status header + entity rows:
+Tasks grouped by status header + entity rows:
 
 ```tsx
 <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 rounded-t-md">

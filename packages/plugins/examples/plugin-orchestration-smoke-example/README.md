@@ -8,11 +8,11 @@ product plugin.
 
 - `apiRoutes` under `/api/plugins/:pluginId/api/*`
 - restricted database migrations and runtime `ctx.db`
-- plugin-owned rows joined to `public.issues`
-- plugin-created child issues with namespaced origin metadata
+- plugin-owned rows joined to `public.tasks`
+- plugin-created child tasks with namespaced origin metadata
 - billing codes, workspace inheritance, blocker relations, documents, wakeups,
   and orchestration summaries
-- issue detail and settings UI slots that surface route, capability, namespace,
+- task detail and settings UI slots that surface route, capability, namespace,
   and smoke status
 
 ## Development
@@ -36,13 +36,13 @@ curl -X POST http://127.0.0.1:3100/api/plugins/install \
 
 ## Scoped Route Smoke
 
-After the plugin is ready, run the scoped route against an existing issue:
+After the plugin is ready, run the scoped route against an existing task:
 
 ```bash
-curl -X POST http://127.0.0.1:3100/api/plugins/paperclipai.plugin-orchestration-smoke-example/api/issues/<issue-id>/smoke \
+curl -X POST http://127.0.0.1:3100/api/plugins/paperclipai.plugin-orchestration-smoke-example/api/tasks/<task-id>/smoke \
   -H "Content-Type: application/json" \
   -d '{"assigneeAgentId":"<agent-id>"}'
 ```
 
-The route returns the generated child issue, resolved blocker, billing code,
+The route returns the generated child task, resolved blocker, billing code,
 subtree ids, and wakeup result.

@@ -10,7 +10,7 @@ Define a Paperclip memory service and surface API that can sit above multiple me
 - budget and cost visibility
 - plugin-first extensibility
 
-This plan is based on the external landscape summarized in `doc/memory-landscape.md`, the AWS AgentCore comparison captured in [PAP-1274](/PAP/issues/PAP-1274), and the current Paperclip architecture in:
+This plan is based on the external landscape summarized in `doc/memory-landscape.md`, the AWS AgentCore comparison captured in [PAP-1274](/PAP/tasks/PAP-1274), and the current Paperclip architecture in:
 
 - `doc/SPEC-implementation.md`
 - `doc/plugins/PLUGIN_SPEC.md`
@@ -63,7 +63,7 @@ Paperclip core should own:
 
 - binding resolution
 - who is allowed to call a memory operation
-- which company, agent, issue, project, run, and subject scope is active
+- which company, agent, task, project, run, and subject scope is active
 - what source object the operation belongs to
 - how usage and costs are attributed
 - how operators inspect what happened
@@ -84,8 +84,8 @@ Initial built-in automatic hooks should be:
 
 - pre-run hydrate for agent context recall
 - post-run capture from agent runs
-- optional issue comment capture
-- optional issue document capture
+- optional task comment capture
+- optional task document capture
 
 The hook registry itself should be general enough that other providers can subscribe to the same events without core changes.
 
@@ -132,7 +132,7 @@ At minimum:
 - `companyId`
 - optional `agentId`
 - optional `projectId`
-- optional `issueId`
+- optional `taskId`
 - optional `runId`
 - optional `subjectId` for external or user identity
 - optional `sessionKey` for providers that organize memory around sessions
@@ -144,9 +144,9 @@ The provenance handle that explains where a memory came from.
 
 Supported source kinds should include:
 
-- `issue_comment`
-- `issue_document`
-- `issue`
+- `task_comment`
+- `task_document`
+- `task`
 - `run`
 - `activity`
 - `manual_note`
@@ -160,8 +160,8 @@ Initial hook kinds:
 
 - `pre_run_hydrate`
 - `post_run_capture`
-- `issue_comment_capture`
-- `issue_document_capture`
+- `task_comment_capture`
+- `task_document_capture`
 - `manual_capture`
 
 ### Memory operation
@@ -188,7 +188,7 @@ export interface MemoryScope {
   companyId: string;
   agentId?: string;
   projectId?: string;
-  issueId?: string;
+  taskId?: string;
   runId?: string;
   subjectId?: string;
   sessionKey?: string;
@@ -197,15 +197,15 @@ export interface MemoryScope {
 
 export interface MemorySourceRef {
   kind:
-    | "issue_comment"
-    | "issue_document"
-    | "issue"
+    | "task_comment"
+    | "task_document"
+    | "task"
     | "run"
     | "activity"
     | "manual_note"
     | "external_document";
   companyId: string;
-  issueId?: string;
+  taskId?: string;
   commentId?: string;
   documentKey?: string;
   runId?: string;
@@ -217,8 +217,8 @@ export interface MemoryHookContext {
   hookKind:
     | "pre_run_hydrate"
     | "post_run_capture"
-    | "issue_comment_capture"
-    | "issue_document_capture"
+    | "task_comment_capture"
+    | "task_document_capture"
     | "manual_capture";
   hookId: string;
   triggeredAt: string;
@@ -444,9 +444,9 @@ Paperclip should continue to center:
 - `companyId`
 - `agentId`
 - `projectId`
-- `issueId`
+- `taskId`
 - `runId`
-- issue comments, documents, and activity as sources
+- task comments, documents, and activity as sources
 
 The lesson from AWS is to support clean mapping into provider-specific models, not to let provider identifiers take over the core product model.
 
@@ -460,7 +460,7 @@ Paperclip core should persist:
 - company default and agent override resolution targets
 - provider keys and capability metadata
 - normalized memory operation logs
-- source references back to issue comments, documents, runs, and activity
+- source references back to task comments, documents, runs, and activity
 - provider record handles returned by operations when available
 - hook delivery records and extraction job state
 - usage and cost attribution
@@ -501,11 +501,11 @@ These should be low-risk and easy to reason about:
 2. `post_run_capture`
    After a run finishes, Paperclip may call `capture(...)` with structured run output, excerpts, and provenance.
 
-3. `issue_comment_capture`
-   When enabled on the binding, Paperclip may call `capture(...)` for selected issue comments.
+3. `task_comment_capture`
+   When enabled on the binding, Paperclip may call `capture(...)` for selected task comments.
 
-4. `issue_document_capture`
-   When enabled on the binding, Paperclip may call `capture(...)` for selected issue documents.
+4. `task_document_capture`
+   When enabled on the binding, Paperclip may call `capture(...)` for selected task documents.
 
 ### Explicit tools and APIs
 
@@ -530,7 +530,7 @@ These should be tool-driven or UI-driven first:
 
 Paperclip should give agents both automatic recall and explicit tools, with simple guidance:
 
-- use `memory.search` when the task depends on prior decisions, people, projects, or long-running context that is not in the current issue thread
+- use `memory.search` when the task depends on prior decisions, people, projects, or long-running context that is not in the current task thread
 - use `memory.note` when a durable fact, preference, or decision should survive this run
 - use `memory.correct` when the user explicitly says prior context is wrong
 - rely on post-run auto-capture for ordinary session residue so agents do not have to write memory notes for every trivial exchange
@@ -549,7 +549,7 @@ The initial browse surface should support:
 - record list and record detail with source backlinks
 - query results with source backlinks
 - extraction job status
-- filters by agent, issue, project, run, source kind, and date
+- filters by agent, task, project, run, source kind, and date
 - provider usage, cost, and latency summaries
 
 When a provider supports richer browsing, the plugin can add deeper views through the existing plugin UI surfaces.
@@ -570,7 +570,7 @@ Every memory action should create a normalized operation record that captures:
 - latency
 - usage details reported by the provider
 - attribution mode
-- related run, issue, and agent when available
+- related run, task, and agent when available
 
 This is where operators answer "what memory work happened and why?"
 
@@ -583,7 +583,7 @@ The recommendation is:
 - if a memory operation runs inside a normal Paperclip agent heartbeat and the model usage is already counted on that run, do not create a duplicate `cost_event`
 - instead, store the memory operation with `attributionMode = "included_in_run"` and link it to the related `heartbeatRunId`
 - if a memory provider makes a direct metered model call outside the agent run accounting path, the provider must report usage and Paperclip should create a `cost_event`
-- that direct `cost_event` should still link back to the memory operation, agent, company, and issue or run context when possible
+- that direct `cost_event` should still link back to the memory operation, agent, company, and task or run context when possible
 
 ### 3. `finance_events` should carry flat subscription or invoice-style costs
 
@@ -685,7 +685,7 @@ The design should still treat that built-in as just another provider behind the 
 - add company and agent memory settings
 - add a memory operation explorer
 - add record list and detail surfaces
-- add source backlinks to issues and runs
+- add source backlinks to tasks and runs
 
 ### Phase 5: Rich capabilities
 

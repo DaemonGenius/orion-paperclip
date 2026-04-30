@@ -42,7 +42,7 @@ CREATE TABLE "orion_workflow_edges" (
 CREATE TABLE "orion_task_workflow_bindings" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,
-	"issue_id" uuid NOT NULL,
+	"task_id" uuid NOT NULL,
 	"workflow_id" uuid NOT NULL,
 	"current_node_key" text,
 	"status" text DEFAULT 'active' NOT NULL,
@@ -54,7 +54,7 @@ CREATE TABLE "orion_workflow_runs" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,
 	"workflow_id" uuid NOT NULL,
-	"issue_id" uuid,
+	"task_id" uuid,
 	"run_id" uuid,
 	"current_node_key" text,
 	"status" text DEFAULT 'active' NOT NULL,
@@ -76,7 +76,7 @@ ALTER TABLE "orion_workflow_edges" ADD CONSTRAINT "orion_workflow_edges_workflow
 --> statement-breakpoint
 ALTER TABLE "orion_task_workflow_bindings" ADD CONSTRAINT "orion_task_workflow_bindings_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "orion_task_workflow_bindings" ADD CONSTRAINT "orion_task_workflow_bindings_issue_id_issues_id_fk" FOREIGN KEY ("issue_id") REFERENCES "public"."issues"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "orion_task_workflow_bindings" ADD CONSTRAINT "orion_task_workflow_bindings_task_id_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."tasks"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "orion_task_workflow_bindings" ADD CONSTRAINT "orion_task_workflow_bindings_workflow_id_orion_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "public"."orion_workflows"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
@@ -84,7 +84,7 @@ ALTER TABLE "orion_workflow_runs" ADD CONSTRAINT "orion_workflow_runs_company_id
 --> statement-breakpoint
 ALTER TABLE "orion_workflow_runs" ADD CONSTRAINT "orion_workflow_runs_workflow_id_orion_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "public"."orion_workflows"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "orion_workflow_runs" ADD CONSTRAINT "orion_workflow_runs_issue_id_issues_id_fk" FOREIGN KEY ("issue_id") REFERENCES "public"."issues"("id") ON DELETE set null ON UPDATE no action;
+ALTER TABLE "orion_workflow_runs" ADD CONSTRAINT "orion_workflow_runs_task_id_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."tasks"("id") ON DELETE set null ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "orion_workflow_runs" ADD CONSTRAINT "orion_workflow_runs_run_id_heartbeat_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."heartbeat_runs"("id") ON DELETE set null ON UPDATE no action;
 --> statement-breakpoint
@@ -106,7 +106,7 @@ CREATE INDEX "orion_workflow_edges_workflow_idx" ON "orion_workflow_edges" USING
 --> statement-breakpoint
 CREATE INDEX "orion_workflow_edges_from_idx" ON "orion_workflow_edges" USING btree ("workflow_id","from_node_key");
 --> statement-breakpoint
-CREATE UNIQUE INDEX "orion_task_workflow_bindings_issue_uq" ON "orion_task_workflow_bindings" USING btree ("issue_id");
+CREATE UNIQUE INDEX "orion_task_workflow_bindings_task_uq" ON "orion_task_workflow_bindings" USING btree ("task_id");
 --> statement-breakpoint
 CREATE INDEX "orion_task_workflow_bindings_workflow_idx" ON "orion_task_workflow_bindings" USING btree ("company_id","workflow_id");
 --> statement-breakpoint
@@ -114,4 +114,4 @@ CREATE UNIQUE INDEX "orion_workflow_runs_run_uq" ON "orion_workflow_runs" USING 
 --> statement-breakpoint
 CREATE INDEX "orion_workflow_runs_workflow_idx" ON "orion_workflow_runs" USING btree ("company_id","workflow_id");
 --> statement-breakpoint
-CREATE INDEX "orion_workflow_runs_issue_idx" ON "orion_workflow_runs" USING btree ("company_id","issue_id");
+CREATE INDEX "orion_workflow_runs_task_idx" ON "orion_workflow_runs" USING btree ("company_id","task_id");

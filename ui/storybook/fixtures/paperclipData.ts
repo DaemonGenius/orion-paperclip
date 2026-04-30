@@ -8,15 +8,15 @@ import type {
   DashboardSummary,
   ExecutionWorkspace,
   Goal,
-  Issue,
-  IssueDocument,
-  IssueLabel,
+  Task,
+  TaskDocument,
+  TaskLabel,
   Project,
   SidebarBadges,
   WorkspaceRuntimeService,
 } from "@paperclipai/shared";
-import type { RunForIssue } from "@/api/activity";
-import type { LiveRunForIssue } from "@/api/heartbeats";
+import type { RunForTask } from "@/api/activity";
+import type { LiveRunForTask } from "@/api/heartbeats";
 
 const now = new Date("2026-04-20T12:00:00.000Z");
 const recent = (minutesAgo: number) => new Date(now.getTime() - minutesAgo * 60_000);
@@ -32,8 +32,8 @@ export const storybookCompanies: Company[] = [
     status: "active",
     pauseReason: null,
     pausedAt: null,
-    issuePrefix: "PAP",
-    issueCounter: 1641,
+    taskPrefix: "PAP",
+    taskCounter: 1641,
     budgetMonthlyCents: 250_000,
     spentMonthlyCents: 67_500,
     requireBoardApprovalForNewAgents: true,
@@ -54,8 +54,8 @@ export const storybookCompanies: Company[] = [
     status: "active",
     pauseReason: null,
     pausedAt: null,
-    issuePrefix: "RES",
-    issueCounter: 88,
+    taskPrefix: "RES",
+    taskCounter: 88,
     budgetMonthlyCents: 180_000,
     spentMonthlyCents: 39_500,
     requireBoardApprovalForNewAgents: false,
@@ -76,8 +76,8 @@ export const storybookCompanies: Company[] = [
     status: "paused",
     pauseReason: "manual",
     pausedAt: recent(240),
-    issuePrefix: "OPS",
-    issueCounter: 204,
+    taskPrefix: "OPS",
+    taskCounter: 204,
     budgetMonthlyCents: 90_000,
     spentMonthlyCents: 91_200,
     requireBoardApprovalForNewAgents: true,
@@ -183,7 +183,7 @@ export const storybookAgents: Agent[] = [
 
 export const storybookAgentMap = new Map(storybookAgents.map((agent) => [agent.id, agent]));
 
-export const storybookIssueLabels: IssueLabel[] = [
+export const storybookTaskLabels: TaskLabel[] = [
   {
     id: "label-ui",
     companyId: "company-storybook",
@@ -218,10 +218,10 @@ export const storybookIssueLabels: IssueLabel[] = [
   },
 ];
 
-const storybookIssueLabelMap = new Map(storybookIssueLabels.map((label) => [label.id, label]));
+const storybookTaskLabelMap = new Map(storybookTaskLabels.map((label) => [label.id, label]));
 
 function labelsFor(ids: string[]) {
-  return ids.map((id) => storybookIssueLabelMap.get(id)).filter((label): label is IssueLabel => Boolean(label));
+  return ids.map((id) => storybookTaskLabelMap.get(id)).filter((label): label is TaskLabel => Boolean(label));
 }
 
 export const storybookGoals: Goal[] = [
@@ -308,7 +308,7 @@ function createRuntimeService(
     projectId: overrides.projectId ?? "project-board-ui",
     projectWorkspaceId: overrides.projectWorkspaceId ?? "workspace-board-ui",
     executionWorkspaceId: overrides.executionWorkspaceId ?? "execution-workspace-storybook",
-    issueId: overrides.issueId ?? "issue-storybook-1",
+    taskId: overrides.taskId ?? "task-storybook-1",
     scopeType: overrides.scopeType ?? "execution_workspace",
     scopeId: overrides.scopeId ?? "execution-workspace-storybook",
     serviceName: overrides.serviceName ?? "storybook",
@@ -421,7 +421,7 @@ export const storybookProjectWorkspaces: Project["workspaces"] = [
         id: "service-docs-preview",
         projectWorkspaceId: "workspace-docs-remote",
         executionWorkspaceId: null,
-        issueId: "issue-storybook-6",
+        taskId: "task-storybook-6",
         scopeType: "project_workspace",
         scopeId: "workspace-docs-remote",
         serviceName: "docs",
@@ -488,7 +488,7 @@ export const storybookExecutionWorkspaces: ExecutionWorkspace[] = [
     companyId: "company-storybook",
     projectId: "project-board-ui",
     projectWorkspaceId: "workspace-board-ui",
-    sourceIssueId: "issue-storybook-1",
+    sourceTaskId: "task-storybook-1",
     mode: "isolated_workspace",
     strategyType: "git_worktree",
     name: "PAP-1641 storybook worktree",
@@ -516,7 +516,7 @@ export const storybookExecutionWorkspaces: ExecutionWorkspace[] = [
     companyId: "company-storybook",
     projectId: "project-board-ui",
     projectWorkspaceId: "workspace-release-local",
-    sourceIssueId: "issue-storybook-8",
+    sourceTaskId: "task-storybook-8",
     mode: "isolated_workspace",
     strategyType: "git_worktree",
     name: "PAP-1608 release smoke cleanup",
@@ -547,7 +547,7 @@ export const storybookExecutionWorkspaces: ExecutionWorkspace[] = [
         id: "service-cleanup-storybook",
         projectWorkspaceId: "workspace-release-local",
         executionWorkspaceId: "execution-workspace-cleanup",
-        issueId: "issue-storybook-8",
+        taskId: "task-storybook-8",
         scopeId: "execution-workspace-cleanup",
         status: "failed",
         healthStatus: "unhealthy",
@@ -587,12 +587,12 @@ function createProject(overrides: Partial<Project> = {}): Project {
     executionWorkspacePolicy: {
       enabled: true,
       defaultMode: "isolated_workspace",
-      allowIssueOverride: true,
+      allowTaskOverride: true,
       defaultProjectWorkspaceId: "workspace-board-ui",
       workspaceStrategy: {
         type: "git_worktree",
         baseRef: "master",
-        branchTemplate: "{issueIdentifier}-{slug}",
+        branchTemplate: "{taskIdentifier}-{slug}",
         worktreeParentDir: storybookWorktreeRoot,
         provisionCommand: null,
         teardownCommand: null,
@@ -674,7 +674,7 @@ export const storybookProjects: Project[] = [
     executionWorkspacePolicy: {
       enabled: false,
       defaultMode: "shared_workspace",
-      allowIssueOverride: false,
+      allowTaskOverride: false,
       defaultProjectWorkspaceId: null,
       workspaceStrategy: null,
       workspaceRuntime: null,
@@ -688,9 +688,9 @@ export const storybookProjects: Project[] = [
   }),
 ];
 
-export function createIssue(overrides: Partial<Issue> = {}): Issue {
+export function createTask(overrides: Partial<Task> = {}): Task {
   return {
-    id: "issue-storybook-1",
+    id: "task-storybook-1",
     companyId: "company-storybook",
     projectId: "project-board-ui",
     projectWorkspaceId: "workspace-board-ui",
@@ -708,7 +708,7 @@ export function createIssue(overrides: Partial<Issue> = {}): Issue {
     executionLockedAt: recent(28),
     createdByAgentId: null,
     createdByUserId: "user-board",
-    issueNumber: 1641,
+    taskNumber: 1641,
     identifier: "PAP-1641",
     requestDepth: 0,
     billingCode: "product",
@@ -742,10 +742,10 @@ export function createIssue(overrides: Partial<Issue> = {}): Issue {
   };
 }
 
-export const storybookIssues: Issue[] = [
-  createIssue(),
-  createIssue({
-    id: "issue-storybook-2",
+export const storybookTasks: Task[] = [
+  createTask(),
+  createTask({
+    id: "task-storybook-2",
     title: "Add budget hard-stop incident review",
     description: "Trace why a hard stop paused the agent and add a board-facing incident summary.",
     status: "blocked",
@@ -756,7 +756,7 @@ export const storybookIssues: Issue[] = [
     executionLockedAt: null,
     startedAt: null,
     identifier: "PAP-1528",
-    issueNumber: 1528,
+    taskNumber: 1528,
     billingCode: "reliability",
     projectId: "project-budget",
     projectWorkspaceId: null,
@@ -764,7 +764,7 @@ export const storybookIssues: Issue[] = [
     labels: labelsFor(["label-risk", "label-backend"]),
     blockedBy: [
       {
-        id: "issue-storybook-7",
+        id: "task-storybook-7",
         identifier: "PAP-1591",
         title: "Confirm project budget override policy",
         status: "in_review",
@@ -775,8 +775,8 @@ export const storybookIssues: Issue[] = [
     ],
     lastActivityAt: recent(18),
   }),
-  createIssue({
-    id: "issue-storybook-3",
+  createTask({
+    id: "task-storybook-3",
     title: "QA invite flow on authenticated private mode",
     status: "in_review",
     priority: "medium",
@@ -786,16 +786,16 @@ export const storybookIssues: Issue[] = [
     executionRunId: null,
     executionLockedAt: null,
     identifier: "PAP-1602",
-    issueNumber: 1602,
+    taskNumber: 1602,
     completedAt: null,
     lastActivityAt: recent(49),
     isUnreadForMe: false,
   }),
-  createIssue({
-    id: "issue-storybook-4",
-    parentId: "issue-storybook-1",
-    title: "Extract issue row density fixtures",
-    description: "Create fixture-backed rows for unread, selected, nested, and grouped issue management views.",
+  createTask({
+    id: "task-storybook-4",
+    parentId: "task-storybook-1",
+    title: "Extract task row density fixtures",
+    description: "Create fixture-backed rows for unread, selected, nested, and grouped task management views.",
     status: "todo",
     priority: "medium",
     assigneeAgentId: "agent-codex",
@@ -804,17 +804,17 @@ export const storybookIssues: Issue[] = [
     executionLockedAt: null,
     startedAt: null,
     identifier: "PAP-1668",
-    issueNumber: 1668,
+    taskNumber: 1668,
     labelIds: ["label-ui"],
     labels: labelsFor(["label-ui"]),
     lastActivityAt: recent(31),
     isUnreadForMe: true,
   }),
-  createIssue({
-    id: "issue-storybook-5",
-    parentId: "issue-storybook-1",
+  createTask({
+    id: "task-storybook-5",
+    parentId: "task-storybook-1",
     title: "Review document editor empty states",
-    description: "Validate plan and notes documents in issue detail before handing the Storybook preview to QA.",
+    description: "Validate plan and notes documents in task detail before handing the Storybook preview to QA.",
     status: "done",
     priority: "low",
     assigneeAgentId: "agent-qa",
@@ -823,16 +823,16 @@ export const storybookIssues: Issue[] = [
     executionLockedAt: null,
     completedAt: recent(22),
     identifier: "PAP-1669",
-    issueNumber: 1669,
+    taskNumber: 1669,
     labelIds: ["label-docs"],
     labels: labelsFor(["label-docs"]),
     lastActivityAt: recent(22),
     isUnreadForMe: false,
   }),
-  createIssue({
-    id: "issue-storybook-6",
+  createTask({
+    id: "task-storybook-6",
     title: "Publish static Storybook preview",
-    description: "Build the static preview and attach the generated artifact to the parent issue.",
+    description: "Build the static preview and attach the generated artifact to the parent task.",
     status: "todo",
     priority: "high",
     assigneeAgentId: null,
@@ -842,14 +842,14 @@ export const storybookIssues: Issue[] = [
     executionLockedAt: null,
     startedAt: null,
     identifier: "PAP-1670",
-    issueNumber: 1670,
+    taskNumber: 1670,
     labelIds: ["label-ui", "label-risk"],
     labels: labelsFor(["label-ui", "label-risk"]),
     lastActivityAt: recent(64),
     isUnreadForMe: false,
   }),
-  createIssue({
-    id: "issue-storybook-7",
+  createTask({
+    id: "task-storybook-7",
     title: "Confirm project budget override policy",
     description: "Board review needed before increasing the project budget for long-running browser verification.",
     status: "in_review",
@@ -861,7 +861,7 @@ export const storybookIssues: Issue[] = [
     executionLockedAt: null,
     startedAt: null,
     identifier: "PAP-1591",
-    issueNumber: 1591,
+    taskNumber: 1591,
     billingCode: "governance",
     projectId: "project-budget",
     projectWorkspaceId: null,
@@ -870,8 +870,8 @@ export const storybookIssues: Issue[] = [
     lastActivityAt: recent(85),
     isUnreadForMe: false,
   }),
-  createIssue({
-    id: "issue-storybook-8",
+  createTask({
+    id: "task-storybook-8",
     title: "Clean up release smoke worktree",
     description: "Close the isolated release smoke workspace after static preview review.",
     status: "blocked",
@@ -882,7 +882,7 @@ export const storybookIssues: Issue[] = [
     executionLockedAt: null,
     startedAt: recent(260),
     identifier: "PAP-1608",
-    issueNumber: 1608,
+    taskNumber: 1608,
     projectId: "project-board-ui",
     projectWorkspaceId: "workspace-release-local",
     executionWorkspaceId: "execution-workspace-cleanup",
@@ -893,18 +893,18 @@ export const storybookIssues: Issue[] = [
   }),
 ];
 
-export const storybookIssueDocuments: IssueDocument[] = [
+export const storybookTaskDocuments: TaskDocument[] = [
   {
     id: "document-plan-storybook",
     companyId: "company-storybook",
-    issueId: "issue-storybook-1",
+    taskId: "task-storybook-1",
     key: "plan",
     title: "Plan",
     format: "markdown",
     body: [
       "# Plan",
       "",
-      "- Add issue-management stories for list, filters, detail, documents, runs, and workspace cards.",
+      "- Add task-management stories for list, filters, detail, documents, runs, and workspace cards.",
       "- Use existing product components instead of mock-only approximations.",
       "- Verify the Storybook build after the fixture expansion.",
     ].join("\n"),
@@ -920,14 +920,14 @@ export const storybookIssueDocuments: IssueDocument[] = [
   {
     id: "document-notes-storybook",
     companyId: "company-storybook",
-    issueId: "issue-storybook-1",
+    taskId: "task-storybook-1",
     key: "notes",
     title: "Review Notes",
     format: "markdown",
     body: [
       "# Review Notes",
       "",
-      "- The issue list needs group headers and dense trailing columns.",
+      "- The task list needs group headers and dense trailing columns.",
       "- The filters popover should show selected status, priority, and assignee filters.",
       "- Workspace copy must expose branch, path, and runtime status.",
     ].join("\n"),
@@ -942,19 +942,19 @@ export const storybookIssueDocuments: IssueDocument[] = [
   },
 ];
 
-export const storybookContinuationHandoff: IssueDocument = {
+export const storybookContinuationHandoff: TaskDocument = {
   id: "document-continuation-storybook",
   companyId: "company-storybook",
-  issueId: "issue-storybook-1",
+  taskId: "task-storybook-1",
   key: "continuation_summary",
   title: "Continuation handoff",
   format: "markdown",
   body: [
-    "Current state: issue-management stories have the fixture surface mapped.",
+    "Current state: task-management stories have the fixture surface mapped.",
     "",
-    "Next action: run the Storybook build, inspect the issue management story, then request QA visual review if the build passes.",
+    "Next action: run the Storybook build, inspect the task management story, then request QA visual review if the build passes.",
     "",
-    "Important files: `ui/storybook/stories/issue-management.stories.tsx` and `ui/storybook/fixtures/paperclipData.ts`.",
+    "Important files: `ui/storybook/stories/task-management.stories.tsx` and `ui/storybook/fixtures/paperclipData.ts`.",
   ].join("\n"),
   latestRevisionId: "revision-continuation-1",
   latestRevisionNumber: 1,
@@ -966,7 +966,7 @@ export const storybookContinuationHandoff: IssueDocument = {
   updatedAt: recent(5),
 };
 
-export const storybookIssueRuns: RunForIssue[] = [
+export const storybookTaskRuns: RunForTask[] = [
   {
     runId: "run-storybook",
     status: "running",
@@ -983,7 +983,7 @@ export const storybookIssueRuns: RunForIssue[] = [
     livenessReason: null,
     continuationAttempt: 1,
     lastUsefulActionAt: recent(3).toISOString(),
-    nextAction: "Finish the issue-management Storybook and verify the static build.",
+    nextAction: "Finish the task-management Storybook and verify the static build.",
   },
   {
     runId: "run-storybook-qa",
@@ -1019,7 +1019,7 @@ export const storybookIssueRuns: RunForIssue[] = [
     livenessReason: "Identified Storybook coverage gaps but did not edit files in that run.",
     continuationAttempt: 0,
     lastUsefulActionAt: null,
-    nextAction: "Implement issue-management stories in the next heartbeat.",
+    nextAction: "Implement task-management stories in the next heartbeat.",
   },
 ];
 
@@ -1077,7 +1077,7 @@ export const storybookApprovals: Approval[] = [
     status: "approved",
     payload: {
       title: "Publish the Storybook preview for design review",
-      summary: "Build the static Storybook and attach the generated URL to the release issue.",
+      summary: "Build the static Storybook and attach the generated URL to the release task.",
       recommendedAction: "Approve publishing the preview for internal board review.",
       nextActionOnApproval: "Run build-storybook, upload the static artifact, and request QA visual review.",
       risks: [
@@ -1168,9 +1168,9 @@ export const storybookActivityEvents: ActivityEvent[] = [
     companyId: "company-storybook",
     actorType: "agent",
     actorId: "agent-codex",
-    action: "issue.status_changed",
-    entityType: "issue",
-    entityId: "issue-storybook-1",
+    action: "task.status_changed",
+    entityType: "task",
+    entityId: "task-storybook-1",
     agentId: "agent-codex",
     runId: "run-storybook",
     details: { from: "todo", to: "in_progress" },
@@ -1205,13 +1205,13 @@ export const storybookActivityEvents: ActivityEvent[] = [
 ];
 
 export const storybookEntityNameMap = new Map<string, string>([
-  ["issue:issue-storybook-1", "PAP-1641"],
-  ["issue:issue-storybook-2", "PAP-1528"],
-  ["issue:issue-storybook-3", "PAP-1602"],
-  ["issue:issue-storybook-4", "PAP-1668"],
-  ["issue:issue-storybook-5", "PAP-1669"],
-  ["issue:issue-storybook-6", "PAP-1670"],
-  ["issue:issue-storybook-7", "PAP-1591"],
+  ["task:task-storybook-1", "PAP-1641"],
+  ["task:task-storybook-2", "PAP-1528"],
+  ["task:task-storybook-3", "PAP-1602"],
+  ["task:task-storybook-4", "PAP-1668"],
+  ["task:task-storybook-5", "PAP-1669"],
+  ["task:task-storybook-6", "PAP-1670"],
+  ["task:task-storybook-7", "PAP-1591"],
   ["approval:approval-budget", "Budget override"],
   ["agent:agent-codex", "CodexCoder"],
   ["agent:agent-qa", "QAChecker"],
@@ -1219,13 +1219,13 @@ export const storybookEntityNameMap = new Map<string, string>([
 ]);
 
 export const storybookEntityTitleMap = new Map<string, string>([
-  ["issue:issue-storybook-1", "Create super-detailed storybooks for the project"],
-  ["issue:issue-storybook-2", "Add budget hard-stop incident review"],
-  ["issue:issue-storybook-3", "QA invite flow on authenticated private mode"],
-  ["issue:issue-storybook-4", "Extract issue row density fixtures"],
-  ["issue:issue-storybook-5", "Review document editor empty states"],
-  ["issue:issue-storybook-6", "Publish static Storybook preview"],
-  ["issue:issue-storybook-7", "Confirm project budget override policy"],
+  ["task:task-storybook-1", "Create super-detailed storybooks for the project"],
+  ["task:task-storybook-2", "Add budget hard-stop incident review"],
+  ["task:task-storybook-3", "QA invite flow on authenticated private mode"],
+  ["task:task-storybook-4", "Extract task row density fixtures"],
+  ["task:task-storybook-5", "Review document editor empty states"],
+  ["task:task-storybook-6", "Publish static Storybook preview"],
+  ["task:task-storybook-7", "Confirm project budget override policy"],
 ]);
 
 export const storybookSidebarBadges: SidebarBadges = {
@@ -1279,19 +1279,19 @@ export const storybookDashboardSummary: DashboardSummary = {
   ],
 };
 
-export const storybookLiveRuns: LiveRunForIssue[] = [
+export const storybookLiveRuns: LiveRunForTask[] = [
   {
     id: "run-storybook",
     status: "running",
     invocationSource: "manual",
-    triggerDetail: "issue_assigned",
+    triggerDetail: "task_assigned",
     startedAt: recent(28).toISOString(),
     finishedAt: null,
     createdAt: recent(28).toISOString(),
     agentId: "agent-codex",
     agentName: "CodexCoder",
     adapterType: "codex_local",
-    issueId: "issue-storybook-1",
+    taskId: "task-storybook-1",
     livenessState: "advanced",
     livenessReason: null,
     continuationAttempt: 0,

@@ -1,37 +1,37 @@
 import { describe, expect, it } from "vitest";
 import {
   buildExecutionWorkspaceAdapterConfig,
-  defaultIssueExecutionWorkspaceSettingsForProject,
+  defaultTaskExecutionWorkspaceSettingsForProject,
   gateProjectExecutionWorkspacePolicy,
-  issueExecutionWorkspaceModeForPersistedWorkspace,
-  parseIssueExecutionWorkspaceSettings,
+  taskExecutionWorkspaceModeForPersistedWorkspace,
+  parseTaskExecutionWorkspaceSettings,
   parseProjectExecutionWorkspacePolicy,
   resolveExecutionWorkspaceEnvironmentId,
   resolveExecutionWorkspaceMode,
 } from "../services/execution-workspace-policy.ts";
 
 describe("execution workspace policy helpers", () => {
-  it("defaults new issue settings from enabled project policy", () => {
+  it("defaults new task settings from enabled project policy", () => {
     expect(
-      defaultIssueExecutionWorkspaceSettingsForProject({
+      defaultTaskExecutionWorkspaceSettingsForProject({
         enabled: true,
         defaultMode: "isolated_workspace",
       }),
     ).toEqual({ mode: "isolated_workspace" });
     expect(
-      defaultIssueExecutionWorkspaceSettingsForProject({
+      defaultTaskExecutionWorkspaceSettingsForProject({
         enabled: true,
         defaultMode: "shared_workspace",
       }),
     ).toEqual({ mode: "shared_workspace" });
-    expect(defaultIssueExecutionWorkspaceSettingsForProject(null)).toBeNull();
+    expect(defaultTaskExecutionWorkspaceSettingsForProject(null)).toBeNull();
   });
 
-  it("prefers explicit issue mode over project policy and legacy overrides", () => {
+  it("prefers explicit task mode over project policy and legacy overrides", () => {
     expect(
       resolveExecutionWorkspaceMode({
         projectPolicy: { enabled: true, defaultMode: "shared_workspace" },
-        issueSettings: { mode: "isolated_workspace" },
+        taskSettings: { mode: "isolated_workspace" },
         legacyUseProjectWorkspace: false,
       }),
     ).toBe("isolated_workspace");
@@ -41,14 +41,14 @@ describe("execution workspace policy helpers", () => {
     expect(
       resolveExecutionWorkspaceMode({
         projectPolicy: { enabled: true, defaultMode: "isolated_workspace" },
-        issueSettings: null,
+        taskSettings: null,
         legacyUseProjectWorkspace: false,
       }),
     ).toBe("isolated_workspace");
     expect(
       resolveExecutionWorkspaceMode({
         projectPolicy: null,
-        issueSettings: null,
+        taskSettings: null,
         legacyUseProjectWorkspace: false,
       }),
     ).toBe("agent_default");
@@ -71,7 +71,7 @@ describe("execution workspace policy helpers", () => {
           services: [{ name: "web", command: "pnpm dev" }],
         },
       },
-      issueSettings: null,
+      taskSettings: null,
       mode: "isolated_workspace",
       legacyUseProjectWorkspace: null,
     });
@@ -86,9 +86,9 @@ describe("execution workspace policy helpers", () => {
     });
   });
 
-  it("clears managed workspace strategy when issue opts out to project primary or agent default", () => {
+  it("clears managed workspace strategy when task opts out to project primary or agent default", () => {
     const baseConfig = {
-      workspaceStrategy: { type: "git_worktree", branchTemplate: "{{issue.identifier}}" },
+      workspaceStrategy: { type: "git_worktree", branchTemplate: "{{task.identifier}}" },
       workspaceRuntime: { services: [{ name: "web" }] },
     };
 
@@ -96,7 +96,7 @@ describe("execution workspace policy helpers", () => {
       buildExecutionWorkspaceAdapterConfig({
         agentConfig: baseConfig,
         projectPolicy: { enabled: true, defaultMode: "isolated_workspace" },
-        issueSettings: { mode: "shared_workspace" },
+        taskSettings: { mode: "shared_workspace" },
         mode: "shared_workspace",
         legacyUseProjectWorkspace: null,
       }).workspaceStrategy,
@@ -105,7 +105,7 @@ describe("execution workspace policy helpers", () => {
     const agentDefault = buildExecutionWorkspaceAdapterConfig({
       agentConfig: baseConfig,
       projectPolicy: null,
-      issueSettings: { mode: "agent_default" },
+      taskSettings: { mode: "agent_default" },
       mode: "agent_default",
       legacyUseProjectWorkspace: null,
     });
@@ -113,7 +113,7 @@ describe("execution workspace policy helpers", () => {
     expect(agentDefault.workspaceRuntime).toBeUndefined();
   });
 
-  it("parses persisted JSON payloads into typed project and issue workspace settings", () => {
+  it("parses persisted JSON payloads into typed project and task workspace settings", () => {
     expect(
       parseProjectExecutionWorkspacePolicy({
         enabled: true,
@@ -138,7 +138,7 @@ describe("execution workspace policy helpers", () => {
       },
     });
     expect(
-      parseIssueExecutionWorkspaceSettings({
+      parseTaskExecutionWorkspaceSettings({
         mode: "project_primary",
         environmentId: "8f8ab8f2-d95f-4315-9f08-d683a1e0f73b",
       }),
@@ -148,11 +148,11 @@ describe("execution workspace policy helpers", () => {
     });
   });
 
-  it("prefers persisted environment selection over issue and project defaults", () => {
+  it("prefers persisted environment selection over task and project defaults", () => {
     expect(
       resolveExecutionWorkspaceEnvironmentId({
         projectPolicy: { enabled: true, environmentId: "project-env" },
-        issueSettings: { environmentId: "issue-env" },
+        taskSettings: { environmentId: "task-env" },
         workspaceConfig: { environmentId: "workspace-env" },
         agentDefaultEnvironmentId: "agent-env",
         defaultEnvironmentId: "default-env",
@@ -161,16 +161,16 @@ describe("execution workspace policy helpers", () => {
     expect(
       resolveExecutionWorkspaceEnvironmentId({
         projectPolicy: { enabled: true, environmentId: "project-env" },
-        issueSettings: { environmentId: "issue-env" },
+        taskSettings: { environmentId: "task-env" },
         workspaceConfig: null,
         agentDefaultEnvironmentId: "agent-env",
         defaultEnvironmentId: "default-env",
       }),
-    ).toBe("issue-env");
+    ).toBe("task-env");
     expect(
       resolveExecutionWorkspaceEnvironmentId({
         projectPolicy: { enabled: true, environmentId: "project-env" },
-        issueSettings: null,
+        taskSettings: null,
         workspaceConfig: null,
         agentDefaultEnvironmentId: "agent-env",
         defaultEnvironmentId: "default-env",
@@ -182,7 +182,7 @@ describe("execution workspace policy helpers", () => {
     expect(
       resolveExecutionWorkspaceEnvironmentId({
         projectPolicy: null,
-        issueSettings: null,
+        taskSettings: null,
         workspaceConfig: null,
         agentDefaultEnvironmentId: "agent-env",
         defaultEnvironmentId: "default-env",
@@ -191,7 +191,7 @@ describe("execution workspace policy helpers", () => {
     expect(
       resolveExecutionWorkspaceEnvironmentId({
         projectPolicy: { enabled: true, environmentId: null },
-        issueSettings: null,
+        taskSettings: null,
         workspaceConfig: null,
         agentDefaultEnvironmentId: "agent-env",
         defaultEnvironmentId: "default-env",
@@ -200,7 +200,7 @@ describe("execution workspace policy helpers", () => {
     expect(
       resolveExecutionWorkspaceEnvironmentId({
         projectPolicy: null,
-        issueSettings: null,
+        taskSettings: null,
         workspaceConfig: null,
         agentDefaultEnvironmentId: null,
         defaultEnvironmentId: "default-env",
@@ -209,7 +209,7 @@ describe("execution workspace policy helpers", () => {
     expect(
       resolveExecutionWorkspaceEnvironmentId({
         projectPolicy: { enabled: true, environmentId: null },
-        issueSettings: null,
+        taskSettings: null,
         workspaceConfig: null,
         agentDefaultEnvironmentId: null,
         defaultEnvironmentId: "default-env",
@@ -217,14 +217,14 @@ describe("execution workspace policy helpers", () => {
     ).toBe("default-env");
   });
 
-  it("maps persisted execution workspace modes back to issue settings", () => {
-    expect(issueExecutionWorkspaceModeForPersistedWorkspace("isolated_workspace")).toBe("isolated_workspace");
-    expect(issueExecutionWorkspaceModeForPersistedWorkspace("operator_branch")).toBe("operator_branch");
-    expect(issueExecutionWorkspaceModeForPersistedWorkspace("shared_workspace")).toBe("shared_workspace");
-    expect(issueExecutionWorkspaceModeForPersistedWorkspace("adapter_managed")).toBe("agent_default");
-    expect(issueExecutionWorkspaceModeForPersistedWorkspace("cloud_sandbox")).toBe("agent_default");
-    expect(issueExecutionWorkspaceModeForPersistedWorkspace(null)).toBe("agent_default");
-    expect(issueExecutionWorkspaceModeForPersistedWorkspace(undefined)).toBe("agent_default");
+  it("maps persisted execution workspace modes back to task settings", () => {
+    expect(taskExecutionWorkspaceModeForPersistedWorkspace("isolated_workspace")).toBe("isolated_workspace");
+    expect(taskExecutionWorkspaceModeForPersistedWorkspace("operator_branch")).toBe("operator_branch");
+    expect(taskExecutionWorkspaceModeForPersistedWorkspace("shared_workspace")).toBe("shared_workspace");
+    expect(taskExecutionWorkspaceModeForPersistedWorkspace("adapter_managed")).toBe("agent_default");
+    expect(taskExecutionWorkspaceModeForPersistedWorkspace("cloud_sandbox")).toBe("agent_default");
+    expect(taskExecutionWorkspaceModeForPersistedWorkspace(null)).toBe("agent_default");
+    expect(taskExecutionWorkspaceModeForPersistedWorkspace(undefined)).toBe("agent_default");
   });
 
   it("disables project execution workspace policy when the instance flag is off", () => {

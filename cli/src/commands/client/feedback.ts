@@ -17,7 +17,7 @@ interface FeedbackFilterOptions extends BaseClientOptions {
   vote?: string;
   status?: string;
   projectId?: string;
-  issueId?: string;
+  taskId?: string;
   from?: string;
   to?: string;
   sharedOnly?: boolean;
@@ -28,7 +28,7 @@ export interface FeedbackTraceQueryOptions {
   vote?: string;
   status?: string;
   projectId?: string;
-  issueId?: string;
+  taskId?: string;
   from?: string;
   to?: string;
   sharedOnly?: boolean;
@@ -55,8 +55,8 @@ interface FeedbackExportManifest {
   serverUrl: string;
   companyId: string;
   summary: FeedbackSummary & {
-    uniqueIssues: number;
-    issues: string[];
+    uniqueTasks: number;
+    tasks: string[];
   };
   files: {
     votes: string[];
@@ -84,7 +84,7 @@ export function registerFeedbackCommands(program: Command): void {
       .option("--vote <vote>", "Filter by vote value")
       .option("--status <status>", "Filter by trace status")
       .option("--project-id <id>", "Filter by project ID")
-      .option("--issue-id <id>", "Filter by issue ID")
+      .option("--task-id <id>", "Filter by task ID")
       .option("--from <iso8601>", "Only include traces created at or after this timestamp")
       .option("--to <iso8601>", "Only include traces created at or before this timestamp")
       .option("--shared-only", "Only include traces eligible for sharing/export")
@@ -130,7 +130,7 @@ export function registerFeedbackCommands(program: Command): void {
       .option("--vote <vote>", "Filter by vote value")
       .option("--status <status>", "Filter by trace status")
       .option("--project-id <id>", "Filter by project ID")
-      .option("--issue-id <id>", "Filter by issue ID")
+      .option("--task-id <id>", "Filter by task ID")
       .option("--from <iso8601>", "Only include traces created at or after this timestamp")
       .option("--to <iso8601>", "Only include traces created at or before this timestamp")
       .option("--shared-only", "Only include traces eligible for sharing/export")
@@ -191,7 +191,7 @@ export function buildFeedbackTraceQuery(opts: FeedbackTraceQueryOptions, include
   if (opts.vote) params.set("vote", opts.vote);
   if (opts.status) params.set("status", opts.status);
   if (opts.projectId) params.set("projectId", opts.projectId);
-  if (opts.issueId) params.set("issueId", opts.issueId);
+  if (opts.taskId) params.set("taskId", opts.taskId);
   if (opts.from) params.set("from", opts.from);
   if (opts.to) params.set("to", opts.to);
   if (opts.sharedOnly) params.set("sharedOnly", "true");
@@ -298,12 +298,12 @@ export function renderFeedbackReport(input: {
   for (const trace of input.traces) {
     const voteColor = trace.vote === "up" ? pc.green : pc.red;
     const voteIcon = trace.vote === "up" ? "^" : "v";
-    const issueRef = trace.issueIdentifier ?? trace.issueId;
+    const taskRef = trace.taskIdentifier ?? trace.taskId;
     const label = trace.targetSummary.label?.trim() || trace.targetType;
     const excerpt = compactText(trace.targetSummary.excerpt);
     const reason = readFeedbackReason(trace);
     lines.push(
-      `  ${voteColor(voteIcon)} ${pc.bold(issueRef)} ${pc.dim(compactText(trace.issueTitle, 64))}`,
+      `  ${voteColor(voteIcon)} ${pc.bold(taskRef)} ${pc.dim(compactText(trace.taskTitle, 64))}`,
     );
     lines.push(
       `    ${pc.dim("Trace:")} ${trace.id.slice(0, 8)}  ${pc.dim("Status:")} ${trace.status}  ${pc.dim("Date:")} ${formatTimestamp(trace.createdAt)}`,
@@ -323,8 +323,8 @@ export function renderFeedbackReport(input: {
     lines.push(horizontalRule());
     for (const trace of input.traces) {
       if (!trace.payloadSnapshot) continue;
-      const issueRef = trace.issueIdentifier ?? trace.issueId;
-      lines.push(`  ${pc.bold(`${issueRef} (${trace.id.slice(0, 8)})`)}`);
+      const taskRef = trace.taskIdentifier ?? trace.taskId;
+      lines.push(`  ${pc.bold(`${taskRef} (${trace.id.slice(0, 8)})`)}`);
       const body = JSON.stringify(trace.payloadSnapshot, null, 2)?.split("\n") ?? [];
       for (const line of body) {
         lines.push(`    ${pc.dim(line)}`);
@@ -356,16 +356,16 @@ export async function writeFeedbackExportBundle(input: {
   const traceFiles: string[] = [];
   const fullTraceDirs: string[] = [];
   const fullTraceFiles: string[] = [];
-  const issueSet = new Set<string>();
+  const taskSet = new Set<string>();
 
   for (const trace of input.traces) {
-    const issueRef = sanitizeFileSegment(trace.issueIdentifier ?? trace.issueId);
+    const taskRef = sanitizeFileSegment(trace.taskIdentifier ?? trace.taskId);
     const voteRecord = buildFeedbackVoteRecord(trace);
-    const voteFileName = `${issueRef}-${trace.feedbackVoteId.slice(0, 8)}.json`;
-    const traceFileName = `${issueRef}-${trace.id.slice(0, 8)}.json`;
+    const voteFileName = `${taskRef}-${trace.feedbackVoteId.slice(0, 8)}.json`;
+    const traceFileName = `${taskRef}-${trace.id.slice(0, 8)}.json`;
     voteFiles.push(voteFileName);
     traceFiles.push(traceFileName);
-    issueSet.add(trace.issueIdentifier ?? trace.issueId);
+    taskSet.add(trace.taskIdentifier ?? trace.taskId);
     await writeFile(
       path.join(input.outputDir, "votes", voteFileName),
       `${JSON.stringify(voteRecord, null, 2)}\n`,
@@ -379,7 +379,7 @@ export async function writeFeedbackExportBundle(input: {
 
     if (input.traceBundleFetcher) {
       const bundle = await input.traceBundleFetcher(trace);
-      const bundleDirName = `${issueRef}-${trace.id.slice(0, 8)}`;
+      const bundleDirName = `${taskRef}-${trace.id.slice(0, 8)}`;
       const bundleDir = path.join(input.outputDir, "full-traces", bundleDirName);
       await mkdir(bundleDir, { recursive: true });
       fullTraceDirs.push(bundleDirName);
@@ -405,8 +405,8 @@ export async function writeFeedbackExportBundle(input: {
     companyId: input.companyId,
     summary: {
       ...summary,
-      uniqueIssues: issueSet.size,
-      issues: Array.from(issueSet).sort((left, right) => left.localeCompare(right)),
+      uniqueTasks: taskSet.size,
+      tasks: Array.from(taskSet).sort((left, right) => left.localeCompare(right)),
     },
     files: {
       votes: voteFiles.slice().sort((left, right) => left.localeCompare(right)),
@@ -451,7 +451,7 @@ export function renderFeedbackExportSummary(exported: FeedbackExportResult): str
   lines.push(`  ${pc.green(pc.bold(String(exported.manifest.summary.thumbsUp)))}  thumbs up`);
   lines.push(`  ${pc.red(pc.bold(String(exported.manifest.summary.thumbsDown)))}  thumbs down`);
   lines.push(`  ${pc.yellow(pc.bold(String(exported.manifest.summary.withReason)))}  with reason`);
-  lines.push(`  ${pc.bold(String(exported.manifest.summary.uniqueIssues))}  unique issues`);
+  lines.push(`  ${pc.bold(String(exported.manifest.summary.uniqueTasks))}  unique tasks`);
   lines.push("");
   lines.push(pc.dim("Files:"));
   lines.push(`  ${path.join(exported.outputDir, "index.json")}`);
@@ -474,9 +474,9 @@ function buildFeedbackVoteRecord(trace: FeedbackTrace) {
   return {
     voteId: trace.feedbackVoteId,
     traceId: trace.id,
-    issueId: trace.issueId,
-    issueIdentifier: trace.issueIdentifier,
-    issueTitle: trace.issueTitle,
+    taskId: trace.taskId,
+    taskIdentifier: trace.taskIdentifier,
+    taskTitle: trace.taskTitle,
     vote: trace.vote,
     targetType: trace.targetType,
     targetId: trace.targetId,

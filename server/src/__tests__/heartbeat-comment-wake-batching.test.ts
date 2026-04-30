@@ -9,8 +9,8 @@ import {
   companies,
   createDb,
   heartbeatRuns,
-  issueComments,
-  issues,
+  taskComments,
+  tasks,
 } from "@paperclipai/db";
 import { heartbeatService } from "../services/heartbeat.ts";
 import { startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.ts";
@@ -160,18 +160,18 @@ describe("heartbeat comment wake batching", () => {
     await tempDb?.cleanup();
   });
 
-  it("defers approval-approved wakes for a running issue so the assignee resumes after the run", async () => {
+  it("defers approval-approved wakes for a running task so the assignee resumes after the run", async () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
-    const issueId = randomUUID();
+    const taskId = randomUUID();
     const runId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+    const taskPrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
     const heartbeat = heartbeatService(db);
 
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix,
+      taskPrefix,
       requireBoardApprovalForNewAgents: false,
     });
 
@@ -195,14 +195,14 @@ describe("heartbeat comment wake batching", () => {
       triggerDetail: "system",
       status: "running",
       contextSnapshot: {
-        issueId,
-        taskId: issueId,
-        wakeReason: "issue_assigned",
+        taskId,
+        taskId: taskId,
+        wakeReason: "task_assigned",
       },
     });
 
-    await db.insert(issues).values({
-      id: issueId,
+    await db.insert(tasks).values({
+      id: taskId,
       companyId,
       title: "Hire an agent",
       status: "blocked",
@@ -211,8 +211,8 @@ describe("heartbeat comment wake batching", () => {
       executionRunId: runId,
       executionAgentNameKey: "ceo",
       executionLockedAt: new Date(),
-      issueNumber: 1,
-      identifier: `${issuePrefix}-1`,
+      taskNumber: 1,
+      identifier: `${taskPrefix}-1`,
     });
 
     const followupRun = await heartbeat.wakeup(agentId, {
@@ -220,13 +220,13 @@ describe("heartbeat comment wake batching", () => {
       triggerDetail: "system",
       reason: "approval_approved",
       payload: {
-        issueId,
+        taskId,
         approvalId: "approval-1",
         approvalStatus: "approved",
       },
       contextSnapshot: {
-        issueId,
-        taskId: issueId,
+        taskId,
+        taskId: taskId,
         approvalId: "approval-1",
         approvalStatus: "approved",
         wakeReason: "approval_approved",
@@ -244,21 +244,21 @@ describe("heartbeat comment wake batching", () => {
         and(
           eq(agentWakeupRequests.companyId, companyId),
           eq(agentWakeupRequests.agentId, agentId),
-          eq(agentWakeupRequests.status, "deferred_issue_execution"),
+          eq(agentWakeupRequests.status, "deferred_task_execution"),
         ),
       )
       .then((rows) => rows[0] ?? null);
 
     expect(deferred).not.toBeNull();
-    expect(deferred?.reason).toBe("issue_execution_deferred");
+    expect(deferred?.reason).toBe("task_execution_deferred");
     expect(deferred?.payload).toMatchObject({
-      issueId,
+      taskId,
       approvalId: "approval-1",
       approvalStatus: "approved",
     });
     expect((deferred?.payload as Record<string, unknown>)._paperclipWakeContext).toMatchObject({
-      issueId,
-      taskId: issueId,
+      taskId,
+      taskId: taskId,
       approvalId: "approval-1",
       approvalStatus: "approved",
       wakeReason: "approval_approved",
@@ -273,15 +273,15 @@ describe("heartbeat comment wake batching", () => {
     const gateway = await createControlledGatewayServer();
     const companyId = randomUUID();
     const agentId = randomUUID();
-    const issueId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+    const taskId = randomUUID();
+    const taskPrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
     const heartbeat = heartbeatService(db);
 
     try {
       await db.insert(companies).values({
         id: companyId,
         name: "Paperclip",
-        issuePrefix,
+        taskPrefix,
         requireBoardApprovalForNewAgents: false,
       });
 
@@ -306,22 +306,22 @@ describe("heartbeat comment wake batching", () => {
         permissions: {},
       });
 
-      await db.insert(issues).values({
-        id: issueId,
+      await db.insert(tasks).values({
+        id: taskId,
         companyId,
         title: "Batch wake comments",
         status: "todo",
         priority: "medium",
         assigneeAgentId: agentId,
-        issueNumber: 1,
-        identifier: `${issuePrefix}-1`,
+        taskNumber: 1,
+        identifier: `${taskPrefix}-1`,
       });
 
       const comment1 = await db
-        .insert(issueComments)
+        .insert(taskComments)
         .values({
           companyId,
-          issueId,
+          taskId,
           authorUserId: "user-1",
           body: "First comment",
         })
@@ -330,13 +330,13 @@ describe("heartbeat comment wake batching", () => {
       const firstRun = await heartbeat.wakeup(agentId, {
         source: "automation",
         triggerDetail: "system",
-        reason: "issue_commented",
-        payload: { issueId, commentId: comment1.id },
+        reason: "task_commented",
+        payload: { taskId, commentId: comment1.id },
         contextSnapshot: {
-          issueId,
-          taskId: issueId,
+          taskId,
+          taskId: taskId,
           commentId: comment1.id,
-          wakeReason: "issue_commented",
+          wakeReason: "task_commented",
         },
         requestedByActorType: "user",
         requestedByActorId: "user-1",
@@ -345,29 +345,29 @@ describe("heartbeat comment wake batching", () => {
       expect(firstRun).not.toBeNull();
       await waitFor(() => gateway.getAgentPayloads().length === 1);
 
-      await db.insert(issueComments).values({
+      await db.insert(taskComments).values({
         companyId,
-        issueId,
+        taskId,
         authorAgentId: agentId,
         createdByRunId: firstRun?.id ?? null,
         body: "Heartbeat acknowledged",
       });
 
       const comment2 = await db
-        .insert(issueComments)
+        .insert(taskComments)
         .values({
           companyId,
-          issueId,
+          taskId,
           authorUserId: "user-1",
           body: "Second comment",
         })
         .returning()
         .then((rows) => rows[0]);
       const comment3 = await db
-        .insert(issueComments)
+        .insert(taskComments)
         .values({
           companyId,
-          issueId,
+          taskId,
           authorUserId: "user-1",
           body: "Third comment",
         })
@@ -377,13 +377,13 @@ describe("heartbeat comment wake batching", () => {
       const secondRun = await heartbeat.wakeup(agentId, {
         source: "automation",
         triggerDetail: "system",
-        reason: "issue_commented",
-        payload: { issueId, commentId: comment2.id },
+        reason: "task_commented",
+        payload: { taskId, commentId: comment2.id },
         contextSnapshot: {
-          issueId,
-          taskId: issueId,
+          taskId,
+          taskId: taskId,
           commentId: comment2.id,
-          wakeReason: "issue_commented",
+          wakeReason: "task_commented",
         },
         requestedByActorType: "user",
         requestedByActorId: "user-1",
@@ -391,13 +391,13 @@ describe("heartbeat comment wake batching", () => {
       const thirdRun = await heartbeat.wakeup(agentId, {
         source: "automation",
         triggerDetail: "system",
-        reason: "issue_commented",
-        payload: { issueId, commentId: comment3.id },
+        reason: "task_commented",
+        payload: { taskId, commentId: comment3.id },
         contextSnapshot: {
-          issueId,
-          taskId: issueId,
+          taskId,
+          taskId: taskId,
           commentId: comment3.id,
-          wakeReason: "issue_commented",
+          wakeReason: "task_commented",
         },
         requestedByActorType: "user",
         requestedByActorId: "user-1",
@@ -414,7 +414,7 @@ describe("heartbeat comment wake batching", () => {
             and(
               eq(agentWakeupRequests.companyId, companyId),
               eq(agentWakeupRequests.agentId, agentId),
-              eq(agentWakeupRequests.status, "deferred_issue_execution"),
+              eq(agentWakeupRequests.status, "deferred_task_execution"),
             ),
           )
           .then((rows) => rows[0] ?? null);
@@ -428,7 +428,7 @@ describe("heartbeat comment wake batching", () => {
             and(
               eq(agentWakeupRequests.companyId, companyId),
               eq(agentWakeupRequests.agentId, agentId),
-              eq(agentWakeupRequests.status, "deferred_issue_execution"),
+              eq(agentWakeupRequests.status, "deferred_task_execution"),
             ),
           )
           .then((rows) => rows[0] ?? null);
@@ -466,15 +466,15 @@ describe("heartbeat comment wake batching", () => {
     const gateway = await createControlledGatewayServer();
     const companyId = randomUUID();
     const agentId = randomUUID();
-    const issueId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+    const taskId = randomUUID();
+    const taskPrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
     const heartbeat = heartbeatService(db);
 
     try {
       await db.insert(companies).values({
         id: companyId,
         name: "Paperclip",
-        issuePrefix,
+        taskPrefix,
         requireBoardApprovalForNewAgents: false,
       });
 
@@ -499,22 +499,22 @@ describe("heartbeat comment wake batching", () => {
         permissions: {},
       });
 
-      await db.insert(issues).values({
-        id: issueId,
+      await db.insert(tasks).values({
+        id: taskId,
         companyId,
         title: "Interrupt queued comment",
         status: "todo",
         priority: "medium",
         assigneeAgentId: agentId,
-        issueNumber: 2,
-        identifier: `${issuePrefix}-2`,
+        taskNumber: 2,
+        identifier: `${taskPrefix}-2`,
       });
 
       const comment1 = await db
-        .insert(issueComments)
+        .insert(taskComments)
         .values({
           companyId,
-          issueId,
+          taskId,
           authorUserId: "user-1",
           body: "Start work",
         })
@@ -523,13 +523,13 @@ describe("heartbeat comment wake batching", () => {
       const firstRun = await heartbeat.wakeup(agentId, {
         source: "automation",
         triggerDetail: "system",
-        reason: "issue_commented",
-        payload: { issueId, commentId: comment1.id },
+        reason: "task_commented",
+        payload: { taskId, commentId: comment1.id },
         contextSnapshot: {
-          issueId,
-          taskId: issueId,
+          taskId,
+          taskId: taskId,
           commentId: comment1.id,
-          wakeReason: "issue_commented",
+          wakeReason: "task_commented",
         },
         requestedByActorType: "user",
         requestedByActorId: "user-1",
@@ -539,10 +539,10 @@ describe("heartbeat comment wake batching", () => {
       await waitFor(() => gateway.getAgentPayloads().length === 1);
 
       const queuedComment = await db
-        .insert(issueComments)
+        .insert(taskComments)
         .values({
           companyId,
-          issueId,
+          taskId,
           authorUserId: "user-1",
           body: "Queued follow-up",
         })
@@ -552,13 +552,13 @@ describe("heartbeat comment wake batching", () => {
       const followupRun = await heartbeat.wakeup(agentId, {
         source: "automation",
         triggerDetail: "system",
-        reason: "issue_commented",
-        payload: { issueId, commentId: queuedComment.id },
+        reason: "task_commented",
+        payload: { taskId, commentId: queuedComment.id },
         contextSnapshot: {
-          issueId,
-          taskId: issueId,
+          taskId,
+          taskId: taskId,
           commentId: queuedComment.id,
-          wakeReason: "issue_commented",
+          wakeReason: "task_commented",
         },
         requestedByActorType: "user",
         requestedByActorId: "user-1",
@@ -600,19 +600,19 @@ describe("heartbeat comment wake batching", () => {
     }
   }, 120_000);
 
-  it("promotes deferred comment wakes after the active run closes the issue", async () => {
+  it("promotes deferred comment wakes after the active run closes the task", async () => {
     const gateway = await createControlledGatewayServer();
     const companyId = randomUUID();
     const agentId = randomUUID();
-    const issueId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+    const taskId = randomUUID();
+    const taskPrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
     const heartbeat = heartbeatService(db);
 
     try {
       await db.insert(companies).values({
         id: companyId,
         name: "Paperclip",
-        issuePrefix,
+        taskPrefix,
         requireBoardApprovalForNewAgents: false,
       });
 
@@ -637,22 +637,22 @@ describe("heartbeat comment wake batching", () => {
         permissions: {},
       });
 
-      await db.insert(issues).values({
-        id: issueId,
+      await db.insert(tasks).values({
+        id: taskId,
         companyId,
         title: "Reopen after deferred comment",
         status: "todo",
         priority: "medium",
         assigneeAgentId: agentId,
-        issueNumber: 1,
-        identifier: `${issuePrefix}-1`,
+        taskNumber: 1,
+        identifier: `${taskPrefix}-1`,
       });
 
       const comment1 = await db
-        .insert(issueComments)
+        .insert(taskComments)
         .values({
           companyId,
-          issueId,
+          taskId,
           authorUserId: "user-1",
           body: "First comment",
         })
@@ -662,13 +662,13 @@ describe("heartbeat comment wake batching", () => {
       const firstRun = await heartbeat.wakeup(agentId, {
         source: "automation",
         triggerDetail: "system",
-        reason: "issue_commented",
-        payload: { issueId, commentId: comment1.id },
+        reason: "task_commented",
+        payload: { taskId, commentId: comment1.id },
         contextSnapshot: {
-          issueId,
-          taskId: issueId,
+          taskId,
+          taskId: taskId,
           commentId: comment1.id,
-          wakeReason: "issue_commented",
+          wakeReason: "task_commented",
         },
         requestedByActorType: "user",
         requestedByActorId: "user-1",
@@ -685,10 +685,10 @@ describe("heartbeat comment wake batching", () => {
       });
 
       const comment2 = await db
-        .insert(issueComments)
+        .insert(taskComments)
         .values({
           companyId,
-          issueId,
+          taskId,
           authorUserId: "user-1",
           body: "Please handle this follow-up after you finish",
         })
@@ -698,13 +698,13 @@ describe("heartbeat comment wake batching", () => {
       const deferredRun = await heartbeat.wakeup(agentId, {
         source: "automation",
         triggerDetail: "system",
-        reason: "issue_commented",
-        payload: { issueId, commentId: comment2.id },
+        reason: "task_commented",
+        payload: { taskId, commentId: comment2.id },
         contextSnapshot: {
-          issueId,
-          taskId: issueId,
+          taskId,
+          taskId: taskId,
           commentId: comment2.id,
-          wakeReason: "issue_commented",
+          wakeReason: "task_commented",
         },
         requestedByActorType: "user",
         requestedByActorId: "user-1",
@@ -720,7 +720,7 @@ describe("heartbeat comment wake batching", () => {
             and(
               eq(agentWakeupRequests.companyId, companyId),
               eq(agentWakeupRequests.agentId, agentId),
-              eq(agentWakeupRequests.status, "deferred_issue_execution"),
+              eq(agentWakeupRequests.status, "deferred_task_execution"),
             ),
           )
           .then((rows) => rows[0] ?? null);
@@ -728,7 +728,7 @@ describe("heartbeat comment wake batching", () => {
       });
 
       await db
-        .update(issues)
+        .update(tasks)
         .set({
           status: "done",
           completedAt: new Date(),
@@ -737,7 +737,7 @@ describe("heartbeat comment wake batching", () => {
           executionLockedAt: null,
           updatedAt: new Date(),
         })
-        .where(eq(issues.id, issueId));
+        .where(eq(tasks.id, taskId));
 
       gateway.releaseFirstWait();
 
@@ -750,16 +750,16 @@ describe("heartbeat comment wake batching", () => {
         return runs.length === 2 && runs.every((run) => run.status === "succeeded");
       }, 90_000);
 
-      const reopenedIssue = await db
+      const reopenedTask = await db
         .select({
-          status: issues.status,
-          completedAt: issues.completedAt,
+          status: tasks.status,
+          completedAt: tasks.completedAt,
         })
-        .from(issues)
-        .where(eq(issues.id, issueId))
+        .from(tasks)
+        .where(eq(tasks.id, taskId))
         .then((rows) => rows[0] ?? null);
 
-      expect(reopenedIssue).toMatchObject({
+      expect(reopenedTask).toMatchObject({
         status: "in_progress",
         completedAt: null,
       });
@@ -767,12 +767,12 @@ describe("heartbeat comment wake batching", () => {
       const secondPayload = gateway.getAgentPayloads()[1] ?? {};
       expect(secondPayload.paperclip).toMatchObject({
         wake: {
-          reason: "issue_commented",
+          reason: "task_commented",
           commentIds: [comment2.id],
           latestCommentId: comment2.id,
-          issue: {
-            id: issueId,
-            identifier: `${issuePrefix}-1`,
+          task: {
+            id: taskId,
+            identifier: `${taskPrefix}-1`,
             title: "Reopen after deferred comment",
             status: "in_progress",
             priority: "medium",
@@ -786,20 +786,20 @@ describe("heartbeat comment wake batching", () => {
     }
   }, 120_000);
 
-  it("does not reopen a finished issue when the deferred comment wake came from another agent", async () => {
+  it("does not reopen a finished task when the deferred comment wake came from another agent", async () => {
     const gateway = await createControlledGatewayServer();
     const companyId = randomUUID();
     const assigneeAgentId = randomUUID();
     const mentionedAgentId = randomUUID();
-    const issueId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+    const taskId = randomUUID();
+    const taskPrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
     const heartbeat = heartbeatService(db);
 
     try {
       await db.insert(companies).values({
         id: companyId,
         name: "Paperclip",
-        issuePrefix,
+        taskPrefix,
         requireBoardApprovalForNewAgents: false,
       });
 
@@ -846,26 +846,26 @@ describe("heartbeat comment wake batching", () => {
         },
       ]);
 
-      await db.insert(issues).values({
-        id: issueId,
+      await db.insert(tasks).values({
+        id: taskId,
         companyId,
         title: "Do not reopen from agent mention",
         status: "todo",
         priority: "medium",
         assigneeAgentId,
-        issueNumber: 1,
-        identifier: `${issuePrefix}-1`,
+        taskNumber: 1,
+        identifier: `${taskPrefix}-1`,
       });
 
       const firstRun = await heartbeat.wakeup(assigneeAgentId, {
         source: "assignment",
         triggerDetail: "system",
-        reason: "issue_assigned",
-        payload: { issueId },
+        reason: "task_assigned",
+        payload: { taskId },
         contextSnapshot: {
-          issueId,
-          taskId: issueId,
-          wakeReason: "issue_assigned",
+          taskId,
+          taskId: taskId,
+          wakeReason: "task_assigned",
         },
         requestedByActorType: "system",
         requestedByActorId: null,
@@ -882,10 +882,10 @@ describe("heartbeat comment wake batching", () => {
       });
 
       const comment = await db
-        .insert(issueComments)
+        .insert(taskComments)
         .values({
           companyId,
-          issueId,
+          taskId,
           authorAgentId: assigneeAgentId,
           createdByRunId: firstRun?.id ?? null,
           body: "@Mentioned Agent please review after I finish",
@@ -896,14 +896,14 @@ describe("heartbeat comment wake batching", () => {
       const deferredRun = await heartbeat.wakeup(mentionedAgentId, {
         source: "automation",
         triggerDetail: "system",
-        reason: "issue_comment_mentioned",
-        payload: { issueId, commentId: comment.id },
+        reason: "task_comment_mentioned",
+        payload: { taskId, commentId: comment.id },
         contextSnapshot: {
-          issueId,
-          taskId: issueId,
+          taskId,
+          taskId: taskId,
           commentId: comment.id,
           wakeCommentId: comment.id,
-          wakeReason: "issue_comment_mentioned",
+          wakeReason: "task_comment_mentioned",
           source: "comment.mention",
         },
         requestedByActorType: "agent",
@@ -920,7 +920,7 @@ describe("heartbeat comment wake batching", () => {
             and(
               eq(agentWakeupRequests.companyId, companyId),
               eq(agentWakeupRequests.agentId, mentionedAgentId),
-              eq(agentWakeupRequests.status, "deferred_issue_execution"),
+              eq(agentWakeupRequests.status, "deferred_task_execution"),
             ),
           )
           .then((rows) => rows[0] ?? null);
@@ -928,7 +928,7 @@ describe("heartbeat comment wake batching", () => {
       });
 
       await db
-        .update(issues)
+        .update(tasks)
         .set({
           status: "done",
           completedAt: new Date(),
@@ -937,7 +937,7 @@ describe("heartbeat comment wake batching", () => {
           executionLockedAt: null,
           updatedAt: new Date(),
         })
-        .where(eq(issues.id, issueId));
+        .where(eq(tasks.id, taskId));
 
       gateway.releaseFirstWait();
 
@@ -950,29 +950,29 @@ describe("heartbeat comment wake batching", () => {
         return runs.length === 2 && runs.every((run) => run.status === "succeeded");
       }, 90_000);
 
-      const issueAfterPromotion = await db
+      const taskAfterPromotion = await db
         .select({
-          status: issues.status,
-          completedAt: issues.completedAt,
+          status: tasks.status,
+          completedAt: tasks.completedAt,
         })
-        .from(issues)
-        .where(eq(issues.id, issueId))
+        .from(tasks)
+        .where(eq(tasks.id, taskId))
         .then((rows) => rows[0] ?? null);
 
-      expect(issueAfterPromotion).toMatchObject({
+      expect(taskAfterPromotion).toMatchObject({
         status: "done",
       });
-      expect(issueAfterPromotion?.completedAt).not.toBeNull();
+      expect(taskAfterPromotion?.completedAt).not.toBeNull();
 
       const secondPayload = gateway.getAgentPayloads()[1] ?? {};
       expect(secondPayload.paperclip).toMatchObject({
         wake: {
-          reason: "issue_comment_mentioned",
+          reason: "task_comment_mentioned",
           commentIds: [comment.id],
           latestCommentId: comment.id,
-          issue: {
-            id: issueId,
-            identifier: `${issuePrefix}-1`,
+          task: {
+            id: taskId,
+            identifier: `${taskPrefix}-1`,
             title: "Do not reopen from agent mention",
             status: "done",
             priority: "medium",
@@ -986,19 +986,19 @@ describe("heartbeat comment wake batching", () => {
     }
   }, 120_000);
 
-  it("queues exactly one follow-up run when an issue-bound run exits without a comment", async () => {
+  it("queues exactly one follow-up run when an task-bound run exits without a comment", async () => {
     const gateway = await createControlledGatewayServer();
     const companyId = randomUUID();
     const agentId = randomUUID();
-    const issueId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+    const taskId = randomUUID();
+    const taskPrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
     const heartbeat = heartbeatService(db);
 
     try {
       await db.insert(companies).values({
         id: companyId,
         name: "Paperclip",
-        issuePrefix,
+        taskPrefix,
         requireBoardApprovalForNewAgents: false,
       });
 
@@ -1023,26 +1023,26 @@ describe("heartbeat comment wake batching", () => {
         permissions: {},
       });
 
-      await db.insert(issues).values({
-        id: issueId,
+      await db.insert(tasks).values({
+        id: taskId,
         companyId,
         title: "Require a comment",
         status: "todo",
         priority: "medium",
         assigneeAgentId: agentId,
-        issueNumber: 1,
-        identifier: `${issuePrefix}-1`,
+        taskNumber: 1,
+        identifier: `${taskPrefix}-1`,
       });
 
       const firstRun = await heartbeat.wakeup(agentId, {
         source: "assignment",
         triggerDetail: "system",
-        reason: "issue_assigned",
-        payload: { issueId },
+        reason: "task_assigned",
+        payload: { taskId },
         contextSnapshot: {
-          issueId,
-          taskId: issueId,
-          wakeReason: "issue_assigned",
+          taskId,
+          taskId: taskId,
+          wakeReason: "task_assigned",
         },
         requestedByActorType: "system",
         requestedByActorId: null,
@@ -1053,10 +1053,10 @@ describe("heartbeat comment wake batching", () => {
       const firstPayload = gateway.getAgentPayloads()[0] ?? {};
       expect(firstPayload.paperclip).toMatchObject({
         wake: {
-          reason: "issue_assigned",
-          issue: {
-            id: issueId,
-            identifier: `${issuePrefix}-1`,
+          reason: "task_assigned",
+          task: {
+            id: taskId,
+            identifier: `${taskPrefix}-1`,
             title: "Require a comment",
             status: "in_progress",
             priority: "medium",
@@ -1066,22 +1066,22 @@ describe("heartbeat comment wake batching", () => {
         },
       });
       expect(String(firstPayload.message ?? "")).toContain("## Paperclip Wake Payload");
-      expect(String(firstPayload.message ?? "")).toContain("Do not switch to another issue until you have handled this wake.");
+      expect(String(firstPayload.message ?? "")).toContain("Do not switch to another task until you have handled this wake.");
       expect(String(firstPayload.message ?? "")).toContain("- checkout: already claimed by the harness for this run");
       expect(String(firstPayload.message ?? "")).toContain(
-        "The harness already checked out this issue for the current run.",
+        "The harness already checked out this task for the current run.",
       );
-      expect(String(firstPayload.message ?? "")).toContain(`${issuePrefix}-1 Require a comment`);
-      const checkedOutIssue = await db
+      expect(String(firstPayload.message ?? "")).toContain(`${taskPrefix}-1 Require a comment`);
+      const checkedOutTask = await db
         .select({
-          status: issues.status,
-          checkoutRunId: issues.checkoutRunId,
-          executionRunId: issues.executionRunId,
+          status: tasks.status,
+          checkoutRunId: tasks.checkoutRunId,
+          executionRunId: tasks.executionRunId,
         })
-        .from(issues)
-        .where(eq(issues.id, issueId))
+        .from(tasks)
+        .where(eq(tasks.id, taskId))
         .then((rows) => rows[0] ?? null);
-      expect(checkedOutIssue).toMatchObject({
+      expect(checkedOutTask).toMatchObject({
         status: "in_progress",
         checkoutRunId: firstRun?.id,
         executionRunId: firstRun?.id,
@@ -1096,8 +1096,8 @@ describe("heartbeat comment wake batching", () => {
         return (
           runs.length === 2 &&
           runs.every((run) => run.status === "succeeded") &&
-          runs[0]?.issueCommentStatus === "retry_queued" &&
-          runs[1]?.issueCommentStatus === "retry_exhausted"
+          runs[0]?.taskCommentStatus === "retry_queued" &&
+          runs[1]?.taskCommentStatus === "retry_exhausted"
         );
       });
 
@@ -1108,14 +1108,14 @@ describe("heartbeat comment wake batching", () => {
         .orderBy(asc(heartbeatRuns.createdAt));
 
       expect(runs).toHaveLength(2);
-      expect(runs[0]?.issueCommentStatus).toBe("retry_queued");
+      expect(runs[0]?.taskCommentStatus).toBe("retry_queued");
       expect(runs[1]?.retryOfRunId).toBe(runs[0]?.id);
-      expect(runs[1]?.issueCommentStatus).toBe("retry_exhausted");
+      expect(runs[1]?.taskCommentStatus).toBe("retry_exhausted");
 
       const comments = await db
         .select()
-        .from(issueComments)
-        .where(eq(issueComments.issueId, issueId));
+        .from(taskComments)
+        .where(eq(taskComments.taskId, taskId));
       expect(comments).toHaveLength(0);
 
       await waitFor(async () => {
@@ -1129,7 +1129,7 @@ describe("heartbeat comment wake batching", () => {
       const payloads = gateway.getAgentPayloads();
       expect(payloads).toHaveLength(2);
       expect(runs[1]?.contextSnapshot).toMatchObject({
-        retryReason: "missing_issue_comment",
+        retryReason: "missing_task_comment",
       });
     } finally {
       gateway.releaseFirstWait();
@@ -1137,20 +1137,20 @@ describe("heartbeat comment wake batching", () => {
     }
   }, 20_000);
 
-  it("defers mentioned-agent wakes while another agent is actively executing the same issue", async () => {
+  it("defers mentioned-agent wakes while another agent is actively executing the same task", async () => {
     const gateway = await createControlledGatewayServer();
     const companyId = randomUUID();
     const primaryAgentId = randomUUID();
     const mentionedAgentId = randomUUID();
-    const issueId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+    const taskId = randomUUID();
+    const taskPrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
     const heartbeat = heartbeatService(db);
 
     try {
       await db.insert(companies).values({
         id: companyId,
         name: "Paperclip",
-        issuePrefix,
+        taskPrefix,
         requireBoardApprovalForNewAgents: false,
       });
 
@@ -1197,26 +1197,26 @@ describe("heartbeat comment wake batching", () => {
         },
       ]);
 
-      await db.insert(issues).values({
-        id: issueId,
+      await db.insert(tasks).values({
+        id: taskId,
         companyId,
         title: "Prevent concurrent mention execution",
         status: "todo",
         priority: "high",
         assigneeAgentId: primaryAgentId,
-        issueNumber: 1,
-        identifier: `${issuePrefix}-1`,
+        taskNumber: 1,
+        identifier: `${taskPrefix}-1`,
       });
 
       const primaryRun = await heartbeat.wakeup(primaryAgentId, {
         source: "assignment",
         triggerDetail: "system",
-        reason: "issue_assigned",
-        payload: { issueId },
+        reason: "task_assigned",
+        payload: { taskId },
         contextSnapshot: {
-          issueId,
-          taskId: issueId,
-          wakeReason: "issue_assigned",
+          taskId,
+          taskId: taskId,
+          wakeReason: "task_assigned",
         },
         requestedByActorType: "system",
         requestedByActorId: null,
@@ -1226,10 +1226,10 @@ describe("heartbeat comment wake batching", () => {
       await waitFor(() => gateway.getAgentPayloads().length === 1);
 
       const mentionComment = await db
-        .insert(issueComments)
+        .insert(taskComments)
         .values({
           companyId,
-          issueId,
+          taskId,
           authorUserId: "user-1",
           body: "@Mentioned Agent please inspect this after the current run.",
         })
@@ -1239,14 +1239,14 @@ describe("heartbeat comment wake batching", () => {
       const mentionRun = await heartbeat.wakeup(mentionedAgentId, {
         source: "automation",
         triggerDetail: "system",
-        reason: "issue_comment_mentioned",
-        payload: { issueId, commentId: mentionComment.id },
+        reason: "task_comment_mentioned",
+        payload: { taskId, commentId: mentionComment.id },
         contextSnapshot: {
-          issueId,
-          taskId: issueId,
+          taskId,
+          taskId: taskId,
           commentId: mentionComment.id,
           wakeCommentId: mentionComment.id,
-          wakeReason: "issue_comment_mentioned",
+          wakeReason: "task_comment_mentioned",
           source: "comment.mention",
         },
         requestedByActorType: "user",
@@ -1263,7 +1263,7 @@ describe("heartbeat comment wake batching", () => {
             and(
               eq(agentWakeupRequests.companyId, companyId),
               eq(agentWakeupRequests.agentId, mentionedAgentId),
-              eq(agentWakeupRequests.status, "deferred_issue_execution"),
+              eq(agentWakeupRequests.status, "deferred_task_execution"),
             ),
           )
           .then((rows) => rows[0] ?? null);
@@ -1292,23 +1292,23 @@ describe("heartbeat comment wake batching", () => {
 
       expect(mentionedRuns).toHaveLength(1);
       expect(mentionedRuns[0]?.contextSnapshot).toMatchObject({
-        issueId,
-        wakeReason: "issue_comment_mentioned",
+        taskId,
+        wakeReason: "task_comment_mentioned",
       });
 
-      const issueAfterMention = await db
+      const taskAfterMention = await db
         .select({
-          assigneeAgentId: issues.assigneeAgentId,
-          executionRunId: issues.executionRunId,
-          executionAgentNameKey: issues.executionAgentNameKey,
+          assigneeAgentId: tasks.assigneeAgentId,
+          executionRunId: tasks.executionRunId,
+          executionAgentNameKey: tasks.executionAgentNameKey,
         })
-        .from(issues)
-        .where(eq(issues.id, issueId))
+        .from(tasks)
+        .where(eq(tasks.id, taskId))
         .then((rows) => rows[0] ?? null);
 
-      expect(issueAfterMention?.assigneeAgentId).toBe(primaryAgentId);
-      expect(issueAfterMention?.executionRunId).not.toBe(mentionedRuns[0]?.id);
-      expect(issueAfterMention?.executionAgentNameKey).not.toBe("mentioned agent");
+      expect(taskAfterMention?.assigneeAgentId).toBe(primaryAgentId);
+      expect(taskAfterMention?.executionRunId).not.toBe(mentionedRuns[0]?.id);
+      expect(taskAfterMention?.executionAgentNameKey).not.toBe("mentioned agent");
 
       const primaryRuns = await db
         .select()
@@ -1316,9 +1316,9 @@ describe("heartbeat comment wake batching", () => {
         .where(eq(heartbeatRuns.agentId, primaryAgentId))
         .orderBy(asc(heartbeatRuns.createdAt));
       expect(primaryRuns).toHaveLength(2);
-      expect(primaryRuns[0]?.issueCommentStatus).toBe("retry_queued");
+      expect(primaryRuns[0]?.taskCommentStatus).toBe("retry_queued");
       expect(primaryRuns[1]?.retryOfRunId).toBe(primaryRuns[0]?.id);
-      expect(primaryRuns[1]?.issueCommentStatus).toBe("retry_exhausted");
+      expect(primaryRuns[1]?.taskCommentStatus).toBe("retry_exhausted");
 
       const missingCommentRetries = await db
         .select()
@@ -1327,7 +1327,7 @@ describe("heartbeat comment wake batching", () => {
           and(
             eq(agentWakeupRequests.companyId, companyId),
             eq(agentWakeupRequests.agentId, primaryAgentId),
-            eq(agentWakeupRequests.reason, "missing_issue_comment"),
+            eq(agentWakeupRequests.reason, "missing_task_comment"),
           ),
         );
       expect(missingCommentRetries).toHaveLength(1);
@@ -1337,20 +1337,20 @@ describe("heartbeat comment wake batching", () => {
     }
   }, 120_000);
 
-  it("does not mark a direct mentioned-agent run as the issue execution owner", async () => {
+  it("does not mark a direct mentioned-agent run as the task execution owner", async () => {
     const gateway = await createControlledGatewayServer();
     const companyId = randomUUID();
     const primaryAgentId = randomUUID();
     const mentionedAgentId = randomUUID();
-    const issueId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+    const taskId = randomUUID();
+    const taskPrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
     const heartbeat = heartbeatService(db);
 
     try {
       await db.insert(companies).values({
         id: companyId,
         name: "Paperclip",
-        issuePrefix,
+        taskPrefix,
         requireBoardApprovalForNewAgents: false,
       });
 
@@ -1397,22 +1397,22 @@ describe("heartbeat comment wake batching", () => {
         },
       ]);
 
-      await db.insert(issues).values({
-        id: issueId,
+      await db.insert(tasks).values({
+        id: taskId,
         companyId,
         title: "Mention should not steal execution ownership",
         status: "todo",
         priority: "medium",
         assigneeAgentId: primaryAgentId,
-        issueNumber: 1,
-        identifier: `${issuePrefix}-1`,
+        taskNumber: 1,
+        identifier: `${taskPrefix}-1`,
       });
 
       const mentionComment = await db
-        .insert(issueComments)
+        .insert(taskComments)
         .values({
           companyId,
-          issueId,
+          taskId,
           authorUserId: "user-1",
           body: "@Mentioned Agent please inspect this.",
         })
@@ -1422,14 +1422,14 @@ describe("heartbeat comment wake batching", () => {
       const mentionRun = await heartbeat.wakeup(mentionedAgentId, {
         source: "automation",
         triggerDetail: "system",
-        reason: "issue_comment_mentioned",
-        payload: { issueId, commentId: mentionComment.id },
+        reason: "task_comment_mentioned",
+        payload: { taskId, commentId: mentionComment.id },
         contextSnapshot: {
-          issueId,
-          taskId: issueId,
+          taskId,
+          taskId: taskId,
           commentId: mentionComment.id,
           wakeCommentId: mentionComment.id,
-          wakeReason: "issue_comment_mentioned",
+          wakeReason: "task_comment_mentioned",
           source: "comment.mention",
         },
         requestedByActorType: "user",
@@ -1439,17 +1439,17 @@ describe("heartbeat comment wake batching", () => {
       expect(mentionRun).not.toBeNull();
       await waitFor(() => gateway.getAgentPayloads().length === 1);
 
-      const issueDuringMention = await db
+      const taskDuringMention = await db
         .select({
-          assigneeAgentId: issues.assigneeAgentId,
-          executionRunId: issues.executionRunId,
-          executionAgentNameKey: issues.executionAgentNameKey,
+          assigneeAgentId: tasks.assigneeAgentId,
+          executionRunId: tasks.executionRunId,
+          executionAgentNameKey: tasks.executionAgentNameKey,
         })
-        .from(issues)
-        .where(eq(issues.id, issueId))
+        .from(tasks)
+        .where(eq(tasks.id, taskId))
         .then((rows) => rows[0] ?? null);
 
-      expect(issueDuringMention).toMatchObject({
+      expect(taskDuringMention).toMatchObject({
         assigneeAgentId: primaryAgentId,
         executionRunId: null,
         executionAgentNameKey: null,
@@ -1465,17 +1465,17 @@ describe("heartbeat comment wake batching", () => {
         return run?.status === "succeeded";
       }, 90_000);
 
-      const issueAfterMention = await db
+      const taskAfterMention = await db
         .select({
-          assigneeAgentId: issues.assigneeAgentId,
-          executionRunId: issues.executionRunId,
-          executionAgentNameKey: issues.executionAgentNameKey,
+          assigneeAgentId: tasks.assigneeAgentId,
+          executionRunId: tasks.executionRunId,
+          executionAgentNameKey: tasks.executionAgentNameKey,
         })
-        .from(issues)
-        .where(eq(issues.id, issueId))
+        .from(tasks)
+        .where(eq(tasks.id, taskId))
         .then((rows) => rows[0] ?? null);
 
-      expect(issueAfterMention).toMatchObject({
+      expect(taskAfterMention).toMatchObject({
         assigneeAgentId: primaryAgentId,
         executionRunId: null,
         executionAgentNameKey: null,
@@ -1489,15 +1489,15 @@ describe("heartbeat comment wake batching", () => {
     const gateway = await createControlledGatewayServer();
     const companyId = randomUUID();
     const agentId = randomUUID();
-    const issueId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+    const taskId = randomUUID();
+    const taskPrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
     const heartbeat = heartbeatService(db);
 
     try {
       await db.insert(companies).values({
         id: companyId,
         name: "Paperclip",
-        issuePrefix,
+        taskPrefix,
         requireBoardApprovalForNewAgents: false,
       });
 
@@ -1522,26 +1522,26 @@ describe("heartbeat comment wake batching", () => {
         permissions: {},
       });
 
-      await db.insert(issues).values({
-        id: issueId,
+      await db.insert(tasks).values({
+        id: taskId,
         companyId,
         title: "Use existing comment",
         status: "todo",
         priority: "medium",
         assigneeAgentId: agentId,
-        issueNumber: 1,
-        identifier: `${issuePrefix}-1`,
+        taskNumber: 1,
+        identifier: `${taskPrefix}-1`,
       });
 
       const firstRun = await heartbeat.wakeup(agentId, {
         source: "assignment",
         triggerDetail: "system",
-        reason: "issue_assigned",
-        payload: { issueId },
+        reason: "task_assigned",
+        payload: { taskId },
         contextSnapshot: {
-          issueId,
-          taskId: issueId,
-          wakeReason: "issue_assigned",
+          taskId,
+          taskId: taskId,
+          wakeReason: "task_assigned",
         },
         requestedByActorType: "system",
         requestedByActorId: null,
@@ -1550,9 +1550,9 @@ describe("heartbeat comment wake batching", () => {
       expect(firstRun).not.toBeNull();
       await waitFor(() => gateway.getAgentPayloads().length === 1);
 
-      await db.insert(issueComments).values({
+      await db.insert(taskComments).values({
         companyId,
-        issueId,
+        taskId,
         authorAgentId: agentId,
         authorUserId: null,
         createdByRunId: firstRun!.id,
@@ -1566,7 +1566,7 @@ describe("heartbeat comment wake batching", () => {
           .select()
           .from(heartbeatRuns)
           .where(eq(heartbeatRuns.agentId, agentId));
-        return runs.length === 1 && runs[0]?.status === "succeeded" && runs[0]?.issueCommentStatus === "satisfied";
+        return runs.length === 1 && runs[0]?.status === "succeeded" && runs[0]?.taskCommentStatus === "satisfied";
       });
 
       const runs = await db
@@ -1575,14 +1575,14 @@ describe("heartbeat comment wake batching", () => {
         .where(eq(heartbeatRuns.agentId, agentId));
 
       expect(runs).toHaveLength(1);
-      expect(runs[0]?.issueCommentStatus).toBe("satisfied");
-      expect(runs[0]?.issueCommentSatisfiedByCommentId).not.toBeNull();
+      expect(runs[0]?.taskCommentStatus).toBe("satisfied");
+      expect(runs[0]?.taskCommentSatisfiedByCommentId).not.toBeNull();
 
       const comments = await db
         .select()
-        .from(issueComments)
-        .where(eq(issueComments.issueId, issueId))
-        .orderBy(asc(issueComments.createdAt));
+        .from(taskComments)
+        .where(eq(taskComments.taskId, taskId))
+        .orderBy(asc(taskComments.createdAt));
 
       expect(comments).toHaveLength(1);
       expect(comments[0]?.body).toBe("Manual completion comment from the run.");

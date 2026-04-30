@@ -3,7 +3,7 @@
 Paperclip CLI now supports both:
 
 - instance setup/diagnostics (`onboard`, `doctor`, `configure`, `env`, `allowed-hostname`, `env-lab`)
-- control-plane client operations (issues, approvals, agents, activity, dashboard)
+- control-plane client operations (tasks, approvals, agents, activity, dashboard)
 
 ## Base Usage
 
@@ -69,7 +69,7 @@ Use `--data-dir` on any CLI command to isolate all default local state (config/c
 
 ```sh
 pnpm paperclipai run --data-dir ./tmp/paperclip-dev
-pnpm paperclipai issue list --data-dir ./tmp/paperclip-dev
+pnpm paperclipai task list --data-dir ./tmp/paperclip-dev
 ```
 
 ## Context Profiles
@@ -110,16 +110,16 @@ Notes:
 - Deletion is server-gated by `PAPERCLIP_ENABLE_COMPANY_DELETION`.
 - With agent authentication, company deletion is company-scoped. Use the current company ID/prefix (for example via `--company-id` or `PAPERCLIP_COMPANY_ID`), not another company.
 
-## Issue Commands
+## Task Commands
 
 ```sh
-pnpm paperclipai issue list --company-id <company-id> [--status todo,in_progress] [--assignee-agent-id <agent-id>] [--match text]
-pnpm paperclipai issue get <issue-id-or-identifier>
-pnpm paperclipai issue create --company-id <company-id> --title "..." [--description "..."] [--status todo] [--priority high]
-pnpm paperclipai issue update <issue-id> [--status in_progress] [--comment "..."]
-pnpm paperclipai issue comment <issue-id> --body "..." [--reopen]
-pnpm paperclipai issue checkout <issue-id> --agent-id <agent-id> [--expected-statuses todo,backlog,blocked]
-pnpm paperclipai issue release <issue-id>
+pnpm paperclipai task list --company-id <company-id> [--status todo,in_progress] [--assignee-agent-id <agent-id>] [--match text]
+pnpm paperclipai task get <task-id-or-identifier>
+pnpm paperclipai task create --company-id <company-id> --title "..." [--description "..."] [--status todo] [--priority high]
+pnpm paperclipai task update <task-id> [--status in_progress] [--comment "..."]
+pnpm paperclipai task comment <task-id> --body "..." [--reopen]
+pnpm paperclipai task checkout <task-id> --agent-id <agent-id> [--expected-statuses todo,backlog,blocked]
+pnpm paperclipai task release <task-id>
 ```
 
 ## Agent Commands
@@ -148,7 +148,7 @@ pnpm paperclipai agent local-cli claudecoder --company-id <company-id>
 ```sh
 pnpm paperclipai approval list --company-id <company-id> [--status pending]
 pnpm paperclipai approval get <approval-id>
-pnpm paperclipai approval create --company-id <company-id> --type hire_agent --payload '{"name":"..."}' [--issue-ids <id1,id2>]
+pnpm paperclipai approval create --company-id <company-id> --type hire_agent --payload '{"name":"..."}' [--task-ids <id1,id2>]
 pnpm paperclipai approval approve <approval-id> [--decision-note "..."]
 pnpm paperclipai approval reject <approval-id> [--decision-note "..."]
 pnpm paperclipai approval request-revision <approval-id> [--decision-note "..."]
@@ -159,7 +159,7 @@ pnpm paperclipai approval comment <approval-id> --body "..."
 ## Activity Commands
 
 ```sh
-pnpm paperclipai activity list --company-id <company-id> [--agent-id <agent-id>] [--entity-type issue] [--entity-id <id>]
+pnpm paperclipai activity list --company-id <company-id> [--agent-id <agent-id>] [--entity-type task] [--entity-id <id>]
 ```
 
 ## Dashboard Commands

@@ -18,7 +18,7 @@ My recommendation is:
    - explicit capability-based runtime permissions
    - a better host-tools bridge for controlled tool execution
    - a normalized session capability model for agent adapters
-4. Do not import its workflow/cron/queue abstractions into Paperclip core until they are reconciled with Paperclip's issue/comment/governance model.
+4. Do not import its workflow/cron/queue abstractions into Paperclip core until they are reconciled with Paperclip's task/comment/governance model.
 
 ## What agent-os actually is
 
@@ -110,7 +110,7 @@ The most relevant current Paperclip surfaces for any future `agent-os` integrati
 - `packages/adapter-utils/src/types.ts`
   - shared adapter contract, session metadata, runtime service reporting, environment tests, and optional `detectModel()`
 - `server/src/services/heartbeat.ts`
-  - heartbeat execution, adapter invocation, cost capture, workspace realization, and issue-comment summaries
+  - heartbeat execution, adapter invocation, cost capture, workspace realization, and task-comment summaries
 - `server/src/services/execution-workspaces.ts`
   - execution workspace lifecycle and git readiness/cleanup logic
 - `server/src/services/plugin-loader.ts`
@@ -144,7 +144,7 @@ Paperclip already has strong execution-workspace concepts, but they are repo/wor
 
 That could improve:
 
-- reproducible issue starts
+- reproducible task starts
 - disposable task sandboxes
 - faster reset/cleanup
 - "resume from snapshot" behavior for recurring routines
@@ -210,7 +210,7 @@ Paperclip can adopt that philosophy directly:
 
 - lightweight execution by default
 - escalate to full worktree / container / remote sandbox only when needed
-- keep the escalation explicit in the issue/run model
+- keep the escalation explicit in the task/run model
 
 That is better than forcing all tasks into the heaviest environment up front.
 
@@ -220,7 +220,7 @@ That is better than forcing all tasks into the heaviest environment up front.
 
 `agent-os` includes cron/session/workflow style primitives inside the runtime package. Paperclip already has higher-level orchestration concepts:
 
-- issues/comments
+- tasks/comments
 - heartbeat runs
 - approvals
 - company/org structure
@@ -238,7 +238,7 @@ Paperclip should keep orchestration authoritative at the control-plane layer.
 - company boundaries
 - board/operator actor types
 - audit logs for business actions
-- issue hierarchy
+- task hierarchy
 - approval routing
 - budget hard-stop behavior
 
@@ -262,7 +262,7 @@ The permission model is good, but it is low-level. Paperclip would still need to
 
 - who can authorize a capability
 - how approval decisions are logged
-- how policies are scoped by company/project/issue/agent
+- how policies are scoped by company/project/task/agent
 - how runtime permissions interact with budgets and task status
 
 In other words, `agent-os` can supply enforcement primitives, not the control policy system itself.
@@ -302,7 +302,7 @@ Success criteria:
 
 - heartbeat can invoke the adapter reliably
 - session resume works across heartbeats
-- Paperclip still records logs, summaries, cost metadata, and issue comments normally
+- Paperclip still records logs, summaries, cost metadata, and task comments normally
 - runtime permissions can be configured without breaking common tasks
 
 ### Recommendation B: adopt capability vocabulary into adapter configs
@@ -354,7 +354,7 @@ Paperclip should not copy `agent-os` cron/workflow/queue concepts into core orch
 
 If we want them later, they must map cleanly onto:
 
-- issues
+- tasks
 - comments
 - heartbeats
 - approvals

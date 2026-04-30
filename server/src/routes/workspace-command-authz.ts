@@ -73,7 +73,7 @@ export function collectProjectWorkspaceCommandPaths(
     : [];
 }
 
-export function collectIssueWorkspaceCommandPaths(input: {
+export function collectTaskWorkspaceCommandPaths(input: {
   executionWorkspaceSettings?: unknown;
   assigneeAdapterOverrides?: unknown;
 }): string[] {

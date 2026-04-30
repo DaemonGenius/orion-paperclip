@@ -112,10 +112,10 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     res.json(filtered);
   });
 
-  // Common malformed path when companyId is empty in "/api/companies/{companyId}/issues".
-  router.get("/issues", (_req, res) => {
+  // Common malformed path when companyId is empty in "/api/companies/{companyId}/tasks".
+  router.get("/tasks", (_req, res) => {
     res.status(400).json({
-      error: "Missing companyId in path. Use /api/companies/{companyId}/issues.",
+      error: "Missing companyId in path. Use /api/companies/{companyId}/tasks.",
     });
   });
 
@@ -142,14 +142,14 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     const targetTypeRaw = typeof req.query.targetType === "string" ? req.query.targetType : undefined;
     const voteRaw = typeof req.query.vote === "string" ? req.query.vote : undefined;
     const statusRaw = typeof req.query.status === "string" ? req.query.status : undefined;
-    const issueId = typeof req.query.issueId === "string" && req.query.issueId.trim().length > 0 ? req.query.issueId : undefined;
+    const taskId = typeof req.query.taskId === "string" && req.query.taskId.trim().length > 0 ? req.query.taskId : undefined;
     const projectId = typeof req.query.projectId === "string" && req.query.projectId.trim().length > 0
       ? req.query.projectId
       : undefined;
 
     const traces = await feedback.listFeedbackTraces({
       companyId,
-      issueId,
+      taskId,
       projectId,
       targetType: targetTypeRaw ? feedbackTargetTypeSchema.parse(targetTypeRaw) : undefined,
       vote: voteRaw ? feedbackVoteValueSchema.parse(voteRaw) : undefined,

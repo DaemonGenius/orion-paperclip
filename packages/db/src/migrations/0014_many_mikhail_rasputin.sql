@@ -112,7 +112,7 @@ CREATE TABLE "principal_permission_grants" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "issues" ADD COLUMN "assignee_user_id" text;--> statement-breakpoint
+ALTER TABLE "tasks" ADD COLUMN "assignee_user_id" text;--> statement-breakpoint
 ALTER TABLE "account" ADD CONSTRAINT "account_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "session" ADD CONSTRAINT "session_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "company_memberships" ADD CONSTRAINT "company_memberships_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -132,4 +132,4 @@ CREATE UNIQUE INDEX "join_requests_invite_unique_idx" ON "join_requests" USING b
 CREATE INDEX "join_requests_company_status_type_created_idx" ON "join_requests" USING btree ("company_id","status","request_type","created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "principal_permission_grants_unique_idx" ON "principal_permission_grants" USING btree ("company_id","principal_type","principal_id","permission_key");--> statement-breakpoint
 CREATE INDEX "principal_permission_grants_company_permission_idx" ON "principal_permission_grants" USING btree ("company_id","permission_key");--> statement-breakpoint
-CREATE INDEX "issues_company_assignee_user_status_idx" ON "issues" USING btree ("company_id","assignee_user_id","status");
+CREATE INDEX "tasks_company_assignee_user_status_idx" ON "tasks" USING btree ("company_id","assignee_user_id","status");

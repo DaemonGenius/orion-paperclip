@@ -7,7 +7,7 @@ import {
 
 interface ShortcutHandlers {
   enabled?: boolean;
-  onNewIssue?: () => void;
+  onNewTask?: () => void;
   onSearch?: () => void;
   onToggleSidebar?: () => void;
   onTogglePanel?: () => void;
@@ -16,7 +16,7 @@ interface ShortcutHandlers {
 
 export function useKeyboardShortcuts({
   enabled = true,
-  onNewIssue,
+  onNewTask,
   onSearch,
   onToggleSidebar,
   onTogglePanel,
@@ -55,10 +55,10 @@ export function useKeyboardShortcuts({
         return;
       }
 
-      // C → New Issue
+      // C → New Task
       if (e.key === "c" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        onNewIssue?.();
+        onNewTask?.();
       }
 
       // [ → Toggle Sidebar
@@ -76,5 +76,5 @@ export function useKeyboardShortcuts({
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [enabled, onNewIssue, onSearch, onToggleSidebar, onTogglePanel, onShowShortcuts]);
+  }, [enabled, onNewTask, onSearch, onToggleSidebar, onTogglePanel, onShowShortcuts]);
 }

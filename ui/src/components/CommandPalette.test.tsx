@@ -12,7 +12,7 @@ const companyState = vi.hoisted(() => ({
 }));
 
 const dialogState = vi.hoisted(() => ({
-  openNewIssue: vi.fn(),
+  openNewTask: vi.fn(),
   openNewAgent: vi.fn(),
 }));
 
@@ -21,7 +21,7 @@ const sidebarState = vi.hoisted(() => ({
   setSidebarOpen: vi.fn(),
 }));
 
-const mockIssuesApi = vi.hoisted(() => ({
+const mockTasksApi = vi.hoisted(() => ({
   list: vi.fn(),
 }));
 
@@ -49,8 +49,8 @@ vi.mock("@/lib/router", () => ({
   useNavigate: () => vi.fn(),
 }));
 
-vi.mock("../api/issues", () => ({
-  issuesApi: mockIssuesApi,
+vi.mock("../api/tasks", () => ({
+  tasksApi: mockTasksApi,
 }));
 
 vi.mock("../api/agents", () => ({
@@ -146,13 +146,13 @@ describe("CommandPalette", () => {
   beforeEach(() => {
     container = document.createElement("div");
     document.body.appendChild(container);
-    dialogState.openNewIssue.mockReset();
+    dialogState.openNewTask.mockReset();
     dialogState.openNewAgent.mockReset();
     sidebarState.setSidebarOpen.mockReset();
-    mockIssuesApi.list.mockReset();
+    mockTasksApi.list.mockReset();
     mockAgentsApi.list.mockReset();
     mockProjectsApi.list.mockReset();
-    mockIssuesApi.list.mockResolvedValue([]);
+    mockTasksApi.list.mockResolvedValue([]);
     mockAgentsApi.list.mockResolvedValue([]);
     mockProjectsApi.list.mockResolvedValue([]);
   });
@@ -161,7 +161,7 @@ describe("CommandPalette", () => {
     container.remove();
   });
 
-  it("includes routine execution issues in search queries", async () => {
+  it("includes routine execution tasks in search queries", async () => {
     const { root } = renderWithQueryClient(<CommandPalette />, container);
 
     act(() => {
@@ -176,7 +176,7 @@ describe("CommandPalette", () => {
     });
 
     await waitForAssertion(() => {
-      expect(mockIssuesApi.list).toHaveBeenCalledWith("company-1", {
+      expect(mockTasksApi.list).toHaveBeenCalledWith("company-1", {
         q: "pull/3303",
         limit: 10,
         includeRoutineExecutions: true,

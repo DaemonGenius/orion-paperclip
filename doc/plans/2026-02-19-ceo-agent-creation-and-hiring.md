@@ -309,7 +309,7 @@ New/updated invariants:
 
 - `pending_approval` agents cannot:
   - be invoked/woken
-  - be assigned issues
+  - be assigned tasks
   - create or use API keys
   - transition to active lifecycle states except through hire approval
 - approval transitions:
@@ -329,7 +329,7 @@ New/updated invariants:
 
 - permission resolver and authz guards
 - `agent-hires` route
-- limbo status enforcement in heartbeat/issue/key flows
+- limbo status enforcement in heartbeat/task/key flows
 - approval revision/comment endpoints
 
 ## Phase 3: Reflection and config-read APIs

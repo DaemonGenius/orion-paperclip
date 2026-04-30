@@ -12,7 +12,7 @@ export const SLOT_IDS = {
   sidebarPanel: "kitchen-sink-sidebar-panel",
   projectSidebarItem: "kitchen-sink-project-link",
   projectTab: "kitchen-sink-project-tab",
-  issueTab: "kitchen-sink-issue-tab",
+  taskTab: "kitchen-sink-task-tab",
   taskDetailView: "kitchen-sink-task-detail",
   toolbarButton: "kitchen-sink-toolbar-action",
   contextMenuItem: "kitchen-sink-context-action",
@@ -28,7 +28,7 @@ export const EXPORT_NAMES = {
   sidebarPanel: "KitchenSinkSidebarPanel",
   projectSidebarItem: "KitchenSinkProjectSidebarItem",
   projectTab: "KitchenSinkProjectTab",
-  issueTab: "KitchenSinkIssueTab",
+  taskTab: "KitchenSinkTaskTab",
   taskDetailView: "KitchenSinkTaskDetailView",
   toolbarButton: "KitchenSinkToolbarButton",
   contextMenuItem: "KitchenSinkContextMenuItem",
@@ -48,7 +48,7 @@ export const WEBHOOK_KEYS = {
 export const TOOL_NAMES = {
   echo: "echo",
   companySummary: "company-summary",
-  createIssue: "create-issue",
+  createTask: "create-task",
 } as const;
 
 export const STREAM_CHANNELS = {
@@ -101,7 +101,7 @@ export const RUNTIME_LAUNCHER: PluginLauncherRegistration = {
   displayName: "Kitchen Sink Modal",
   description: "Demonstrates runtime launcher registration from the worker.",
   placementZone: "toolbarButton",
-  entityTypes: ["project", "issue"],
+  entityTypes: ["project", "task"],
   action: {
     type: "openModal",
     target: EXPORT_NAMES.launcherModal,

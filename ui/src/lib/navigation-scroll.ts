@@ -14,7 +14,7 @@ export function shouldResetScrollOnNavigation(params: {
   if (previousPathname === null) return false;
   if (previousPathname === pathname) return false;
   if (navigationType === "POP") return false;
-  if (isIssueDetailPathChange(previousPathname, pathname)) return true;
+  if (isTaskDetailPathChange(previousPathname, pathname)) return true;
   return hasSidebarScrollResetState(state);
 }
 
@@ -45,18 +45,18 @@ function hasSidebarScrollResetState(state: unknown): boolean {
   return (state as Record<string, unknown>).paperclipSidebarScrollReset === true;
 }
 
-function isIssueDetailPathChange(previousPathname: string, pathname: string): boolean {
-  const previousIssueRef = readIssueDetailPathRef(previousPathname);
-  const nextIssueRef = readIssueDetailPathRef(pathname);
-  return previousIssueRef !== null && nextIssueRef !== null && previousIssueRef !== nextIssueRef;
+function isTaskDetailPathChange(previousPathname: string, pathname: string): boolean {
+  const previousTaskRef = readTaskDetailPathRef(previousPathname);
+  const nextTaskRef = readTaskDetailPathRef(pathname);
+  return previousTaskRef !== null && nextTaskRef !== null && previousTaskRef !== nextTaskRef;
 }
 
-function readIssueDetailPathRef(pathname: string): string | null {
+function readTaskDetailPathRef(pathname: string): string | null {
   const segments = pathname.split("/").filter(Boolean);
-  if (segments.length === 2 && segments[0] === "issues") {
+  if (segments.length === 2 && segments[0] === "tasks") {
     return segments[1] ?? null;
   }
-  if (segments.length === 3 && segments[1] === "issues") {
+  if (segments.length === 3 && segments[1] === "tasks") {
     return segments[2] ?? null;
   }
   return null;

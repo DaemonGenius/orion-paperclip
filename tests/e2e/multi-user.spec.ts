@@ -68,7 +68,7 @@ async function createCompanyViaWizard(
   return {
     companyId: company.id,
     agentId: agent.id,
-    prefix: company.issuePrefix ?? company.id,
+    prefix: company.taskPrefix ?? company.id,
   };
 }
 

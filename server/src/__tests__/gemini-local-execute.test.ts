@@ -206,16 +206,15 @@ describe("gemini execute", () => {
           promptTemplate: "Follow the paperclip heartbeat.",
         },
         context: {
-          issueId: "issue-1",
-          taskId: "issue-1",
-          wakeReason: "issue_commented",
+          taskId: "task-1",
+          wakeReason: "task_commented",
           wakeCommentId: "comment-2",
           paperclipWake: {
-            reason: "issue_commented",
-            issue: {
-              id: "issue-1",
+            reason: "task_commented",
+            task: {
+              id: "task-1",
               identifier: "PAP-874",
-              title: "chat-speed issues",
+              title: "chat-speed tasks",
               status: "in_progress",
               priority: "medium",
             },
@@ -224,7 +223,7 @@ describe("gemini execute", () => {
             comments: [
               {
                 id: "comment-2",
-                issueId: "issue-1",
+                taskId: "task-1",
                 body: "Second comment",
                 bodyTruncated: false,
                 createdAt: "2026-03-28T14:35:10.000Z",
@@ -253,7 +252,7 @@ describe("gemini execute", () => {
       expect(capture.argv).toContain("--resume");
       expect(capture.argv).toContain("gemini-session-1");
       expect(promptArg).toContain("## Paperclip Resume Delta");
-      expect(promptArg).toContain("Do not switch to another issue until you have handled this wake.");
+      expect(promptArg).toContain("Do not switch to another task until you have handled this wake.");
       expect(promptArg).toContain("Second comment");
       expect(promptArg).not.toContain("Follow the paperclip heartbeat.");
     } finally {

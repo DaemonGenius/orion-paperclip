@@ -30,9 +30,8 @@ function buildContext(
     config,
     context: {
       taskId: "task-123",
-      issueId: "issue-123",
-      wakeReason: "issue_assigned",
-      issueIds: ["issue-123"],
+      wakeReason: "task_assigned",
+      taskIds: ["task-123"],
     },
     onLog: async () => {},
     ...overrides,
@@ -419,9 +418,8 @@ describe("openclaw gateway adapter execute", () => {
             },
             context: {
               taskId: "task-123",
-              issueId: "issue-123",
-              wakeReason: "issue_assigned",
-              issueIds: ["issue-123"],
+              wakeReason: "task_assigned",
+              taskIds: ["task-123"],
               paperclipWorkspace: {
                 cwd: "/tmp/worktrees/pap-123",
                 strategy: "git_worktree",
@@ -440,11 +438,11 @@ describe("openclaw gateway adapter execute", () => {
                 },
               ],
               paperclipWake: {
-                reason: "issue_commented",
-                issue: {
-                  id: "issue-123",
+                reason: "task_commented",
+                task: {
+                  id: "task-123",
                   identifier: "PAP-874",
-                  title: "chat-speed issues",
+                  title: "chat-speed tasks",
                   status: "in_progress",
                   priority: "medium",
                 },
@@ -453,7 +451,7 @@ describe("openclaw gateway adapter execute", () => {
                 comments: [
                   {
                     id: "comment-1",
-                    issueId: "issue-123",
+                    taskId: "task-123",
                     body: "First comment",
                     bodyTruncated: false,
                     createdAt: "2026-03-28T14:35:00.000Z",
@@ -461,7 +459,7 @@ describe("openclaw gateway adapter execute", () => {
                   },
                   {
                     id: "comment-2",
-                    issueId: "issue-123",
+                    taskId: "task-123",
                     body: "Second comment",
                     bodyTruncated: false,
                     createdAt: "2026-03-28T14:35:10.000Z",
@@ -489,7 +487,7 @@ describe("openclaw gateway adapter execute", () => {
       const payload = gateway.getAgentPayload();
       expect(payload).toBeTruthy();
       expect(payload?.idempotencyKey).toBe("run-123");
-      expect(payload?.sessionKey).toBe("paperclip:issue:issue-123");
+      expect(payload?.sessionKey).toBe("paperclip:task:task-123");
       expect(String(payload?.message ?? "")).toContain("wake now");
       expect(String(payload?.message ?? "")).toContain("PAPERCLIP_RUN_ID=run-123");
       expect(String(payload?.message ?? "")).toContain("PAPERCLIP_TASK_ID=task-123");
@@ -498,7 +496,7 @@ describe("openclaw gateway adapter execute", () => {
         "Treat this wake payload as the highest-priority change for the current heartbeat.",
       );
       expect(String(payload?.message ?? "")).toContain(
-        "Do not switch to another issue until you have handled this wake.",
+        "Do not switch to another task until you have handled this wake.",
       );
       expect(String(payload?.message ?? "")).toContain("First comment");
       expect(String(payload?.message ?? "")).toContain("\"commentIds\":[\"comment-1\",\"comment-2\"]");

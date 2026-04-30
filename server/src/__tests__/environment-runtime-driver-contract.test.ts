@@ -155,7 +155,7 @@ describeEmbeddedPostgres("environment runtime driver contract", () => {
 
     return {
       companyId,
-      issueId: null,
+      taskId: null,
       runId,
       environment: {
         id: environmentId,
@@ -197,7 +197,7 @@ describeEmbeddedPostgres("environment runtime driver contract", () => {
     const cleanup = await testCase.setup?.();
     try {
       const runtime = environmentRuntimeService(db);
-      const { companyId, environment, issueId, runId } = await seedEnvironment({
+      const { companyId, environment, taskId, runId } = await seedEnvironment({
         driver: testCase.driver,
         config: testCase.config,
       });
@@ -205,7 +205,7 @@ describeEmbeddedPostgres("environment runtime driver contract", () => {
       const acquired = await runtime.acquireRunLease({
         companyId,
         environment,
-        issueId,
+        taskId,
         heartbeatRunId: runId,
         persistedExecutionWorkspace: null,
       });
@@ -213,7 +213,7 @@ describeEmbeddedPostgres("environment runtime driver contract", () => {
       expect(acquired.environment.id).toBe(environment.id);
       expect(acquired.lease.companyId).toBe(companyId);
       expect(acquired.lease.environmentId).toBe(environment.id);
-      expect(acquired.lease.issueId).toBeNull();
+      expect(acquired.lease.taskId).toBeNull();
       expect(acquired.lease.heartbeatRunId).toBe(runId);
       expect(acquired.lease.status).toBe("active");
       expect(acquired.leaseContext).toEqual({

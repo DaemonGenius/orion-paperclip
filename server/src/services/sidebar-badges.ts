@@ -29,7 +29,7 @@ export function sidebarBadgeService(db: Db) {
       extra?: {
         dismissals?: ReadonlyMap<string, number>;
         joinRequests?: Array<{ id: string; updatedAt: Date | string | null; createdAt: Date | string }>;
-        unreadTouchedIssues?: number;
+        unreadTouchedTasks?: number;
       },
     ): Promise<SidebarBadges> => {
       const actionableApprovals = await db
@@ -74,9 +74,9 @@ export function sidebarBadgeService(db: Db) {
           row.updatedAt ?? row.createdAt,
         )
       ).length;
-      const unreadTouchedIssues = extra?.unreadTouchedIssues ?? 0;
+      const unreadTouchedTasks = extra?.unreadTouchedTasks ?? 0;
       return {
-        inbox: actionableApprovals + failedRuns + joinRequests + unreadTouchedIssues,
+        inbox: actionableApprovals + failedRuns + joinRequests + unreadTouchedTasks,
         approvals: actionableApprovals,
         failedRuns,
         joinRequests,

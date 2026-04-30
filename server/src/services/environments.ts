@@ -54,7 +54,7 @@ function toEnvironmentLease(row: EnvironmentLeaseRow): EnvironmentLease {
     companyId: row.companyId,
     environmentId: row.environmentId,
     executionWorkspaceId: row.executionWorkspaceId ?? null,
-    issueId: row.issueId ?? null,
+    taskId: row.taskId ?? null,
     heartbeatRunId: row.heartbeatRunId ?? null,
     status: readEnum(row.status, ENVIRONMENT_LEASE_STATUSES, "environment lease status") ?? "active",
     leasePolicy: readEnum(row.leasePolicy, ENVIRONMENT_LEASE_POLICIES, "environment lease policy") ?? "ephemeral",
@@ -219,7 +219,7 @@ export function environmentService(db: Db) {
       companyId: string;
       environmentId: string;
       executionWorkspaceId?: string | null;
-      issueId?: string | null;
+      taskId?: string | null;
       heartbeatRunId?: string | null;
       leasePolicy?: EnvironmentLeasePolicy;
       provider?: string | null;
@@ -234,7 +234,7 @@ export function environmentService(db: Db) {
           companyId: input.companyId,
           environmentId: input.environmentId,
           executionWorkspaceId: input.executionWorkspaceId ?? null,
-          issueId: input.issueId ?? null,
+          taskId: input.taskId ?? null,
           heartbeatRunId: input.heartbeatRunId ?? null,
           status: "active",
           leasePolicy: input.leasePolicy ?? "ephemeral",

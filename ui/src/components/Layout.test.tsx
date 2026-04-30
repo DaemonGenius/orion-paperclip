@@ -55,8 +55,8 @@ vi.mock("./CommandPalette", () => ({
   CommandPalette: () => null,
 }));
 
-vi.mock("./NewIssueDialog", () => ({
-  NewIssueDialog: () => null,
+vi.mock("./NewTaskDialog", () => ({
+  NewTaskDialog: () => null,
 }));
 
 vi.mock("./NewProjectDialog", () => ({
@@ -97,7 +97,7 @@ vi.mock("./SidebarAccountMenu", () => ({
 
 vi.mock("../context/DialogContext", () => ({
   useDialog: () => ({
-    openNewIssue: vi.fn(),
+    openNewTask: vi.fn(),
     openOnboarding: vi.fn(),
   }),
 }));
@@ -110,9 +110,9 @@ vi.mock("../context/PanelContext", () => ({
 
 vi.mock("../context/CompanyContext", () => ({
   useCompany: () => ({
-    companies: [{ id: "company-1", issuePrefix: "PAP", name: "Paperclip" }],
+    companies: [{ id: "company-1", taskPrefix: "PAP", name: "Paperclip" }],
     loading: false,
-    selectedCompany: { id: "company-1", issuePrefix: "PAP", name: "Paperclip" },
+    selectedCompany: { id: "company-1", taskPrefix: "PAP", name: "Paperclip" },
     selectedCompanyId: "company-1",
     selectionSource: "manual",
     setSelectedCompanyId: mockSetSelectedCompanyId,

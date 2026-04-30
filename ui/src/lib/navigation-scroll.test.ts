@@ -11,7 +11,7 @@ describe("navigation-scroll", () => {
   it("resets scroll only for flagged sidebar navigation", () => {
     expect(
       shouldResetScrollOnNavigation({
-        previousPathname: "/issues",
+        previousPathname: "/tasks",
         pathname: "/dashboard",
         navigationType: "PUSH",
         state: SIDEBAR_SCROLL_RESET_STATE,
@@ -20,7 +20,7 @@ describe("navigation-scroll", () => {
 
     expect(
       shouldResetScrollOnNavigation({
-        previousPathname: "/issues",
+        previousPathname: "/tasks",
         pathname: "/dashboard",
         navigationType: "PUSH",
         state: null,
@@ -31,7 +31,7 @@ describe("navigation-scroll", () => {
   it("preserves scroll restoration for browser history navigation even for sidebar entries", () => {
     expect(
       shouldResetScrollOnNavigation({
-        previousPathname: "/issues",
+        previousPathname: "/tasks",
         pathname: "/dashboard",
         navigationType: "POP",
         state: SIDEBAR_SCROLL_RESET_STATE,
@@ -39,11 +39,11 @@ describe("navigation-scroll", () => {
     ).toBe(false);
   });
 
-  it("resets scroll when navigating directly between issue detail routes", () => {
+  it("resets scroll when navigating directly between task detail routes", () => {
     expect(
       shouldResetScrollOnNavigation({
-        previousPathname: "/issues/PAP-1389",
-        pathname: "/issues/PAP-1346",
+        previousPathname: "/tasks/PAP-1389",
+        pathname: "/tasks/PAP-1346",
         navigationType: "PUSH",
         state: null,
       }),
@@ -51,19 +51,19 @@ describe("navigation-scroll", () => {
 
     expect(
       shouldResetScrollOnNavigation({
-        previousPathname: "/PAP/issues/PAP-1389",
-        pathname: "/PAP/issues/PAP-1346",
+        previousPathname: "/PAP/tasks/PAP-1389",
+        pathname: "/PAP/tasks/PAP-1346",
         navigationType: "REPLACE",
         state: null,
       }),
     ).toBe(true);
   });
 
-  it("does not treat non-detail issue routes as issue-to-issue navigation", () => {
+  it("does not treat non-detail task routes as task-to-task navigation", () => {
     expect(
       shouldResetScrollOnNavigation({
-        previousPathname: "/projects/project-1/issues/all",
-        pathname: "/issues/PAP-1346",
+        previousPathname: "/projects/project-1/tasks/all",
+        pathname: "/tasks/PAP-1346",
         navigationType: "PUSH",
         state: null,
       }),
@@ -71,8 +71,8 @@ describe("navigation-scroll", () => {
 
     expect(
       shouldResetScrollOnNavigation({
-        previousPathname: "/issues/PAP-1389",
-        pathname: "/projects/project-1/issues/all",
+        previousPathname: "/tasks/PAP-1389",
+        pathname: "/projects/project-1/tasks/all",
         navigationType: "PUSH",
         state: null,
       }),

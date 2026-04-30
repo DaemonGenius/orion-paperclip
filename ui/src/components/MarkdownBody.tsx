@@ -7,9 +7,9 @@ import { cn } from "../lib/utils";
 import { Link } from "@/lib/router";
 import { useTheme } from "../context/ThemeContext";
 import { mentionChipInlineStyle, parseMentionChipHref } from "../lib/mention-chips";
-import { issuesApi } from "../api/issues";
+import { tasksApi } from "../api/tasks";
 import { queryKeys } from "../lib/queryKeys";
-import { parseIssueReferenceFromHref, remarkLinkIssueReferences } from "../lib/issue-reference";
+import { parseTaskReferenceFromHref, remarkLinkTaskReferences } from "../lib/task-reference";
 import { remarkSoftBreaks } from "../lib/remark-soft-breaks";
 import { StatusIcon } from "./StatusIcon";
 
@@ -18,7 +18,7 @@ interface MarkdownBodyProps {
   className?: string;
   style?: React.CSSProperties;
   softBreaks?: boolean;
-  linkIssueReferences?: boolean;
+  linkTaskReferences?: boolean;
   /** Optional resolver for relative image paths (e.g. within export packages) */
   resolveImageSrc?: (src: string) => string | null;
   /** Called when a user clicks an inline image */
@@ -27,31 +27,31 @@ interface MarkdownBodyProps {
 
 let mermaidLoaderPromise: Promise<typeof import("mermaid").default> | null = null;
 
-function MarkdownIssueLink({
-  issuePathId,
+function MarkdownTaskLink({
+  taskPathId,
   children,
 }: {
-  issuePathId: string;
+  taskPathId: string;
   children: ReactNode;
 }) {
   const { data } = useQuery({
-    queryKey: queryKeys.issues.detail(issuePathId),
-    queryFn: () => issuesApi.get(issuePathId),
+    queryKey: queryKeys.tasks.detail(taskPathId),
+    queryFn: () => tasksApi.get(taskPathId),
     staleTime: 60_000,
   });
 
-  const identifier = data?.identifier ?? issuePathId;
+  const identifier = data?.identifier ?? taskPathId;
   const title = data?.title ?? identifier;
   const status = data?.status;
-  const issueLabel = title !== identifier ? `Issue ${identifier}: ${title}` : `Issue ${identifier}`;
+  const taskLabel = title !== identifier ? `Task ${identifier}: ${title}` : `Task ${identifier}`;
 
   return (
     <Link
-      to={`/issues/${identifier}`}
-      data-mention-kind="issue"
-      className="paperclip-markdown-issue-ref"
+      to={`/tasks/${identifier}`}
+      data-mention-kind="task"
+      className="paperclip-markdown-task-ref"
       title={title}
-      aria-label={issueLabel}
+      aria-label={taskLabel}
     >
       {status ? (
         <StatusIcon status={status} className="mr-1 h-3 w-3 align-[-0.125em]" />
@@ -243,14 +243,14 @@ export function MarkdownBody({
   className,
   style,
   softBreaks = true,
-  linkIssueReferences = true,
+  linkTaskReferences = true,
   resolveImageSrc,
   onImageClick,
 }: MarkdownBodyProps) {
   const { theme } = useTheme();
   const remarkPlugins: NonNullable<Options["remarkPlugins"]> = [remarkGfm];
-  if (linkIssueReferences) {
-    remarkPlugins.push(remarkLinkIssueReferences);
+  if (linkTaskReferences) {
+    remarkPlugins.push(remarkLinkTaskReferences);
   }
   if (softBreaks) {
     remarkPlugins.push(remarkSoftBreaks);
@@ -294,12 +294,12 @@ export function MarkdownBody({
       </code>
     ),
     a: ({ href, style: linkStyle, children: linkChildren }) => {
-      const issueRef = linkIssueReferences ? parseIssueReferenceFromHref(href) : null;
-      if (issueRef) {
+      const taskRef = linkTaskReferences ? parseTaskReferenceFromHref(href) : null;
+      if (taskRef) {
         return (
-          <MarkdownIssueLink issuePathId={issueRef.issuePathId}>
+          <MarkdownTaskLink taskPathId={taskRef.taskPathId}>
             {linkChildren}
-          </MarkdownIssueLink>
+          </MarkdownTaskLink>
         );
       }
 
@@ -307,8 +307,8 @@ export function MarkdownBody({
       if (parsed) {
         const targetHref = parsed.kind === "project"
           ? `/projects/${parsed.projectId}`
-          : parsed.kind === "issue"
-            ? `/issues/${parsed.identifier}`
+          : parsed.kind === "task"
+            ? `/tasks/${parsed.identifier}`
           : parsed.kind === "skill"
             ? `/skills/${parsed.skillId}`
             : parsed.kind === "user"

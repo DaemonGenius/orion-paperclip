@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "@/lib/router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { heartbeatsApi, type LiveRunForIssue } from "../api/heartbeats";
+import { heartbeatsApi, type LiveRunForTask } from "../api/heartbeats";
 import { queryKeys } from "../lib/queryKeys";
 import { formatDateTime } from "../lib/utils";
 import { ExternalLink, Square } from "lucide-react";
@@ -11,7 +11,7 @@ import { StatusBadge } from "./StatusBadge";
 import { useLiveRunTranscripts } from "./transcript/useLiveRunTranscripts";
 
 interface LiveRunWidgetProps {
-  issueId: string;
+  taskId: string;
   companyId?: string | null;
 }
 
@@ -24,26 +24,26 @@ function isRunActive(status: string): boolean {
   return status === "queued" || status === "running";
 }
 
-export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
+export function LiveRunWidget({ taskId, companyId }: LiveRunWidgetProps) {
   const queryClient = useQueryClient();
   const [cancellingRunIds, setCancellingRunIds] = useState(new Set<string>());
 
   const { data: liveRuns } = useQuery({
-    queryKey: queryKeys.issues.liveRuns(issueId),
-    queryFn: () => heartbeatsApi.liveRunsForIssue(issueId),
-    enabled: !!issueId,
+    queryKey: queryKeys.tasks.liveRuns(taskId),
+    queryFn: () => heartbeatsApi.liveRunsForTask(taskId),
+    enabled: !!taskId,
     refetchInterval: 3000,
   });
 
   const { data: activeRun } = useQuery({
-    queryKey: queryKeys.issues.activeRun(issueId),
-    queryFn: () => heartbeatsApi.activeRunForIssue(issueId),
-    enabled: !!issueId,
+    queryKey: queryKeys.tasks.activeRun(taskId),
+    queryFn: () => heartbeatsApi.activeRunForTask(taskId),
+    enabled: !!taskId,
     refetchInterval: 3000,
   });
 
   const runs = useMemo(() => {
-    const deduped = new Map<string, LiveRunForIssue>();
+    const deduped = new Map<string, LiveRunForTask>();
     for (const run of liveRuns ?? []) {
       deduped.set(run.id, run);
     }
@@ -61,13 +61,13 @@ export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
         adapterType: activeRun.adapterType,
         logBytes: activeRun.logBytes,
         lastOutputBytes: activeRun.lastOutputBytes,
-        issueId,
+        taskId,
       });
     }
     return [...deduped.values()].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
-  }, [activeRun, issueId, liveRuns]);
+  }, [activeRun, taskId, liveRuns]);
 
   const { transcriptByRun, hasOutputForRun } = useLiveRunTranscripts({ runs, companyId });
 
@@ -75,8 +75,8 @@ export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
     setCancellingRunIds((prev) => new Set(prev).add(runId));
     try {
       await heartbeatsApi.cancel(runId);
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.liveRuns(issueId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.activeRun(issueId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.liveRuns(taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.activeRun(taskId) });
     } finally {
       setCancellingRunIds((prev) => {
         const next = new Set(prev);
@@ -95,7 +95,7 @@ export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
           Live Runs
         </div>
         <div className="mt-1 text-xs text-muted-foreground">
-          Uses the shared chat-style run surface from issue activity.
+          Uses the shared chat-style run surface from task activity.
         </div>
       </div>
 

@@ -731,7 +731,7 @@ export function CommentFileLinks({ context }: PluginCommentAnnotationProps) {
 
   const { data } = usePluginData<{ links: string[] }>("comment-file-links", {
     commentId: context.entityId,
-    issueId: context.parentEntityId,
+    taskId: context.parentEntityId,
     companyId: context.companyId,
   });
 
@@ -780,7 +780,7 @@ export function CommentOpenFiles({ context }: PluginCommentContextMenuItemProps)
 
   const { data } = usePluginData<{ links: string[] }>("comment-file-links", {
     commentId: context.entityId,
-    issueId: context.parentEntityId,
+    taskId: context.parentEntityId,
     companyId: context.companyId,
   });
 

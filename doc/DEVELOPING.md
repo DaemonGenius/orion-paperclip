@@ -129,6 +129,15 @@ pnpm paperclipai run
 
 ## Docker Quickstart (No local Node install)
 
+For day-to-day code changes in Docker, prefer the fast dev compose loop:
+
+```sh
+docker build -t paperclip-local:main .
+pnpm docker:dev
+```
+
+After the first image build, source changes are bind-mounted into the container and picked up by `pnpm dev`; rebuild only when dependencies or Docker tooling change. Use `pnpm docker:dev:down` to stop it.
+
 Build and run Paperclip in Docker:
 
 ```sh
@@ -216,11 +225,11 @@ This command:
 
 Seed modes:
 
-- `minimal` keeps core app state like companies, projects, issues, comments, approvals, and auth state, preserves schema for all tables, but omits row data from heavy operational history such as heartbeat runs, wake requests, activity logs, runtime services, and agent session state
+- `minimal` keeps core app state like companies, projects, tasks, comments, approvals, and auth state, preserves schema for all tables, but omits row data from heavy operational history such as heartbeat runs, wake requests, activity logs, runtime services, and agent session state
 - `full` makes a full logical clone of the source instance
 - `--no-seed` creates an empty isolated instance
 
-Seeded worktree instances quarantine copied live execution by default for both `minimal` and `full` seeds. During restore, Paperclip disables copied agent timer heartbeats, resets copied `running` agents to `idle`, blocks and unassigns copied agent-owned `in_progress` issues, and unassigns copied agent-owned `todo`/`in_review` issues. This keeps a freshly booted worktree from starting agents for work already owned by the source instance. Pass `--preserve-live-work` only when you intentionally want the isolated worktree to resume copied assignments.
+Seeded worktree instances quarantine copied live execution by default for both `minimal` and `full` seeds. During restore, Paperclip disables copied agent timer heartbeats, resets copied `running` agents to `idle`, blocks and unassigns copied agent-owned `in_progress` tasks, and unassigns copied agent-owned `todo`/`in_review` tasks. This keeps a freshly booted worktree from starting agents for work already owned by the source instance. Pass `--preserve-live-work` only when you intentionally want the isolated worktree to resume copied assignments.
 
 After `worktree init`, both the server and the CLI auto-load the repo-local `.paperclip/.env` when run inside that worktree, so normal commands like `pnpm dev`, `paperclipai doctor`, and `paperclipai db:backup` stay scoped to the worktree instance.
 
@@ -304,12 +313,12 @@ Examples:
 
 ```sh
 # From inside a linked worktree, rebuild missing .paperclip metadata and reseed it from the default instance.
-cd /path/to/paperclip/.paperclip/worktrees/PAP-1132-assistant-ui-pap-1131-make-issues-comments-be-like-a-chat
+cd /path/to/paperclip/.paperclip/worktrees/PAP-1132-assistant-ui-pap-1131-make-tasks-comments-be-like-a-chat
 pnpm paperclipai worktree repair
 
 # From the primary checkout, create or repair a linked worktree for a branch under .paperclip/worktrees/.
 cd /path/to/paperclip
-pnpm paperclipai worktree repair --branch PAP-1132-assistant-ui-pap-1131-make-issues-comments-be-like-a-chat
+pnpm paperclipai worktree repair --branch PAP-1132-assistant-ui-pap-1131-make-tasks-comments-be-like-a-chat
 ```
 
 For an already-created worktree where you want to keep the existing repo-local config/env and only overwrite the isolated database, use `worktree reseed` instead. Stop the target worktree's Paperclip server first so the command can replace the DB safely.
@@ -334,12 +343,12 @@ Examples:
 cd /path/to/paperclip
 pnpm paperclipai worktree reseed \
   --from current \
-  --to PAP-1132-assistant-ui-pap-1131-make-issues-comments-be-like-a-chat \
+  --to PAP-1132-assistant-ui-pap-1131-make-tasks-comments-be-like-a-chat \
   --seed-mode full \
   --yes
 
 # From inside a worktree, reseed it from the default instance config.
-cd /path/to/paperclip/.paperclip/worktrees/PAP-1132-assistant-ui-pap-1131-make-issues-comments-be-like-a-chat
+cd /path/to/paperclip/.paperclip/worktrees/PAP-1132-assistant-ui-pap-1131-make-tasks-comments-be-like-a-chat
 pnpm paperclipai worktree reseed \
   --from-instance default \
   --seed-mode full
@@ -384,7 +393,7 @@ pnpm paperclipai worktree env --json
 eval "$(pnpm paperclipai worktree env)"
 ```
 
-For project execution worktrees, Paperclip can also run a project-defined provision command after it creates or reuses an isolated git worktree. Configure this on the project's execution workspace policy (`workspaceStrategy.provisionCommand`). The command runs inside the derived worktree and receives `PAPERCLIP_WORKSPACE_*`, `PAPERCLIP_PROJECT_ID`, `PAPERCLIP_AGENT_ID`, and `PAPERCLIP_ISSUE_*` environment variables so each repo can bootstrap itself however it wants.
+For project execution worktrees, Paperclip can also run a project-defined provision command after it creates or reuses an isolated git worktree. Configure this on the project's execution workspace policy (`workspaceStrategy.provisionCommand`). The command runs inside the derived worktree and receives `PAPERCLIP_WORKSPACE_*`, `PAPERCLIP_PROJECT_ID`, `PAPERCLIP_AGENT_ID`, and `PAPERCLIP_TASK_*` environment variables so each repo can bootstrap itself however it wants.
 
 ## Quick Health Checks
 
@@ -492,9 +501,9 @@ Paperclip CLI now includes client-side control-plane commands in addition to set
 Quick examples:
 
 ```sh
-pnpm paperclipai issue list --company-id <company-id>
-pnpm paperclipai issue create --company-id <company-id> --title "Investigate checkout conflict"
-pnpm paperclipai issue update <issue-id> --status in_progress --comment "Started triage"
+pnpm paperclipai task list --company-id <company-id>
+pnpm paperclipai task create --company-id <company-id> --title "Investigate checkout conflict"
+pnpm paperclipai task update <task-id> --status in_progress --comment "Started triage"
 ```
 
 Set defaults once with context profiles:
@@ -506,7 +515,7 @@ pnpm paperclipai context set --api-base http://localhost:3100 --company-id <comp
 Then run commands without repeating flags:
 
 ```sh
-pnpm paperclipai issue list
+pnpm paperclipai task list
 pnpm paperclipai dashboard get
 ```
 

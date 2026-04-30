@@ -38,7 +38,7 @@ Before proceeding, verify all of the following:
 4. The candidate SHA has passed the verification gate or is about to.
 5. If manifests changed, the CI-owned `pnpm-lock.yaml` refresh is already merged on `master`.
 6. npm publish rights are available through GitHub trusted publishing, or through local npm auth for emergency/manual use.
-7. If running through Paperclip, you have issue context for status updates and follow-up task creation.
+7. If running through Paperclip, you have task context for status updates and follow-up task creation.
 
 If any precondition fails, stop and report the blocker.
 
@@ -49,7 +49,7 @@ Collect these inputs up front:
 - whether the target is a canary check or a stable promotion
 - the candidate `source_ref` for stable
 - whether the stable run is dry-run or live
-- release issue / company context for website and announcement follow-up
+- release task / company context for website and announcement follow-up
 
 ## Step 0 — Release Model
 
@@ -164,7 +164,7 @@ Confirm:
 If smoke testing fails:
 
 - stop the stable release
-- fix the issue on `master`
+- fix the task on `master`
 - wait for the next automatic canary
 - rerun smoke testing
 
@@ -210,7 +210,7 @@ Create or verify follow-up work for:
 
 - website changelog publishing
 - launch post / social announcement
-- release summary in Paperclip issue context
+- release summary in Paperclip task context
 
 These should reference the stable release, not the canary.
 
@@ -222,7 +222,7 @@ If the canary is bad:
 
 If stable npm publish succeeds but tag push or GitHub release creation fails:
 
-- fix the git/GitHub issue immediately from the same release result
+- fix the git/GitHub task immediately from the same release result
 - do not republish the same version
 
 If `latest` is bad after stable publish:

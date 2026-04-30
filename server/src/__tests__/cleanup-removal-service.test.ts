@@ -10,11 +10,11 @@ import {
   documents,
   documentRevisions,
   heartbeatRuns,
-  issueComments,
-  issueDocuments,
-  issueExecutionDecisions,
-  issueReadStates,
-  issues,
+  taskComments,
+  taskDocuments,
+  taskExecutionDecisions,
+  taskReadStates,
+  tasks,
 } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
@@ -43,14 +43,14 @@ describeEmbeddedPostgres("cleanup removal services", () => {
 
   afterEach(async () => {
     await db.delete(activityLog);
-    await db.delete(issueReadStates);
-    await db.delete(issueComments);
-    await db.delete(issueExecutionDecisions);
+    await db.delete(taskReadStates);
+    await db.delete(taskComments);
+    await db.delete(taskExecutionDecisions);
     await db.delete(documentRevisions);
     await db.delete(documents);
     await db.delete(companySkills);
     await db.delete(heartbeatRuns);
-    await db.delete(issues);
+    await db.delete(tasks);
     await db.delete(agents);
     await db.delete(companies);
   });
@@ -62,14 +62,14 @@ describeEmbeddedPostgres("cleanup removal services", () => {
   async function seedFixture() {
     const companyId = randomUUID();
     const agentId = randomUUID();
-    const issueId = randomUUID();
+    const taskId = randomUUID();
     const runId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+    const taskPrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix,
+      taskPrefix,
       requireBoardApprovalForNewAgents: false,
     });
 
@@ -85,8 +85,8 @@ describeEmbeddedPostgres("cleanup removal services", () => {
       permissions: {},
     });
 
-    await db.insert(issues).values({
-      id: issueId,
+    await db.insert(tasks).values({
+      id: taskId,
       companyId,
       title: "Regression fixture",
       status: "todo",
@@ -101,19 +101,19 @@ describeEmbeddedPostgres("cleanup removal services", () => {
       agentId,
       invocationSource: "assignment",
       status: "completed",
-      contextSnapshot: { issueId },
+      contextSnapshot: { taskId },
     });
 
-    return { agentId, companyId, issueId, runId };
+    return { agentId, companyId, taskId, runId };
   }
 
-  it("removes agent-owned issue comments and run-linked activity before deleting the agent", async () => {
-    const { agentId, companyId, issueId, runId } = await seedFixture();
+  it("removes agent-owned task comments and run-linked activity before deleting the agent", async () => {
+    const { agentId, companyId, taskId, runId } = await seedFixture();
 
-    await db.insert(issueComments).values({
+    await db.insert(taskComments).values({
       id: randomUUID(),
       companyId,
-      issueId,
+      taskId,
       authorAgentId: agentId,
       body: "Agent-authored comment",
     });
@@ -124,16 +124,16 @@ describeEmbeddedPostgres("cleanup removal services", () => {
       actorType: "agent",
       actorId: agentId,
       action: "heartbeat.completed",
-      entityType: "issue",
-      entityId: issueId,
+      entityType: "task",
+      entityId: taskId,
       runId,
       details: {},
     });
 
-    await db.insert(issueExecutionDecisions).values({
+    await db.insert(taskExecutionDecisions).values({
       id: randomUUID(),
       companyId,
-      issueId,
+      taskId,
       stageId: randomUUID(),
       stageType: "review",
       actorAgentId: agentId,
@@ -147,19 +147,19 @@ describeEmbeddedPostgres("cleanup removal services", () => {
     expect(removed?.id).toBe(agentId);
     await expect(db.select().from(agents).where(eq(agents.id, agentId))).resolves.toHaveLength(0);
     await expect(db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, runId))).resolves.toHaveLength(0);
-    await expect(db.select().from(issueComments).where(eq(issueComments.issueId, issueId))).resolves.toHaveLength(0);
+    await expect(db.select().from(taskComments).where(eq(taskComments.taskId, taskId))).resolves.toHaveLength(0);
     await expect(db.select().from(activityLog).where(eq(activityLog.companyId, companyId))).resolves.toHaveLength(0);
   });
 
-  it("removes issue read states and activity rows before deleting the company", async () => {
-    const { companyId, issueId, runId } = await seedFixture();
+  it("removes task read states and activity rows before deleting the company", async () => {
+    const { companyId, taskId, runId } = await seedFixture();
     const documentId = randomUUID();
     const revisionId = randomUUID();
 
-    await db.insert(issueReadStates).values({
+    await db.insert(taskReadStates).values({
       id: randomUUID(),
       companyId,
-      issueId,
+      taskId,
       userId: "user-1",
     });
 
@@ -197,10 +197,10 @@ describeEmbeddedPostgres("cleanup removal services", () => {
       updatedByUserId: "user-1",
     });
 
-    await db.insert(issueDocuments).values({
+    await db.insert(taskDocuments).values({
       id: randomUUID(),
       companyId,
-      issueId,
+      taskId,
       documentId,
       key: "summary",
     });
@@ -222,10 +222,10 @@ describeEmbeddedPostgres("cleanup removal services", () => {
 
     expect(removed?.id).toBe(companyId);
     await expect(db.select().from(companies).where(eq(companies.id, companyId))).resolves.toHaveLength(0);
-    await expect(db.select().from(issues).where(eq(issues.id, issueId))).resolves.toHaveLength(0);
+    await expect(db.select().from(tasks).where(eq(tasks.id, taskId))).resolves.toHaveLength(0);
     await expect(db.select().from(documents).where(eq(documents.id, documentId))).resolves.toHaveLength(0);
     await expect(db.select().from(documentRevisions).where(eq(documentRevisions.id, revisionId))).resolves.toHaveLength(0);
-    await expect(db.select().from(issueReadStates).where(eq(issueReadStates.companyId, companyId))).resolves.toHaveLength(0);
+    await expect(db.select().from(taskReadStates).where(eq(taskReadStates.companyId, companyId))).resolves.toHaveLength(0);
     await expect(db.select().from(activityLog).where(eq(activityLog.companyId, companyId))).resolves.toHaveLength(0);
   });
 });

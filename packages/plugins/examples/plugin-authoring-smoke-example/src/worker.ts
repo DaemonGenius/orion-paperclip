@@ -2,10 +2,10 @@ import { definePlugin, runWorker } from "@paperclipai/plugin-sdk";
 
 const plugin = definePlugin({
   async setup(ctx) {
-    ctx.events.on("issue.created", async (event) => {
-      const issueId = event.entityId ?? "unknown";
-      await ctx.state.set({ scopeKind: "issue", scopeId: issueId, stateKey: "seen" }, true);
-      ctx.logger.info("Observed issue.created", { issueId });
+    ctx.events.on("task.created", async (event) => {
+      const taskId = event.entityId ?? "unknown";
+      await ctx.state.set({ scopeKind: "task", scopeId: taskId, stateKey: "seen" }, true);
+      ctx.logger.info("Observed task.created", { taskId });
     });
 
     ctx.data.register("health", async () => {

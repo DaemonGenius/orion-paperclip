@@ -414,7 +414,7 @@ export function pluginRegistryService(db: Db) {
      * Look up a plugin-owned entity mapping by its external identifier.
      *
      * @param pluginId - The UUID of the plugin.
-     * @param entityType - The type of entity (e.g., 'project', 'issue').
+     * @param entityType - The type of entity (e.g., 'project', 'task').
      * @param externalId - The identifier in the external system.
      * @returns The matching `PluginEntityRecord` or null.
      */

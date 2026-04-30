@@ -7,7 +7,6 @@ import {
 describe("summarizeHeartbeatRunContextSnapshot", () => {
   it("keeps only the small retry/linking fields needed by the client", () => {
     const summarized = summarizeHeartbeatRunContextSnapshot({
-      issueId: "issue-1",
       taskId: "task-1",
       taskKey: "PAP-1",
       commentId: "comment-1",
@@ -28,7 +27,6 @@ describe("summarizeHeartbeatRunContextSnapshot", () => {
     });
 
     expect(summarized).toEqual({
-      issueId: "issue-1",
       taskId: "task-1",
       taskKey: "PAP-1",
       commentId: "comment-1",

@@ -12,12 +12,12 @@ import { instanceSettingsService } from "./instance-settings.js";
 
 const PLUGIN_EVENT_SET: ReadonlySet<string> = new Set(PLUGIN_EVENT_TYPES);
 const ACTIVITY_ACTION_TO_PLUGIN_EVENT: Readonly<Record<string, PluginEventType>> = {
-  issue_comment_added: "issue.comment.created",
-  issue_comment_created: "issue.comment.created",
-  issue_document_created: "issue.document.created",
-  issue_document_updated: "issue.document.updated",
-  issue_document_deleted: "issue.document.deleted",
-  issue_blockers_updated: "issue.relations.updated",
+  task_comment_added: "task.comment.created",
+  task_comment_created: "task.comment.created",
+  task_document_created: "task.document.created",
+  task_document_updated: "task.document.updated",
+  task_document_deleted: "task.document.deleted",
+  task_blockers_updated: "task.relations.updated",
   approval_approved: "approval.decided",
   approval_rejected: "approval.decided",
   approval_revision_requested: "approval.decided",

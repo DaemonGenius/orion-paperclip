@@ -15,5 +15,5 @@ export function isClosedIsolatedExecutionWorkspace(
 export function getClosedIsolatedExecutionWorkspaceMessage(
   workspace: Pick<ExecutionWorkspaceGuardTarget, "name">,
 ): string {
-  return `This issue is linked to the closed workspace "${workspace.name}". Move it to an open workspace before adding comments or resuming work.`;
+  return `This task is linked to the closed workspace "${workspace.name}". Move it to an open workspace before adding comments or resuming work.`;
 }

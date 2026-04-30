@@ -55,7 +55,7 @@ Turn the current Docker smoke script into a machine-friendly test harness, add a
 
 - create a company
 - create a CEO agent
-- create an initial issue
+- create an initial task
 - optionally observe task progress
 
 That is a good base, but it does not validate the public npm package, Docker path, authenticated login flow, or release dist-tags.
@@ -171,14 +171,14 @@ The first release-smoke scenario should validate:
 5. onboarding wizard appears with the expected step labels
 6. create a company
 7. create the first agent using `process`
-8. create the initial issue
-9. finish onboarding and open the created issue
+8. create the initial task
+9. finish onboarding and open the created task
 10. verify via API:
     - company exists
     - CEO agent exists
-    - issue exists and is assigned to the CEO
+    - task exists and is assigned to the CEO
 11. verify the first heartbeat run was triggered:
-    - either by checking issue status changed from initial state, or
+    - either by checking task status changed from initial state, or
     - by checking agent/runs API shows a run for the CEO, or
     - both
 
@@ -188,7 +188,7 @@ The test should tolerate the run completing quickly. For this reason, the assert
 - `running`
 - `succeeded`
 
-and similarly for issue progression if the issue status changes before the assertion runs.
+and similarly for task progression if the task status changes before the assertion runs.
 
 ### Why a separate spec instead of reusing `tests/e2e/onboarding.spec.ts`
 

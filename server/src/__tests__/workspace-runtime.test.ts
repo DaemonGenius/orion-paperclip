@@ -304,7 +304,7 @@ describe("ensureServerWorkspaceLinksCurrent", () => {
 });
 
 describe("realizeExecutionWorkspace", () => {
-  it("creates and reuses a git worktree for an issue-scoped branch", async () => {
+  it("creates and reuses a git worktree for an task-scoped branch", async () => {
     const repoRoot = await createTempRepo();
 
     const first = await realizeExecutionWorkspace({
@@ -319,11 +319,11 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-447",
         title: "Add Worktree Support",
       },
@@ -352,11 +352,11 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-447",
         title: "Add Worktree Support",
       },
@@ -391,11 +391,11 @@ describe("realizeExecutionWorkspace", () => {
         config: {
           workspaceStrategy: {
             type: "git_worktree",
-            branchTemplate: "{{issue.identifier}}-{{slug}}",
+            branchTemplate: "{{task.identifier}}-{{slug}}",
           },
         },
-        issue: {
-          id: "issue-1",
+        task: {
+          id: "task-1",
           identifier: "PAP-447",
           title: "Add Worktree Support",
         },
@@ -428,11 +428,11 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-1355",
         title: "worktree reuse",
       },
@@ -449,7 +449,7 @@ describe("realizeExecutionWorkspace", () => {
     await expect(fs.realpath(realized.worktreePath ?? "")).resolves.toBe(expectedWorktreePath);
   });
 
-  it("rejects reusing a linked worktree whose branch drifted from the expected issue branch", async () => {
+  it("rejects reusing a linked worktree whose branch drifted from the expected task branch", async () => {
     const repoRoot = await createTempRepo();
 
     const initial = await realizeExecutionWorkspace({
@@ -464,11 +464,11 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-447",
         title: "Add Worktree Support",
       },
@@ -494,11 +494,11 @@ describe("realizeExecutionWorkspace", () => {
         config: {
           workspaceStrategy: {
             type: "git_worktree",
-            branchTemplate: "{{issue.identifier}}-{{slug}}",
+            branchTemplate: "{{task.identifier}}-{{slug}}",
           },
         },
-        issue: {
-          id: "issue-1",
+        task: {
+          id: "task-1",
           identifier: "PAP-447",
           title: "Add Worktree Support",
         },
@@ -532,12 +532,12 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
           worktreeParentDir: ".paperclip/other-worktrees",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-1355",
         title: "worktree reuse",
       },
@@ -563,7 +563,7 @@ describe("realizeExecutionWorkspace", () => {
     });
   });
 
-  it("slugifies unsafe issue titles for branch names and worktree folders", async () => {
+  it("slugifies unsafe task titles for branch names and worktree folders", async () => {
     const repoRoot = await createTempRepo();
 
     const realized = await realizeExecutionWorkspace({
@@ -578,11 +578,11 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
         },
       },
-      issue: {
-        id: "issue-unsafe",
+      task: {
+        id: "task-unsafe",
         identifier: "PAP-991",
         title: "there should be a setting for the allowance of thumbs up / thumbs down data; `rm -rf`",
       },
@@ -615,11 +615,11 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "release/{{issue.identifier}}.{{slug}}",
+          branchTemplate: "release/{{task.identifier}}.{{slug}}",
         },
       },
-      issue: {
-        id: "issue-template-safe",
+      task: {
+        id: "task-template-safe",
         identifier: "PAP-992",
         title: "Hotfix / April.1",
       },
@@ -663,12 +663,12 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
           provisionCommand: "bash ./scripts/provision.sh",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-448",
         title: "Run provision command",
       },
@@ -701,12 +701,12 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
           provisionCommand: "bash ./scripts/provision.sh",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-448",
         title: "Run provision command",
       },
@@ -747,12 +747,12 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
           provisionCommand: "bash ./scripts/provision.sh",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-449",
         title: "Reuse latest provision script",
       },
@@ -791,12 +791,12 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
           provisionCommand: "bash ./scripts/provision.sh",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-449",
         title: "Reuse latest provision script",
       },
@@ -915,12 +915,12 @@ describe("realizeExecutionWorkspace", () => {
         config: {
           workspaceStrategy: {
             type: "git_worktree",
-            branchTemplate: "{{issue.identifier}}-{{slug}}",
+            branchTemplate: "{{task.identifier}}-{{slug}}",
             provisionCommand: "bash ./scripts/provision-worktree.sh",
           },
         },
-        issue: {
-          id: "issue-1",
+        task: {
+          id: "task-1",
           identifier: "PAP-885",
           title: "Show worktree banner",
         },
@@ -1075,12 +1075,12 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
           provisionCommand: "bash ./scripts/provision-worktree.sh",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-551",
         title: "Provision local workspace dependencies",
       },
@@ -1155,12 +1155,12 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
           provisionCommand: "bash ./scripts/provision-worktree.sh",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-552",
         title: "Install without moved symlinks",
       },
@@ -1383,12 +1383,12 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
           provisionCommand: "bash ./scripts/provision-worktree.sh",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-551",
         title: "Provision local workspace dependencies",
       },
@@ -1440,12 +1440,12 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
           provisionCommand: "bash ./scripts/provision.sh",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-540",
         title: "Record workspace operations",
       },
@@ -1494,12 +1494,12 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
           provisionCommand: "node ./scripts/noisy.js",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-1142",
         title: "Limit noisy provision output",
       },
@@ -1543,11 +1543,11 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-450",
         title: "Recreate missing worktree",
       },
@@ -1600,12 +1600,12 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
           provisionCommand: "bash ./scripts/restore.sh",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-451",
         title: "Restore persisted worktree",
       },
@@ -1641,8 +1641,8 @@ describe("realizeExecutionWorkspace", () => {
           provisionCommand: "bash ./scripts/restore.sh",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-451",
         title: "Restore persisted worktree",
       },
@@ -1689,12 +1689,12 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
           provisionCommand: "bash ./scripts/restore.sh",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-452",
         title: "Reprovision persisted worktree",
       },
@@ -1730,8 +1730,8 @@ describe("realizeExecutionWorkspace", () => {
           provisionCommand: "bash ./scripts/restore.sh",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-452",
         title: "Reprovision persisted worktree",
       },
@@ -1776,8 +1776,8 @@ describe("realizeExecutionWorkspace", () => {
           // No baseRef configured — should auto-detect "master"
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-460",
         title: "Auto detect default branch",
       },
@@ -1828,8 +1828,8 @@ describe("realizeExecutionWorkspace", () => {
           // No baseRef configured — should auto-detect "master" via symbolic-ref
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-461",
         title: "Auto detect default branch via symref",
       },
@@ -1863,11 +1863,11 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-449",
         title: "Cleanup workspace",
       },
@@ -1889,7 +1889,7 @@ describe("realizeExecutionWorkspace", () => {
         baseRef: workspace.repoRef,
         projectId: workspace.projectId,
         projectWorkspaceId: workspace.workspaceId,
-        sourceIssueId: "issue-1",
+        sourceTaskId: "task-1",
         metadata: {
           createdByRuntime: true,
         },
@@ -1925,11 +1925,11 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-451",
         title: "Keep unmerged branch",
       },
@@ -1955,7 +1955,7 @@ describe("realizeExecutionWorkspace", () => {
         baseRef: workspace.repoRef,
         projectId: workspace.projectId,
         projectWorkspaceId: workspace.workspaceId,
-        sourceIssueId: "issue-1",
+        sourceTaskId: "task-1",
         metadata: {
           createdByRuntime: true,
         },
@@ -1992,11 +1992,11 @@ describe("realizeExecutionWorkspace", () => {
       config: {
         workspaceStrategy: {
           type: "git_worktree",
-          branchTemplate: "{{issue.identifier}}-{{slug}}",
+          branchTemplate: "{{task.identifier}}-{{slug}}",
         },
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-541",
         title: "Cleanup recorder",
       },
@@ -2018,7 +2018,7 @@ describe("realizeExecutionWorkspace", () => {
         baseRef: workspace.repoRef,
         projectId: workspace.projectId,
         projectWorkspaceId: workspace.workspaceId,
-        sourceIssueId: "issue-1",
+        sourceTaskId: "task-1",
         metadata: {
           createdByRuntime: true,
         },
@@ -2057,7 +2057,7 @@ describe("ensureRuntimeServicesForRun", () => {
         name: "Codex Coder",
         companyId: "company-1",
       },
-      issue: null,
+      task: null,
       workspace,
       config: {
         desiredState: "manual",
@@ -2122,7 +2122,7 @@ describe("ensureRuntimeServicesForRun", () => {
         name: "Codex Coder",
         companyId: "company-1",
       },
-      issue: null,
+      task: null,
       workspace,
       config,
       adapterEnv: {},
@@ -2141,7 +2141,7 @@ describe("ensureRuntimeServicesForRun", () => {
         name: "Codex Coder",
         companyId: "company-1",
       },
-      issue: null,
+      task: null,
       workspace,
       config,
       adapterEnv: {},
@@ -2165,7 +2165,7 @@ describe("ensureRuntimeServicesForRun", () => {
         name: "Codex Coder",
         companyId: "company-1",
       },
-      issue: null,
+      task: null,
       workspace,
       config,
       adapterEnv: {},
@@ -2178,7 +2178,7 @@ describe("ensureRuntimeServicesForRun", () => {
 
   it("does not reuse project-scoped shared services across different workspace launch contexts", async () => {
     const primaryWorkspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-runtime-primary-"));
-    const worktreeWorkspaceRoot = path.join(primaryWorkspaceRoot, ".paperclip", "worktrees", "PAP-874-chat-speed-issues");
+    const worktreeWorkspaceRoot = path.join(primaryWorkspaceRoot, ".paperclip", "worktrees", "PAP-874-chat-speed-tasks");
     await fs.mkdir(worktreeWorkspaceRoot, { recursive: true });
 
     const primaryWorkspace = buildWorkspace(primaryWorkspaceRoot);
@@ -2187,7 +2187,7 @@ describe("ensureRuntimeServicesForRun", () => {
       source: "task_session",
       strategy: "git_worktree",
       cwd: worktreeWorkspaceRoot,
-      branchName: "PAP-874-chat-speed-issues",
+      branchName: "PAP-874-chat-speed-tasks",
       worktreePath: worktreeWorkspaceRoot,
     };
     const serviceCommand =
@@ -2235,7 +2235,7 @@ describe("ensureRuntimeServicesForRun", () => {
         name: "Codex Coder",
         companyId: "company-1",
       },
-      issue: null,
+      task: null,
       workspace: primaryWorkspace,
       config,
       adapterEnv: {},
@@ -2248,7 +2248,7 @@ describe("ensureRuntimeServicesForRun", () => {
         name: "Codex Coder",
         companyId: "company-1",
       },
-      issue: null,
+      task: null,
       workspace: executionWorkspace,
       executionWorkspaceId: "execution-workspace-1",
       config,
@@ -2308,7 +2308,7 @@ describe("ensureRuntimeServicesForRun", () => {
         name: "Codex Coder",
         companyId: "company-1",
       },
-      issue: null,
+      task: null,
       workspace,
       executionWorkspaceId: "execution-workspace-1",
       config: {
@@ -2364,7 +2364,7 @@ describe("ensureRuntimeServicesForRun", () => {
         name: "Codex Coder",
         companyId: "company-1",
       },
-      issue: null,
+      task: null,
       workspace,
       executionWorkspaceId: "execution-workspace-stop",
       config: {
@@ -2423,7 +2423,7 @@ describe("ensureRuntimeServicesForRun", () => {
         name: "Codex Coder",
         companyId: "company-1",
       },
-      issue: null,
+      task: null,
       workspace: siblingWorkspace,
       executionWorkspaceId: "execution-workspace-sibling",
       config: {
@@ -2474,7 +2474,7 @@ describe("ensureRuntimeServicesForRun", () => {
         name: "Codex Coder",
         companyId: "company-1",
       },
-      issue: null,
+      task: null,
       workspace,
       executionWorkspaceId: "execution-workspace-control-start",
       config: {
@@ -2535,7 +2535,7 @@ describe("ensureRuntimeServicesForRun", () => {
         name: "Codex Coder",
         companyId: "company-1",
       },
-      issue: null,
+      task: null,
       workspace,
       executionWorkspaceId: "execution-workspace-control-stop",
       config: {
@@ -2830,7 +2830,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      taskPrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(agents).values({
@@ -2869,7 +2869,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
         name: "Codex Coder",
         companyId,
       },
-      issue: null,
+      task: null,
       workspace,
       config: {
         workspaceRuntime: {
@@ -2935,7 +2935,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      taskPrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(projects).values({
@@ -2959,7 +2959,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
       projectId,
       projectWorkspaceId,
       executionWorkspaceId: null,
-      issueId: null,
+      taskId: null,
       scopeType: "project_workspace",
       scopeId: projectWorkspaceId,
       serviceName: "paperclip-dev",
@@ -3025,7 +3025,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      taskPrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(agents).values({
@@ -3082,7 +3082,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
         name: "Codex Coder",
         companyId,
       },
-      issue: null,
+      task: null,
       workspace,
       executionWorkspaceId,
       config: {
@@ -3149,8 +3149,8 @@ describe("normalizeAdapterManagedRuntimeServices", () => {
         name: "Gateway Agent",
         companyId: "company-1",
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-447",
         title: "Worktree support",
       },
@@ -3174,8 +3174,8 @@ describe("normalizeAdapterManagedRuntimeServices", () => {
         name: "Gateway Agent",
         companyId: "company-1",
       },
-      issue: {
-        id: "issue-1",
+      task: {
+        id: "task-1",
         identifier: "PAP-447",
         title: "Worktree support",
       },
@@ -3197,7 +3197,7 @@ describe("normalizeAdapterManagedRuntimeServices", () => {
       projectId: "project-1",
       projectWorkspaceId: "workspace-1",
       executionWorkspaceId: null,
-      issueId: "issue-1",
+      taskId: "task-1",
       serviceName: "preview",
       provider: "adapter_managed",
       status: "running",
@@ -3218,7 +3218,7 @@ describe("normalizeAdapterManagedRuntimeServices", () => {
         name: "Gateway Agent",
         companyId: "company-1",
       },
-      issue: null,
+      task: null,
       workspace,
       executionWorkspaceId: "execution-workspace-1",
       reports: [

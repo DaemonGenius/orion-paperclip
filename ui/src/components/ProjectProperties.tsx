@@ -5,6 +5,7 @@ import type { Project } from "@paperclipai/shared";
 import { StatusBadge } from "./StatusBadge";
 import { cn, formatDate } from "../lib/utils";
 import { environmentsApi } from "../api/environments";
+import { externalAppsApi, type ExternalAppRepository } from "../api/externalApps";
 import { goalsApi } from "../api/goals";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { projectsApi } from "../api/projects";
@@ -16,7 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { AlertCircle, Archive, ArchiveRestore, Check, ExternalLink, Github, Loader2, Plus, Trash2, X } from "lucide-react";
+import { AlertCircle, Archive, ArchiveRestore, Check, ExternalLink, FolderOpen, Github, Loader2, Lock, Plus, Search, Trash2, X } from "lucide-react";
 import { ChoosePathButton } from "./PathInstructionsModal";
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import { DraftInput } from "./agent-config-primitives";
@@ -29,6 +30,13 @@ const PROJECT_STATUSES = [
   { value: "in_progress", label: "In Progress" },
   { value: "completed", label: "Completed" },
   { value: "cancelled", label: "Cancelled" },
+];
+
+const BRANCH_TEMPLATE_PRESETS = [
+  { label: "task.identifier-slug", value: "{{task.identifier}}-{{slug}}", hint: "General task work" },
+  { label: "feature/task.identifier-slug", value: "feature/{{task.identifier}}-{{slug}}", hint: "New capabilities" },
+  { label: "patch/task.identifier-slug", value: "patch/{{task.identifier}}-{{slug}}", hint: "Bug fixes and hotfixes" },
+  { label: "release/task.identifier-slug", value: "release/{{task.identifier}}-{{slug}}", hint: "Release prep" },
 ];
 
 interface ProjectPropertiesProps {
@@ -229,6 +237,11 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
   const [workspaceMode, setWorkspaceMode] = useState<"local" | "repo" | null>(null);
   const [workspaceCwd, setWorkspaceCwd] = useState("");
   const [workspaceRepoUrl, setWorkspaceRepoUrl] = useState("");
+  const [workspaceRepoProvider, setWorkspaceRepoProvider] = useState<"github" | "bitbucket">("github");
+  const [workspaceRepoDefaultRef, setWorkspaceRepoDefaultRef] = useState("");
+  const [workspaceRepoBranchTemplate, setWorkspaceRepoBranchTemplate] = useState("{{task.identifier}}-{{slug}}");
+  const [workspaceRepoSearch, setWorkspaceRepoSearch] = useState("");
+  const [repositoryResults, setRepositoryResults] = useState<ExternalAppRepository[]>([]);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
 
   const commitField = (field: ProjectConfigFieldKey, data: Record<string, unknown>) => {
@@ -271,6 +284,11 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
     queryFn: () => environmentsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId && environmentsEnabled,
   });
+  const { data: externalApps = [] } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.externalApps.list(selectedCompanyId) : ["external-apps", "none"],
+    queryFn: () => externalAppsApi.list(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+  });
 
   const linkedGoalIds = project.goalIds.length > 0
     ? project.goalIds
@@ -289,6 +307,35 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
   const workspaces = project.workspaces ?? [];
   const codebase = project.codebase;
   const primaryCodebaseWorkspace = project.primaryWorkspace ?? null;
+  const codebaseMetadata = primaryCodebaseWorkspace?.metadata ?? {};
+  const linkedRepoProvider =
+    codebaseMetadata.gitProvider === "github" || codebaseMetadata.gitProvider === "bitbucket"
+      ? codebaseMetadata.gitProvider
+      : null;
+  const repositoryPushCheckOk = codebaseMetadata.repositoryPushCheckOk === true;
+  const repositoryPushCheckMessage =
+    typeof codebaseMetadata.repositoryPushCheckMessage === "string"
+      ? codebaseMetadata.repositoryPushCheckMessage
+      : null;
+  const repositoryLastCheckedAt =
+    typeof codebaseMetadata.repositoryLastCheckedAt === "string"
+      ? codebaseMetadata.repositoryLastCheckedAt
+      : null;
+  const repositoryRemoteHead =
+    typeof codebaseMetadata.repositoryRemoteHead === "string"
+      ? codebaseMetadata.repositoryRemoteHead
+      : null;
+  const linkedBranchTemplate =
+    typeof codebaseMetadata.branchTemplate === "string"
+      ? codebaseMetadata.branchTemplate
+      : "{{task.identifier}}-{{slug}}";
+  const configuredGitApps = externalApps.filter((binding) =>
+    (binding.provider === "github" || binding.provider === "bitbucket") && binding.secretId,
+  );
+  const selectedGitBinding = configuredGitApps.find((binding) => binding.provider === workspaceRepoProvider) ?? null;
+  const selectedBranchPreset = BRANCH_TEMPLATE_PRESETS.some((preset) => preset.value === workspaceRepoBranchTemplate)
+    ? workspaceRepoBranchTemplate
+    : "custom";
   const hasAdditionalLegacyWorkspaces = workspaces.some((workspace) => workspace.id !== primaryCodebaseWorkspace?.id);
   const executionWorkspacePolicy = project.executionWorkspacePolicy ?? null;
   const executionWorkspacesEnabled = executionWorkspacePolicy?.enabled === true;
@@ -351,6 +398,45 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
       invalidateProject();
     },
   });
+  const connectRepository = useMutation({
+    mutationFn: (data: Record<string, unknown>) => projectsApi.connectRepository(project.id, data, selectedCompanyId ?? undefined),
+    onSuccess: () => {
+      setWorkspaceMode(null);
+      setWorkspaceRepoUrl("");
+      setWorkspaceError(null);
+      invalidateProject();
+    },
+    onError: (error) => {
+      setWorkspaceError(error instanceof Error ? error.message : "Failed to connect repository.");
+    },
+  });
+  const verifyRepository = useMutation({
+    mutationFn: (action: "verify" | "fetch") =>
+      action === "fetch"
+        ? projectsApi.fetchRepository(project.id, selectedCompanyId ?? undefined)
+        : projectsApi.verifyRepository(project.id, selectedCompanyId ?? undefined),
+    onSuccess: () => {
+      setWorkspaceError(null);
+      invalidateProject();
+    },
+    onError: (error) => {
+      setWorkspaceError(error instanceof Error ? error.message : "Repository check failed.");
+    },
+  });
+  const searchRepositories = useMutation({
+    mutationFn: async () => {
+      if (!selectedGitBinding) throw new Error("Select a configured Git provider first.");
+      return externalAppsApi.repositories(selectedGitBinding.id, workspaceRepoSearch);
+    },
+    onSuccess: (result) => {
+      setRepositoryResults(result.repositories);
+      setWorkspaceError(null);
+    },
+    onError: (error) => {
+      setRepositoryResults([]);
+      setWorkspaceError(error instanceof Error ? error.message : "Could not search repositories.");
+    },
+  });
 
   const removeGoal = (goalId: string) => {
     if (!onUpdate && !onFieldUpdate) return;
@@ -369,7 +455,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
       executionWorkspacePolicy: {
         enabled: executionWorkspacesEnabled,
         defaultMode: executionWorkspaceDefaultMode,
-        allowIssueOverride: executionWorkspacePolicy?.allowIssueOverride ?? true,
+        allowTaskOverride: executionWorkspacePolicy?.allowTaskOverride ?? true,
         ...executionWorkspacePolicy,
         ...patch,
       },
@@ -467,11 +553,20 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
       return;
     }
     if (!looksLikeRepoUrl(repoUrl)) {
-      setWorkspaceError("Repo must use a valid GitHub or GitHub Enterprise repo URL.");
+      setWorkspaceError("Repo must use a valid HTTPS GitHub or Bitbucket URL.");
+      return;
+    }
+    if (configuredGitApps.length === 0) {
+      setWorkspaceError("Configure GitHub or Bitbucket in Company Settings before linking a project repo.");
       return;
     }
     setWorkspaceError(null);
-    persistCodebase({ repoUrl });
+    connectRepository.mutate({
+      provider: workspaceRepoProvider,
+      repoUrl,
+      defaultRef: workspaceRepoDefaultRef.trim() || null,
+      branchTemplate: workspaceRepoBranchTemplate.trim() || "{{task.identifier}}-{{slug}}",
+    });
   };
 
   const clearLocalWorkspace = () => {
@@ -500,6 +595,27 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
       return;
     }
     persistCodebase({ repoUrl: null });
+  };
+
+  const openRepositoryEditor = () => {
+    const firstProvider = configuredGitApps.find((binding) =>
+      binding.provider === "github" || binding.provider === "bitbucket"
+    )?.provider as "github" | "bitbucket" | undefined;
+    setWorkspaceMode("repo");
+    setWorkspaceRepoProvider(linkedRepoProvider ?? firstProvider ?? "github");
+    setWorkspaceRepoUrl(codebase.repoUrl ?? "");
+    setWorkspaceRepoDefaultRef(codebase.defaultRef ?? codebase.repoRef ?? "");
+    setWorkspaceRepoBranchTemplate(linkedBranchTemplate);
+    setWorkspaceRepoSearch("");
+    setRepositoryResults([]);
+    setWorkspaceError(null);
+  };
+
+  const selectRepository = (repo: ExternalAppRepository) => {
+    setWorkspaceRepoUrl(repo.cloneUrl);
+    setWorkspaceRepoDefaultRef(repo.defaultBranch ?? "main");
+    setWorkspaceRepoSearch(repo.fullName);
+    setRepositoryResults([]);
   };
 
   return (
@@ -632,7 +748,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
               onChange={(env) => commitField("env", { env: env ?? null })}
             />
             <p className="text-[11px] text-muted-foreground">
-              Applied to all runs for issues in this project. Project values override agent env on key conflicts.
+              Applied to all runs for tasks in this project. Project values override agent env on key conflicts.
             </p>
           </div>
         </PropertyRow>
@@ -697,11 +813,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                       variant="outline"
                       size="xs"
                       className="h-6 px-2"
-                      onClick={() => {
-                        setWorkspaceMode("repo");
-                        setWorkspaceRepoUrl(codebase.repoUrl ?? "");
-                        setWorkspaceError(null);
-                      }}
+                      onClick={openRepositoryEditor}
                     >
                       Change repo
                     </Button>
@@ -722,16 +834,67 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                     variant="outline"
                     size="xs"
                     className="h-6 px-2"
-                    onClick={() => {
-                      setWorkspaceMode("repo");
-                      setWorkspaceRepoUrl(codebase.repoUrl ?? "");
-                      setWorkspaceError(null);
-                    }}
+                    onClick={openRepositoryEditor}
                   >
                     Set repo
                   </Button>
                 </div>
               )}
+              {codebase.repoUrl ? (
+                <div className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
+                  <div className="rounded-md border border-border/60 px-2 py-1.5">
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Provider</div>
+                    <div className="mt-0.5 text-foreground">{linkedRepoProvider ?? "manual"}</div>
+                  </div>
+                  <div className="rounded-md border border-border/60 px-2 py-1.5">
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Push check</div>
+                    <div className={cn(
+                      "mt-0.5",
+                      repositoryPushCheckOk ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-300",
+                    )}>
+                      {repositoryPushCheckOk ? "ready" : "not verified"}
+                    </div>
+                  </div>
+                  {repositoryLastCheckedAt ? (
+                    <div className="rounded-md border border-border/60 px-2 py-1.5">
+                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Checked</div>
+                      <div className="mt-0.5 text-muted-foreground">{formatDate(repositoryLastCheckedAt)}</div>
+                    </div>
+                  ) : null}
+                  {repositoryRemoteHead ? (
+                    <div className="rounded-md border border-border/60 px-2 py-1.5">
+                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Remote head</div>
+                      <div className="mt-0.5 font-mono text-muted-foreground">{repositoryRemoteHead}</div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {repositoryPushCheckMessage ? (
+                <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-300">{repositoryPushCheckMessage}</p>
+              ) : null}
+              {codebase.repoUrl ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    className="h-6 px-2"
+                    disabled={verifyRepository.isPending}
+                    onClick={() => verifyRepository.mutate("verify")}
+                  >
+                    {verifyRepository.isPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
+                    Verify
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    className="h-6 px-2"
+                    disabled={verifyRepository.isPending}
+                    onClick={() => verifyRepository.mutate("fetch")}
+                  >
+                    Fetch
+                  </Button>
+                </div>
+              ) : null}
             </div>
 
             <div className="space-y-1">
@@ -825,13 +988,35 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
             ) : null}
           </div>
           {workspaceMode === "local" && (
-            <div className="space-y-1.5 rounded-md border border-border p-2">
-              <div className="flex items-center gap-2">
+            <div className="space-y-3 rounded-md border border-border bg-card/40 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-1">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <FolderOpen className="h-4 w-4 text-muted-foreground" />
+                    <span>Use a local project folder</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Point Paperclip at an existing checkout on this machine.
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="h-7 px-2"
+                  onClick={() => {
+                    setWorkspaceMode("repo");
+                    setWorkspaceError(null);
+                  }}
+                >
+                  Link repo instead
+                </Button>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
                 <input
-                  className="w-full rounded border border-border bg-transparent px-2 py-1 text-xs font-mono outline-none"
+                  className="h-9 w-full rounded-md border border-border bg-background px-2 text-xs font-mono outline-none"
                   value={workspaceCwd}
                   onChange={(e) => setWorkspaceCwd(e.target.value)}
-                  placeholder="/absolute/path/to/workspace"
+                  placeholder="D:\\path\\to\\checkout or /absolute/path/to/workspace"
                 />
                 <ChoosePathButton />
               </div>
@@ -839,16 +1024,16 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                 <Button
                   variant="outline"
                   size="xs"
-                  className="h-6 px-2"
+                  className="h-7 px-3"
                   disabled={(!workspaceCwd.trim() && !primaryCodebaseWorkspace) || createWorkspace.isPending || updateWorkspace.isPending}
                   onClick={submitLocalWorkspace}
                 >
-                  Save
+                  Save local folder
                 </Button>
                 <Button
                   variant="ghost"
                   size="xs"
-                  className="h-6 px-2"
+                  className="h-7 px-2"
                   onClick={() => {
                     setWorkspaceMode(null);
                     setWorkspaceCwd("");
@@ -861,30 +1046,182 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
             </div>
           )}
           {workspaceMode === "repo" && (
-            <div className="space-y-1.5 rounded-md border border-border p-2">
-              <input
-                className="w-full rounded border border-border bg-transparent px-2 py-1 text-xs outline-none"
-                value={workspaceRepoUrl}
-                onChange={(e) => setWorkspaceRepoUrl(e.target.value)}
-                placeholder="https://github.com/org/repo"
-              />
+            <div className="space-y-4 rounded-md border border-border bg-card/40 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-1">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Github className="h-4 w-4 text-muted-foreground" />
+                    <span>Link a Git repository</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Search configured providers, select a repo, then clone it into Paperclip's managed workspace.
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="h-7 px-2"
+                  onClick={() => {
+                    setWorkspaceMode("local");
+                    setWorkspaceCwd(codebase.localFolder ?? "");
+                    setWorkspaceError(null);
+                  }}
+                >
+                  Set local folder instead
+                </Button>
+              </div>
+              {configuredGitApps.length > 0 ? (
+                <div className="grid gap-2 sm:grid-cols-[180px_1fr_auto]">
+                  <select
+                    className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs outline-none"
+                    value={workspaceRepoProvider}
+                    onChange={(event) => {
+                      setWorkspaceRepoProvider(event.target.value as "github" | "bitbucket");
+                      setRepositoryResults([]);
+                    }}
+                  >
+                    {configuredGitApps.map((binding) => (
+                      <option key={binding.id} value={binding.provider}>
+                        {binding.displayName}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
+                    <input
+                      className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-2 text-xs outline-none"
+                      value={workspaceRepoSearch}
+                      onChange={(e) => setWorkspaceRepoSearch(e.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") searchRepositories.mutate();
+                      }}
+                      placeholder="Search repositories..."
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    className="h-8 px-3"
+                    disabled={!selectedGitBinding || searchRepositories.isPending}
+                    onClick={() => searchRepositories.mutate()}
+                  >
+                    {searchRepositories.isPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Search className="mr-1 h-3 w-3" />}
+                    Search
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-xs text-amber-600 dark:text-amber-300">
+                  Configure GitHub or Bitbucket in Company Settings before linking a repository.
+                </p>
+              )}
+              {repositoryResults.length > 0 ? (
+                <div className="max-h-56 overflow-y-auto rounded-md border border-border bg-background">
+                  {repositoryResults.map((repo) => (
+                    <button
+                      key={repo.cloneUrl}
+                      type="button"
+                      className="flex w-full items-start justify-between gap-3 border-b border-border/60 px-3 py-2 text-left last:border-b-0 hover:bg-accent/50"
+                      onClick={() => selectRepository(repo)}
+                    >
+                      <span className="min-w-0 space-y-0.5">
+                        <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium">
+                          <Github className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          <span className="truncate">{repo.fullName}</span>
+                          {repo.private ? <Lock className="h-3 w-3 shrink-0 text-muted-foreground" /> : null}
+                        </span>
+                        {repo.description ? (
+                          <span className="block truncate text-[11px] text-muted-foreground">{repo.description}</span>
+                        ) : null}
+                      </span>
+                      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                        {repo.defaultBranch ?? "main"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : searchRepositories.isSuccess ? (
+                <div className="rounded-md border border-border/70 px-3 py-2 text-xs text-muted-foreground">
+                  No repositories matched this search.
+                </div>
+              ) : null}
+              <div className="grid gap-2 sm:grid-cols-[1fr_180px]">
+                <label className="space-y-1">
+                  <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Repository URL</span>
+                  <input
+                    className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs outline-none"
+                    value={workspaceRepoUrl}
+                    onChange={(e) => setWorkspaceRepoUrl(e.target.value)}
+                    placeholder={workspaceRepoProvider === "bitbucket" ? "https://bitbucket.org/workspace/repo" : "https://github.com/org/repo"}
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Base branch</span>
+                  <input
+                    className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs font-mono outline-none"
+                    value={workspaceRepoDefaultRef}
+                    onChange={(e) => setWorkspaceRepoDefaultRef(e.target.value)}
+                    placeholder="main"
+                  />
+                </label>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Task branch naming</span>
+                  <span className="font-mono text-[11px] text-muted-foreground">{workspaceRepoBranchTemplate}</span>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {BRANCH_TEMPLATE_PRESETS.map((preset) => (
+                    <button
+                      key={preset.value}
+                      type="button"
+                      className={cn(
+                        "rounded-md border px-3 py-2 text-left transition-colors",
+                        workspaceRepoBranchTemplate === preset.value
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "border-border bg-background text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                      )}
+                      onClick={() => setWorkspaceRepoBranchTemplate(preset.value)}
+                    >
+                      <span className="block font-mono text-xs">{preset.label}</span>
+                      <span className="mt-1 block text-[11px] text-muted-foreground">{preset.hint}</span>
+                    </button>
+                  ))}
+                </div>
+                <input
+                  className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs font-mono outline-none"
+                  value={workspaceRepoBranchTemplate}
+                  onChange={(e) => setWorkspaceRepoBranchTemplate(e.target.value)}
+                  placeholder="custom/{{task.identifier}}-{{slug}}"
+                />
+                {selectedBranchPreset === "custom" ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    Custom template. Available variables: {"{{task.identifier}}"} and {"{{slug}}"}.
+                  </p>
+                ) : null}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Agents create isolated worktrees from the base branch and can push feature branches when the token has write access.
+              </p>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="xs"
-                  className="h-6 px-2"
-                  disabled={(!workspaceRepoUrl.trim() && !primaryCodebaseWorkspace) || createWorkspace.isPending || updateWorkspace.isPending}
+                  className="h-7 px-3"
+                  disabled={(!workspaceRepoUrl.trim() && !primaryCodebaseWorkspace) || connectRepository.isPending || configuredGitApps.length === 0}
                   onClick={submitRepoWorkspace}
                 >
-                  Save
+                  {connectRepository.isPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
+                  Connect & clone
                 </Button>
                 <Button
                   variant="ghost"
                   size="xs"
-                  className="h-6 px-2"
+                  className="h-7 px-2"
                   onClick={() => {
                     setWorkspaceMode(null);
                     setWorkspaceRepoUrl("");
+                    setWorkspaceRepoDefaultRef("");
+                    setWorkspaceRepoBranchTemplate("{{task.identifier}}-{{slug}}");
                     setWorkspaceError(null);
                   }}
                 >
@@ -925,7 +1262,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="top">
-                    Project-owned defaults for isolated issue checkouts and execution workspace behavior.
+                    Project-owned defaults for isolated task checkouts and execution workspace behavior.
                   </TooltipContent>
                 </Tooltip>
               </div>
@@ -933,11 +1270,11 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                 <div className="flex items-center justify-between gap-3">
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2 text-sm font-medium">
-                      <span>Enable isolated issue checkouts</span>
+                      <span>Enable isolated task checkouts</span>
                       <SaveIndicator state={fieldState("execution_workspace_enabled")} />
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      Let issues choose between the project's primary checkout and an isolated execution workspace.
+                      Let tasks choose between the project's primary checkout and an isolated execution workspace.
                     </div>
                   </div>
                   {onUpdate || onFieldUpdate ? (
@@ -961,11 +1298,11 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                     <div className="flex items-center justify-between gap-3">
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2 text-sm">
-                          <span>New issues default to isolated checkout</span>
+                          <span>New tasks default to isolated checkout</span>
                           <SaveIndicator state={fieldState("execution_workspace_default_mode")} />
                         </div>
                         <div className="text-[11px] text-muted-foreground">
-                          If disabled, new issues stay on the project's primary checkout unless someone opts in.
+                          If disabled, new tasks stay on the project's primary checkout unless someone opts in.
                         </div>
                       </div>
                       <ToggleSwitch
@@ -1073,7 +1410,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                               })}
                             immediate
                             className="w-full rounded border border-border bg-transparent px-2 py-1 text-xs font-mono outline-none"
-                            placeholder="{{issue.identifier}}-{{slug}}"
+                            placeholder="{{task.identifier}}-{{slug}}"
                           />
                         </div>
                         <div>

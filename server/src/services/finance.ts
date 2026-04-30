@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agents, costEvents, financeEvents, goals, heartbeatRuns, issues, projects } from "@paperclipai/db";
+import { agents, costEvents, financeEvents, goals, heartbeatRuns, tasks, projects } from "@paperclipai/db";
 import { notFound, unprocessable } from "../errors.js";
 
 export interface FinanceDateRange {
@@ -42,7 +42,7 @@ export function financeService(db: Db) {
   return {
     createEvent: async (companyId: string, data: Omit<typeof financeEvents.$inferInsert, "companyId">) => {
       if (data.agentId) await assertBelongsToCompany(db, agents, data.agentId, companyId, "Agent");
-      if (data.issueId) await assertBelongsToCompany(db, issues, data.issueId, companyId, "Issue");
+      if (data.taskId) await assertBelongsToCompany(db, tasks, data.taskId, companyId, "Task");
       if (data.projectId) await assertBelongsToCompany(db, projects, data.projectId, companyId, "Project");
       if (data.goalId) await assertBelongsToCompany(db, goals, data.goalId, companyId, "Goal");
       if (data.heartbeatRunId) await assertBelongsToCompany(db, heartbeatRuns, data.heartbeatRunId, companyId, "Heartbeat run");

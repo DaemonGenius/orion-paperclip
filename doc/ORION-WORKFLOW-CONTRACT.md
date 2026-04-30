@@ -14,7 +14,7 @@ Orion treats the original Paperclip CEO hierarchy as one workflow preset, not as
 - `Workflow`: company-scoped graph used to route work.
 - `WorkflowNode`: independent unit in the graph. MVP types are `agent`, `human_gate`, `task_intake`, `verification`, `github_pr`, `decision`, and `fallback`.
 - `WorkflowEdge`: typed link between nodes. MVP types are `assigns_to`, `hands_off_to`, `requires_approval`, `fallback_to`, `reports_to`, and `blocks_until`.
-- `TaskWorkflowBinding`: binds one task/issue to a workflow and current node.
+- `TaskWorkflowBinding`: binds one task/task to a workflow and current node.
 - `WorkflowRun`: optional per-run graph state linked to a heartbeat run.
 
 ## Built-In Presets

@@ -260,7 +260,7 @@ export function normalizeEnvironmentConfig(input: {
     const parsed = sshEnvironmentConfigSchema.safeParse(parseObject(input.config));
     if (!parsed.success) {
       throw unprocessable(toErrorMessage(parsed.error), {
-        issues: parsed.error.issues,
+        tasks: parsed.error.issues,
       });
     }
     return parsed.data satisfies SshEnvironmentConfig;
@@ -270,7 +270,7 @@ export function normalizeEnvironmentConfig(input: {
     const parsed = parseSandboxEnvironmentConfig(input.config);
     if (!parsed.success) {
       throw unprocessable(toErrorMessage(parsed.error), {
-        issues: parsed.error.issues,
+        tasks: parsed.error.issues,
       });
     }
     return parsed.data;
@@ -280,7 +280,7 @@ export function normalizeEnvironmentConfig(input: {
     const parsed = pluginEnvironmentConfigSchema.safeParse(parseObject(input.config));
     if (!parsed.success) {
       throw unprocessable(toErrorMessage(parsed.error), {
-        issues: parsed.error.issues,
+        tasks: parsed.error.issues,
       });
     }
     return parsed.data satisfies PluginEnvironmentConfig;
@@ -299,7 +299,7 @@ export function normalizeEnvironmentConfigForProbe(input: {
     const parsed = sshEnvironmentConfigProbeSchema.safeParse(parseObject(input.config));
     if (!parsed.success) {
       throw unprocessable(toErrorMessage(parsed.error), {
-        issues: parsed.error.issues,
+        tasks: parsed.error.issues,
       });
     }
     return parsed.data satisfies SshEnvironmentConfig;
@@ -309,7 +309,7 @@ export function normalizeEnvironmentConfigForProbe(input: {
     const parsed = parseSandboxEnvironmentConfig(input.config);
     if (!parsed.success) {
       throw unprocessable(toErrorMessage(parsed.error), {
-        issues: parsed.error.issues,
+        tasks: parsed.error.issues,
       });
     }
     if (parsed.data.provider === "fake") {
@@ -348,7 +348,7 @@ export async function normalizeEnvironmentConfigForPersistence(input: {
     const parsed = sshEnvironmentConfigPersistenceSchema.safeParse(parseObject(input.config));
     if (!parsed.success) {
       throw unprocessable(toErrorMessage(parsed.error), {
-        issues: parsed.error.issues,
+        tasks: parsed.error.issues,
       });
     }
     const secrets = secretService(input.db);
@@ -382,7 +382,7 @@ export async function normalizeEnvironmentConfigForPersistence(input: {
     const parsed = parseSandboxEnvironmentConfig(input.config);
     if (!parsed.success) {
       throw unprocessable(toErrorMessage(parsed.error), {
-        issues: parsed.error.issues,
+        tasks: parsed.error.issues,
       });
     }
     if (parsed.data.provider === "fake") {
@@ -420,7 +420,7 @@ export async function normalizeEnvironmentConfigForPersistence(input: {
     const parsed = pluginEnvironmentConfigSchema.safeParse(parseObject(input.config));
     if (!parsed.success) {
       throw unprocessable(toErrorMessage(parsed.error), {
-        issues: parsed.error.issues,
+        tasks: parsed.error.issues,
       });
     }
     if (!input.pluginWorkerManager) {

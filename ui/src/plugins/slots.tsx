@@ -51,7 +51,7 @@ export type PluginSlotContext = {
   projectId?: string | null;
   entityId?: string | null;
   entityType?: PluginUiSlotEntityType | null;
-  /** Parent entity ID for nested slots (e.g. comment annotations within an issue). */
+  /** Parent entity ID for nested slots (e.g. comment annotations within an task). */
   parentEntityId?: string | null;
   projectRef?: string | null;
 };
@@ -205,7 +205,7 @@ function buildPluginUiUrl(contribution: PluginUiContribution): string {
  * 3. Import the rewritten module via a blob URL
  *
  * This approach is compatible with all modern browsers and avoids import map
- * ordering issues.
+ * ordering tasks.
  */
 const shimBlobUrls: Record<string, string> = {};
 

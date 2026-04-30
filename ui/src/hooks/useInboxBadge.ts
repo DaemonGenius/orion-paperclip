@@ -7,12 +7,12 @@ import { approvalsApi } from "../api/approvals";
 import { authApi } from "../api/auth";
 import { dashboardApi } from "../api/dashboard";
 import { heartbeatsApi } from "../api/heartbeats";
-import { issuesApi } from "../api/issues";
+import { tasksApi } from "../api/tasks";
 import { queryKeys } from "../lib/queryKeys";
 import {
   buildInboxDismissedAtByKey,
   computeInboxBadgeData,
-  getRecentTouchedIssues,
+  getRecentTouchedTasks,
   loadDismissedInboxAlerts,
   saveDismissedInboxAlerts,
   loadReadInboxItems,
@@ -20,8 +20,8 @@ import {
   READ_ITEMS_KEY,
 } from "../lib/inbox";
 
-const INBOX_ISSUE_STATUSES = "backlog,todo,in_progress,in_review,blocked,done";
-const INBOX_BADGE_ISSUE_LIMIT = 500;
+const INBOX_TASK_STATUSES = "backlog,todo,in_progress,in_review,blocked,done";
+const INBOX_BADGE_TASK_LIMIT = 500;
 const INBOX_BADGE_HEARTBEAT_RUN_LIMIT = 200;
 
 export function useDismissedInboxAlerts() {
@@ -174,19 +174,19 @@ export function useInboxBadge(companyId: string | null | undefined) {
     enabled: !!companyId,
   });
 
-  const { data: mineIssuesRaw = [] } = useQuery({
-    queryKey: queryKeys.issues.listMineByMe(companyId!),
+  const { data: mineTasksRaw = [] } = useQuery({
+    queryKey: queryKeys.tasks.listMineByMe(companyId!),
     queryFn: () =>
-      issuesApi.list(companyId!, {
+      tasksApi.list(companyId!, {
         touchedByUserId: "me",
         inboxArchivedByUserId: "me",
-        status: INBOX_ISSUE_STATUSES,
-        limit: INBOX_BADGE_ISSUE_LIMIT,
+        status: INBOX_TASK_STATUSES,
+        limit: INBOX_BADGE_TASK_LIMIT,
       }),
     enabled: !!companyId,
   });
 
-  const mineIssues = useMemo(() => getRecentTouchedIssues(mineIssuesRaw), [mineIssuesRaw]);
+  const mineTasks = useMemo(() => getRecentTouchedTasks(mineTasksRaw), [mineTasksRaw]);
   const currentUserId = session?.user.id ?? session?.session.userId ?? null;
 
   const { data: heartbeatRuns = [] } = useQuery({
@@ -202,11 +202,11 @@ export function useInboxBadge(companyId: string | null | undefined) {
         joinRequests,
         dashboard,
         heartbeatRuns,
-        mineIssues,
+        mineTasks,
         dismissedAlerts,
         dismissedAtByKey,
         currentUserId,
       }),
-    [approvals, joinRequests, dashboard, heartbeatRuns, mineIssues, dismissedAlerts, dismissedAtByKey, currentUserId],
+    [approvals, joinRequests, dashboard, heartbeatRuns, mineTasks, dismissedAlerts, dismissedAtByKey, currentUserId],
   );
 }

@@ -1,15 +1,15 @@
 import * as React from "react";
 import * as RouterDom from "react-router-dom";
 import type { NavigateOptions, To } from "react-router-dom";
-import type { Issue } from "@paperclipai/shared";
+import type { Task } from "@paperclipai/shared";
 import { useCompany } from "@/context/CompanyContext";
-import { IssueLinkQuicklook } from "@/components/IssueLinkQuicklook";
+import { TaskLinkQuicklook } from "@/components/TaskLinkQuicklook";
 import {
   applyCompanyPrefix,
   extractCompanyPrefixFromPath,
   normalizeCompanyPrefix,
 } from "@/lib/company-routes";
-import { parseIssuePathIdFromPath } from "@/lib/issue-reference";
+import { parseTaskPathIdFromPath } from "@/lib/task-reference";
 
 function resolveTo(to: To, companyPrefix: string | null): To {
   if (typeof to === "string") {
@@ -38,30 +38,30 @@ function useActiveCompanyPrefix(): string | null {
   const pathPrefix = extractCompanyPrefixFromPath(location.pathname);
   if (pathPrefix) return pathPrefix;
 
-  return selectedCompany ? normalizeCompanyPrefix(selectedCompany.issuePrefix) : null;
+  return selectedCompany ? normalizeCompanyPrefix(selectedCompany.taskPrefix) : null;
 }
 
 export * from "react-router-dom";
 
 type CompanyLinkProps = React.ComponentProps<typeof RouterDom.Link> & {
-  disableIssueQuicklook?: boolean;
-  issuePrefetch?: Issue | null;
+  disableTaskQuicklook?: boolean;
+  taskPrefetch?: Task | null;
 };
 
 export const Link = React.forwardRef<HTMLAnchorElement, CompanyLinkProps>(
-  function CompanyLink({ to, disableIssueQuicklook = false, issuePrefetch = null, ...props }, ref) {
+  function CompanyLink({ to, disableTaskQuicklook = false, taskPrefetch = null, ...props }, ref) {
     const companyPrefix = useActiveCompanyPrefix();
     const resolvedTo = resolveTo(to, companyPrefix);
-    const issuePathId = parseIssuePathIdFromPath(typeof resolvedTo === "string" ? resolvedTo : resolvedTo.pathname);
+    const taskPathId = parseTaskPathIdFromPath(typeof resolvedTo === "string" ? resolvedTo : resolvedTo.pathname);
 
-    if (issuePathId) {
+    if (taskPathId) {
       return (
-        <IssueLinkQuicklook
+        <TaskLinkQuicklook
           ref={ref}
           to={resolvedTo}
-          issuePathId={issuePathId}
-          disableIssueQuicklook={disableIssueQuicklook}
-          issuePrefetch={issuePrefetch}
+          taskPathId={taskPathId}
+          disableTaskQuicklook={disableTaskQuicklook}
+          taskPrefetch={taskPrefetch}
           {...props}
         />
       );

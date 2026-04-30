@@ -11,7 +11,7 @@ import { dbBackupCommand } from "./commands/db-backup.js";
 import { registerEnvLabCommands } from "./commands/env-lab.js";
 import { registerContextCommands } from "./commands/client/context.js";
 import { registerCompanyCommands } from "./commands/client/company.js";
-import { registerIssueCommands } from "./commands/client/issue.js";
+import { registerTaskCommands } from "./commands/client/task.js";
 import { registerAgentCommands } from "./commands/client/agent.js";
 import { registerApprovalCommands } from "./commands/client/approval.js";
 import { registerActivityCommands } from "./commands/client/activity.js";
@@ -61,7 +61,7 @@ program
   .description("Run diagnostic checks on your Paperclip setup")
   .option("-c, --config <path>", "Path to config file")
   .option("-d, --data-dir <path>", DATA_DIR_OPTION_HELP)
-  .option("--repair", "Attempt to repair issues automatically")
+  .option("--repair", "Attempt to repair tasks automatically")
   .alias("--fix")
   .option("-y, --yes", "Skip repair confirmation prompts")
   .action(async (opts) => {
@@ -140,7 +140,7 @@ heartbeat
 
 registerContextCommands(program);
 registerCompanyCommands(program);
-registerIssueCommands(program);
+registerTaskCommands(program);
 registerAgentCommands(program);
 registerApprovalCommands(program);
 registerActivityCommands(program);

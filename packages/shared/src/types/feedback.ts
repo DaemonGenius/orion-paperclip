@@ -1,4 +1,4 @@
-export const FEEDBACK_TARGET_TYPES = ["issue_comment", "issue_document_revision"] as const;
+export const FEEDBACK_TARGET_TYPES = ["task_comment", "task_document_revision"] as const;
 export type FeedbackTargetType = (typeof FEEDBACK_TARGET_TYPES)[number];
 
 export const FEEDBACK_VOTE_VALUES = ["up", "down"] as const;
@@ -17,7 +17,7 @@ export const DEFAULT_FEEDBACK_DATA_SHARING_TERMS_VERSION = "feedback-data-sharin
 export interface FeedbackVote {
   id: string;
   companyId: string;
-  issueId: string;
+  taskId: string;
   targetType: FeedbackTargetType;
   targetId: string;
   authorUserId: string;
@@ -46,10 +46,10 @@ export interface FeedbackTrace {
   id: string;
   companyId: string;
   feedbackVoteId: string;
-  issueId: string;
+  taskId: string;
   projectId: string | null;
-  issueIdentifier: string | null;
-  issueTitle: string;
+  taskIdentifier: string | null;
+  taskTitle: string;
   authorUserId: string;
   targetType: FeedbackTargetType;
   targetId: string;
@@ -104,8 +104,8 @@ export interface FeedbackTraceBundle {
   traceId: string;
   exportId: string | null;
   companyId: string;
-  issueId: string;
-  issueIdentifier: string | null;
+  taskId: string;
+  taskIdentifier: string | null;
   adapterType: string | null;
   captureStatus: FeedbackTraceBundleCaptureStatus;
   notes: string[];

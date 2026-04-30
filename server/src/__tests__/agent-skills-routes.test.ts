@@ -26,7 +26,7 @@ const mockEnvironmentService = vi.hoisted(() => ({
   getById: vi.fn(),
 }));
 const mockHeartbeatService = vi.hoisted(() => ({}));
-const mockIssueApprovalService = vi.hoisted(() => ({
+const mockTaskApprovalService = vi.hoisted(() => ({
   linkManyForApproval: vi.fn(),
 }));
 const mockWorkspaceOperationService = vi.hoisted(() => ({}));
@@ -79,8 +79,8 @@ vi.mock("../services/index.js", () => ({
   budgetService: () => mockBudgetService,
   environmentService: () => mockEnvironmentService,
   heartbeatService: () => mockHeartbeatService,
-  issueApprovalService: () => mockIssueApprovalService,
-  issueService: () => ({}),
+  taskApprovalService: () => mockTaskApprovalService,
+  taskService: () => ({}),
   logActivity: mockLogActivity,
   secretService: () => mockSecretService,
   syncInstructionsBundleConfigFromFilePath: mockSyncInstructionsBundleConfigFromFilePath,
@@ -112,8 +112,8 @@ function registerModuleMocks() {
     companySkillService: () => mockCompanySkillService,
     budgetService: () => mockBudgetService,
     heartbeatService: () => mockHeartbeatService,
-    issueApprovalService: () => mockIssueApprovalService,
-    issueService: () => ({}),
+    taskApprovalService: () => mockTaskApprovalService,
+    taskService: () => ({}),
     logActivity: mockLogActivity,
     secretService: () => mockSecretService,
     syncInstructionsBundleConfigFromFilePath: mockSyncInstructionsBundleConfigFromFilePath,
@@ -222,7 +222,7 @@ describe.sequential("agent skill routes", () => {
     for (const mock of Object.values(mockAgentService)) mock.mockReset();
     for (const mock of Object.values(mockAccessService)) mock.mockReset();
     for (const mock of Object.values(mockApprovalService)) mock.mockReset();
-    for (const mock of Object.values(mockIssueApprovalService)) mock.mockReset();
+    for (const mock of Object.values(mockTaskApprovalService)) mock.mockReset();
     for (const mock of Object.values(mockAgentInstructionsService)) mock.mockReset();
     for (const mock of Object.values(mockCompanySkillService)) mock.mockReset();
     for (const mock of Object.values(mockSecretService)) mock.mockReset();
@@ -526,7 +526,7 @@ describe.sequential("agent skill routes", () => {
       expect(mockAgentInstructionsService.materializeManagedBundle).toHaveBeenCalledWith(
         expect.any(Object),
         expect.objectContaining({
-          "AGENTS.md": expect.stringContaining("confirmation:{issueId}:plan:{revisionId}"),
+          "AGENTS.md": expect.stringContaining("confirmation:{taskId}:plan:{revisionId}"),
         }),
         expect.any(Object),
       );
@@ -560,9 +560,9 @@ describe.sequential("agent skill routes", () => {
     );
   });
 
-  it("preserves hire source issues, icons, desired skills, and approval payload details", async () => {
+  it("preserves hire source tasks, icons, desired skills, and approval payload details", async () => {
     const db = createDb(true);
-    const sourceIssueId = "22222222-2222-4222-8222-222222222222";
+    const sourceTaskId = "22222222-2222-4222-8222-222222222222";
 
     const res = await request(await createApp(db))
       .post("/api/companies/company-1/agent-hires")
@@ -573,7 +573,7 @@ describe.sequential("agent skill routes", () => {
         adapterType: "claude_local",
         desiredSkills: ["paperclip"],
         adapterConfig: {},
-        sourceIssueId,
+        sourceTaskId,
       });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
@@ -600,9 +600,9 @@ describe.sequential("agent skill routes", () => {
         }),
       }),
     );
-    expect(mockIssueApprovalService.linkManyForApproval).toHaveBeenCalledWith(
+    expect(mockTaskApprovalService.linkManyForApproval).toHaveBeenCalledWith(
       "approval-1",
-      [sourceIssueId],
+      [sourceTaskId],
       { agentId: null, userId: "local-board" },
     );
   });

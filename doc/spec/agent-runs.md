@@ -334,7 +334,7 @@ Both local adapters must:
 Supported sources:
 
 1. `timer`: periodic heartbeat per agent.
-2. `assignment`: issue assigned/reassigned to agent.
+2. `assignment`: task assigned/reassigned to agent.
 3. `on_demand`: explicit wake request path (board/manual click or API ping).
 4. `automation`: non-interactive wake path (external callback or internal system automation).
 
@@ -396,7 +396,7 @@ Defaults:
 ## 8.5 Trigger integration rules
 
 1. Timer checks run on server worker interval and enqueue due agents.
-2. Issue assignment mutation enqueues wakeup when assignee changes and target agent has `wakeOnAssignment=true`.
+2. Task assignment mutation enqueues wakeup when assignee changes and target agent has `wakeOnAssignment=true`.
 3. On-demand endpoint enqueues wakeup with `source=on_demand` and `triggerDetail=manual|ping` when `wakeOnOnDemand=true`.
 4. Callback/system automations enqueue wakeup with `source=automation` and `triggerDetail=callback|system` when `wakeOnAutomation=true`.
 5. Paused/terminated agents do not receive new wakeups.
@@ -615,8 +615,8 @@ Primary transport: websocket channel per company.
 4. `heartbeat.run.status` (short color+message updates)
 5. `heartbeat.run.log` (optional live chunk stream; full persistence handled by `RunLogStore`)
 6. `heartbeat.run.finished`
-7. `issue.updated`
-8. `issue.comment.created`
+7. `task.updated`
+8. `task.comment.created`
 9. `activity.appended`
 
 ## 11.4 UI behavior
@@ -722,7 +722,7 @@ All wakeup/run state mutations must create `activity_log` entries:
 ## Phase 4: Realtime push
 
 1. Implement company websocket hub.
-2. Publish run/agent/issue events.
+2. Publish run/agent/task events.
 3. Update UI pages to subscribe and invalidate/update relevant data.
 
 ## Phase 5: Prompt pills and config UX

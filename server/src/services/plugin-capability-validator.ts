@@ -49,11 +49,11 @@ const OPERATION_CAPABILITIES: Record<string, readonly PluginCapability[]> = {
   "projects.get": ["projects.read"],
   "project.workspaces.list": ["project.workspaces.read"],
   "project.workspaces.get": ["project.workspaces.read"],
-  "issues.list": ["issues.read"],
-  "issues.get": ["issues.read"],
-  "issues.relations.get": ["issue.relations.read"],
-  "issue.comments.list": ["issue.comments.read"],
-  "issue.comments.get": ["issue.comments.read"],
+  "tasks.list": ["tasks.read"],
+  "tasks.get": ["tasks.read"],
+  "tasks.relations.get": ["task.relations.read"],
+  "task.comments.list": ["task.comments.read"],
+  "task.comments.get": ["task.comments.read"],
   "agents.list": ["agents.read"],
   "agents.get": ["agents.read"],
   "goals.list": ["goals.read"],
@@ -62,22 +62,22 @@ const OPERATION_CAPABILITIES: Record<string, readonly PluginCapability[]> = {
   "activity.get": ["activity.read"],
   "costs.list": ["costs.read"],
   "costs.get": ["costs.read"],
-  "issues.summaries.getOrchestration": ["issues.orchestration.read"],
+  "tasks.summaries.getOrchestration": ["tasks.orchestration.read"],
   "db.namespace": ["database.namespace.read"],
   "db.query": ["database.namespace.read"],
 
   // Data write operations
-  "issues.create": ["issues.create"],
-  "issues.update": ["issues.update"],
-  "issues.relations.setBlockedBy": ["issue.relations.write"],
-  "issues.relations.addBlockers": ["issue.relations.write"],
-  "issues.relations.removeBlockers": ["issue.relations.write"],
-  "issues.assertCheckoutOwner": ["issues.checkout"],
-  "issues.getSubtree": ["issue.subtree.read"],
-  "issues.requestWakeup": ["issues.wakeup"],
-  "issues.requestWakeups": ["issues.wakeup"],
-  "issue.comments.create": ["issue.comments.create"],
-  "issue.interactions.create": ["issue.interactions.create"],
+  "tasks.create": ["tasks.create"],
+  "tasks.update": ["tasks.update"],
+  "tasks.relations.setBlockedBy": ["task.relations.write"],
+  "tasks.relations.addBlockers": ["task.relations.write"],
+  "tasks.relations.removeBlockers": ["task.relations.write"],
+  "tasks.assertCheckoutOwner": ["tasks.checkout"],
+  "tasks.getSubtree": ["task.subtree.read"],
+  "tasks.requestWakeup": ["tasks.wakeup"],
+  "tasks.requestWakeups": ["tasks.wakeup"],
+  "task.comments.create": ["task.comments.create"],
+  "task.interactions.create": ["task.interactions.create"],
   "activity.log": ["activity.log.write"],
   "metrics.write": ["metrics.write"],
   "telemetry.track": ["telemetry.track"],
@@ -290,7 +290,7 @@ export interface PluginCapabilityValidator {
  * const validator = pluginCapabilityValidator();
  *
  * // Runtime: gate a bridge call
- * validator.assertOperation(plugin.manifestJson, "issues.create");
+ * validator.assertOperation(plugin.manifestJson, "tasks.create");
  *
  * // Install time: validate manifest consistency
  * const result = validator.validateManifestCapabilities(manifest);

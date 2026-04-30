@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   WORKSPACE_BRANCH_ROUTINE_VARIABLE,
   type Agent,
-  type IssueExecutionWorkspaceSettings,
+  type TaskExecutionWorkspaceSettings,
   type Project,
   type RoutineVariable,
 } from "@paperclipai/shared";
 import { useQuery } from "@tanstack/react-query";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { queryKeys } from "../lib/queryKeys";
-import { IssueWorkspaceCard } from "./IssueWorkspaceCard";
+import { TaskWorkspaceCard } from "./TaskWorkspaceCard";
 import { AgentIcon } from "./AgentIconPicker";
 import { InlineEntitySelector, type InlineEntityOption } from "./InlineEntitySelector";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
@@ -73,7 +73,7 @@ function buildInitialWorkspaceConfig(project: Project | null | undefined) {
   return {
     executionWorkspaceId: null as string | null,
     executionWorkspacePreference: defaultMode,
-    executionWorkspaceSettings: { mode: defaultMode } as IssueExecutionWorkspaceSettings,
+    executionWorkspaceSettings: { mode: defaultMode } as TaskExecutionWorkspaceSettings,
     projectWorkspaceId: defaultProjectWorkspaceIdForProject(project),
   };
 }
@@ -99,7 +99,7 @@ function applyWorkspaceDraft(
       (data.executionWorkspacePreference as string | null | undefined)
       ?? current.executionWorkspacePreference,
     executionWorkspaceSettings:
-      (data.executionWorkspaceSettings as IssueExecutionWorkspaceSettings | null | undefined)
+      (data.executionWorkspaceSettings as TaskExecutionWorkspaceSettings | null | undefined)
       ?? current.executionWorkspaceSettings,
   };
   return workspaceConfigEquals(current, next) ? current : next;
@@ -131,7 +131,7 @@ export interface RoutineRunDialogSubmitData {
   projectId?: string | null;
   executionWorkspaceId?: string | null;
   executionWorkspacePreference?: string | null;
-  executionWorkspaceSettings?: IssueExecutionWorkspaceSettings | null;
+  executionWorkspaceSettings?: TaskExecutionWorkspaceSettings | null;
 }
 
 export function RoutineRunVariablesDialog({
@@ -238,7 +238,7 @@ export function RoutineRunVariablesDialog({
     [isAutoWorkspaceBranchVariable, values, variables],
   );
 
-  const workspaceIssue = useMemo(() => ({
+  const workspaceTask = useMemo(() => ({
     companyId: companyId ?? null,
     projectId: selectedProject?.id ?? null,
     projectWorkspaceId: workspaceConfig.projectWorkspaceId,
@@ -447,9 +447,9 @@ export function RoutineRunVariablesDialog({
           ))}
 
           {workspaceSelectionEnabled && selectedProject && companyId ? (
-            <IssueWorkspaceCard
+            <TaskWorkspaceCard
               key={`${open ? "open" : "closed"}:${selectedProject.id}`}
-              issue={workspaceIssue}
+              task={workspaceTask}
               project={selectedProject}
               initialEditing
               livePreview

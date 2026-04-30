@@ -2,7 +2,7 @@
 
 Status: planning only, no code changes
 Date: 2026-04-12
-Related issue: `PAP-1377`
+Related task: `PAP-1377`
 
 ## Summary
 
@@ -49,8 +49,8 @@ The current UX is still too raw:
 - start/stop controls are visible in multiple places, which makes it easy to lose track of what is being controlled
 - there is no interoperability with repos that already define useful local workflows in `.vscode/tasks.json`
 
-The issue is not that services are the wrong abstraction.
-The issue is that the configuration surface is too low-level and Paperclip does not yet leverage existing workspace metadata.
+The task is not that services are the wrong abstraction.
+The task is that the configuration surface is too low-level and Paperclip does not yet leverage existing workspace metadata.
 
 ## Recommendation
 
@@ -184,7 +184,7 @@ Recommended sections:
 - `Jobs`
 - `Unsupported imported tasks`
 
-That resolves the ambiguity called out in the issue.
+That resolves the ambiguity called out in the task.
 
 ## Data Model Direction
 
@@ -263,7 +263,7 @@ That gives us interoperability without depending on VS Code-only semantics for s
 ## Execution Policy
 
 Project workspaces should be the main place where imported commands are discovered and curated.
-Execution workspaces should inherit that curated command set by default, with optional issue-level overrides.
+Execution workspaces should inherit that curated command set by default, with optional task-level overrides.
 
 Recommended precedence:
 
@@ -338,13 +338,13 @@ one-shot tasks are runnable, but they are not mixed into the service lifecycle m
 ### Phase 5: Adapter and execution workspace integration
 
 Goal:
-let agents and issue-scoped workspaces consume the curated command model consistently.
+let agents and task-scoped workspaces consume the curated command model consistently.
 
 Work:
 
 - expose inherited workspace commands to execution workspaces
-- allow issue-level selection of a default service command when relevant
-- make service selection explicit in issue and workspace views
+- allow task-level selection of a default service command when relevant
+- make service selection explicit in task and workspace views
 
 Success condition:
 agents, operators, and workspaces all refer to the same named commands.

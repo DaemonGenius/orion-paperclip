@@ -39,12 +39,12 @@ These are set automatically by the server when invoking agents:
 | `PAPERCLIP_API_URL` | Paperclip API base URL (inherits the server-level value; see Server Configuration above) |
 | `PAPERCLIP_API_KEY` | Short-lived JWT for API auth |
 | `PAPERCLIP_RUN_ID` | Current heartbeat run ID |
-| `PAPERCLIP_TASK_ID` | Issue that triggered this wake |
+| `PAPERCLIP_TASK_ID` | Task that triggered this wake |
 | `PAPERCLIP_WAKE_REASON` | Wake trigger reason |
 | `PAPERCLIP_WAKE_COMMENT_ID` | Comment that triggered this wake |
 | `PAPERCLIP_APPROVAL_ID` | Resolved approval ID |
 | `PAPERCLIP_APPROVAL_STATUS` | Approval decision |
-| `PAPERCLIP_LINKED_ISSUE_IDS` | Comma-separated linked issue IDs |
+| `PAPERCLIP_LINKED_TASK_IDS` | Comma-separated linked task IDs |
 
 ## LLM Provider Keys (for adapters)
 

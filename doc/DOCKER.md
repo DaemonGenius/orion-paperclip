@@ -50,6 +50,30 @@ All persisted under your bind mount (`./data/docker-paperclip` in the example ab
 
 ## Docker Compose
 
+### Fast dev loop (no rebuild per code change)
+
+Use the dev compose file when you want to edit code and refresh the browser without rebuilding the production image every time.
+
+```sh
+pnpm docker:dev
+```
+
+This runs `paperclip-local:main` as the dependency/tooling base, bind-mounts the repo source folders into `/app`, reuses `./data/docker-paperclip` for `/paperclip`, and starts `pnpm dev --bind lan` inside the container.
+
+Useful commands:
+
+```sh
+pnpm docker:dev:detached
+pnpm docker:dev:logs
+pnpm docker:dev:down
+```
+
+The base image is only needed for Linux-native dependencies and bundled local agent CLIs. Rebuild it when dependencies, Dockerfile tooling, or package manifests change:
+
+```sh
+docker build -t paperclip-local:main .
+```
+
 ### Quickstart (embedded SQLite)
 
 Single container, no external database. Data persists via a bind mount.

@@ -3,7 +3,7 @@ import { classifyRunLiveness } from "../services/run-liveness.ts";
 
 const baseInput = {
   runStatus: "succeeded",
-  issue: {
+  task: {
     status: "in_progress",
     title: "Implement feature",
     description: "Add the requested behavior.",
@@ -38,7 +38,7 @@ describe("run liveness classifier", () => {
     expect(classification.actionability).toBe("unknown");
   });
 
-  it("treats issue comments, documents, products, and actions as progress", () => {
+  it("treats task comments, documents, products, and actions as progress", () => {
     const latestEvidenceAt = new Date("2026-04-18T12:00:00Z");
     const classification = classifyRunLiveness({
       ...baseInput,
@@ -46,7 +46,7 @@ describe("run liveness classifier", () => {
         summary: "Updated implementation.",
       },
       evidence: {
-        issueCommentsCreated: 1,
+        taskCommentsCreated: 1,
         documentRevisionsCreated: 1,
         workProductsCreated: 1,
         toolOrActionEventsCreated: 1,
@@ -77,7 +77,7 @@ describe("run liveness classifier", () => {
   it("exempts planning/document tasks from plan-only retry classification", () => {
     const classification = classifyRunLiveness({
       ...baseInput,
-      issue: {
+      task: {
         status: "in_progress",
         title: "Draft implementation plan",
         description: "Create a plan for the work.",
@@ -106,11 +106,11 @@ describe("run liveness classifier", () => {
     expect(classification.livenessState).toBe("advanced");
   });
 
-  it("classifies done issues as completed", () => {
+  it("classifies done tasks as completed", () => {
     const classification = classifyRunLiveness({
       ...baseInput,
-      issue: {
-        ...baseInput.issue,
+      task: {
+        ...baseInput.task,
         status: "done",
       },
       resultJson: {
@@ -139,7 +139,7 @@ describe("run liveness classifier", () => {
       resultJson: {
         summary: "PAP-1949 remains blocked until PAP-2000 is resolved.",
       },
-      issueCommentBodies: [
+      taskCommentBodies: [
         [
           "Validation is ready for the next pass.",
           "",
@@ -157,7 +157,7 @@ describe("run liveness classifier", () => {
   it("prefers durable comments over raw transcript next-action noise", () => {
     const classification = classifyRunLiveness({
       ...baseInput,
-      issueCommentBodies: ["Next action: run pnpm test -- --runInBand."],
+      taskCommentBodies: ["Next action: run pnpm test -- --runInBand."],
       stdoutExcerpt: [
         "tool_call: write",
         "command: rm -rf production-data",

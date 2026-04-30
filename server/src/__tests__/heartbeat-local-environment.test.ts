@@ -92,12 +92,12 @@ describeEmbeddedPostgres("heartbeat local environment lifecycle", () => {
   it("runs work through the default Local environment lease", async () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+    const taskPrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix,
+      taskPrefix,
       requireBoardApprovalForNewAgents: false,
     });
 

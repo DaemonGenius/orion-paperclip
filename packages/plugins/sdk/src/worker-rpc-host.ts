@@ -577,8 +577,8 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
           return callHost("projects.getPrimaryWorkspace", { projectId, companyId });
         },
 
-        async getWorkspaceForIssue(issueId: string, companyId: string) {
-          return callHost("projects.getWorkspaceForIssue", { issueId, companyId });
+        async getWorkspaceForTask(taskId: string, companyId: string) {
+          return callHost("projects.getWorkspaceForTask", { taskId, companyId });
         },
       },
 
@@ -595,9 +595,9 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
         },
       },
 
-      issues: {
+      tasks: {
         async list(input) {
-          return callHost("issues.list", {
+          return callHost("tasks.list", {
             companyId: input.companyId,
             projectId: input.projectId,
             assigneeAgentId: input.assigneeAgentId,
@@ -609,17 +609,17 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
           });
         },
 
-        async get(issueId: string, companyId: string) {
-          return callHost("issues.get", { issueId, companyId });
+        async get(taskId: string, companyId: string) {
+          return callHost("tasks.get", { taskId, companyId });
         },
 
         async create(input) {
-          return callHost("issues.create", {
+          return callHost("tasks.create", {
             companyId: input.companyId,
             projectId: input.projectId,
             goalId: input.goalId,
             parentId: input.parentId,
-            inheritExecutionWorkspaceFromIssueId: input.inheritExecutionWorkspaceFromIssueId,
+            inheritExecutionWorkspaceFromTaskId: input.inheritExecutionWorkspaceFromTaskId,
             title: input.title,
             description: input.description,
             status: input.status,
@@ -631,7 +631,7 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
             originKind: input.originKind,
             originId: input.originId,
             originRunId: input.originRunId,
-            blockedByIssueIds: input.blockedByIssueIds,
+            blockedByTaskIds: input.blockedByTaskIds,
             labelIds: input.labelIds,
             executionWorkspaceId: input.executionWorkspaceId,
             executionWorkspacePreference: input.executionWorkspacePreference,
@@ -642,9 +642,9 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
           });
         },
 
-        async update(issueId: string, patch, companyId: string, actor) {
-          return callHost("issues.update", {
-            issueId,
+        async update(taskId: string, patch, companyId: string, actor) {
+          return callHost("tasks.update", {
+            taskId,
             patch: {
               ...(patch as Record<string, unknown>),
               actorAgentId: actor?.actorAgentId,
@@ -656,12 +656,12 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
         },
 
         async assertCheckoutOwner(input) {
-          return callHost("issues.assertCheckoutOwner", input);
+          return callHost("tasks.assertCheckoutOwner", input);
         },
 
-        async getSubtree(issueId: string, companyId: string, options) {
-          return callHost("issues.getSubtree", {
-            issueId,
+        async getSubtree(taskId: string, companyId: string, options) {
+          return callHost("tasks.getSubtree", {
+            taskId,
             companyId,
             includeRoot: options?.includeRoot,
             includeRelations: options?.includeRelations,
@@ -671,9 +671,9 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
           });
         },
 
-        async requestWakeup(issueId: string, companyId: string, options) {
-          return callHost("issues.requestWakeup", {
-            issueId,
+        async requestWakeup(taskId: string, companyId: string, options) {
+          return callHost("tasks.requestWakeup", {
+            taskId,
             companyId,
             reason: options?.reason,
             contextSource: options?.contextSource,
@@ -684,9 +684,9 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
           });
         },
 
-        async requestWakeups(issueIds: string[], companyId: string, options) {
-          return callHost("issues.requestWakeups", {
-            issueIds,
+        async requestWakeups(taskIds: string[], companyId: string, options) {
+          return callHost("tasks.requestWakeups", {
+            taskIds,
             companyId,
             reason: options?.reason,
             contextSource: options?.contextSource,
@@ -697,17 +697,17 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
           });
         },
 
-        async listComments(issueId: string, companyId: string) {
-          return callHost("issues.listComments", { issueId, companyId });
+        async listComments(taskId: string, companyId: string) {
+          return callHost("tasks.listComments", { taskId, companyId });
         },
 
-        async createComment(issueId: string, body: string, companyId: string, options?: { authorAgentId?: string }) {
-          return callHost("issues.createComment", { issueId, body, companyId, authorAgentId: options?.authorAgentId });
+        async createComment(taskId: string, body: string, companyId: string, options?: { authorAgentId?: string }) {
+          return callHost("tasks.createComment", { taskId, body, companyId, authorAgentId: options?.authorAgentId });
         },
 
-        async createInteraction(issueId: string, interaction, companyId: string, options?: { authorAgentId?: string }) {
-          return callHost("issues.createInteraction", {
-            issueId,
+        async createInteraction(taskId: string, interaction, companyId: string, options?: { authorAgentId?: string }) {
+          return callHost("tasks.createInteraction", {
+            taskId,
             companyId,
             interaction,
             authorAgentId: options?.authorAgentId,
@@ -715,13 +715,13 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
         },
 
         async suggestTasks(
-          issueId: string,
+          taskId: string,
           interaction,
           companyId: string,
           options?: { authorAgentId?: string },
         ): Promise<SuggestTasksInteraction> {
-          return callHost("issues.createInteraction", {
-            issueId,
+          return callHost("tasks.createInteraction", {
+            taskId,
             companyId,
             interaction: {
               ...interaction,
@@ -732,13 +732,13 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
         },
 
         async askUserQuestions(
-          issueId: string,
+          taskId: string,
           interaction,
           companyId: string,
           options?: { authorAgentId?: string },
         ): Promise<AskUserQuestionsInteraction> {
-          return callHost("issues.createInteraction", {
-            issueId,
+          return callHost("tasks.createInteraction", {
+            taskId,
             companyId,
             interaction: {
               ...interaction,
@@ -749,13 +749,13 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
         },
 
         async requestConfirmation(
-          issueId: string,
+          taskId: string,
           interaction,
           companyId: string,
           options?: { authorAgentId?: string },
         ): Promise<RequestConfirmationInteraction> {
-          return callHost("issues.createInteraction", {
-            issueId,
+          return callHost("tasks.createInteraction", {
+            taskId,
             companyId,
             interaction: {
               ...interaction,
@@ -766,17 +766,17 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
         },
 
         documents: {
-          async list(issueId: string, companyId: string) {
-            return callHost("issues.documents.list", { issueId, companyId });
+          async list(taskId: string, companyId: string) {
+            return callHost("tasks.documents.list", { taskId, companyId });
           },
 
-          async get(issueId: string, key: string, companyId: string) {
-            return callHost("issues.documents.get", { issueId, key, companyId });
+          async get(taskId: string, key: string, companyId: string) {
+            return callHost("tasks.documents.get", { taskId, key, companyId });
           },
 
           async upsert(input) {
-            return callHost("issues.documents.upsert", {
-              issueId: input.issueId,
+            return callHost("tasks.documents.upsert", {
+              taskId: input.taskId,
               key: input.key,
               body: input.body,
               companyId: input.companyId,
@@ -786,43 +786,43 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
             });
           },
 
-          async delete(issueId: string, key: string, companyId: string) {
-            return callHost("issues.documents.delete", { issueId, key, companyId });
+          async delete(taskId: string, key: string, companyId: string) {
+            return callHost("tasks.documents.delete", { taskId, key, companyId });
           },
         },
 
         relations: {
-          async get(issueId: string, companyId: string) {
-            return callHost("issues.relations.get", { issueId, companyId });
+          async get(taskId: string, companyId: string) {
+            return callHost("tasks.relations.get", { taskId, companyId });
           },
 
-          async setBlockedBy(issueId: string, blockedByIssueIds: string[], companyId: string, actor) {
-            return callHost("issues.relations.setBlockedBy", {
-              issueId,
+          async setBlockedBy(taskId: string, blockedByTaskIds: string[], companyId: string, actor) {
+            return callHost("tasks.relations.setBlockedBy", {
+              taskId,
               companyId,
-              blockedByIssueIds,
+              blockedByTaskIds,
               actorAgentId: actor?.actorAgentId,
               actorUserId: actor?.actorUserId,
               actorRunId: actor?.actorRunId,
             });
           },
 
-          async addBlockers(issueId: string, blockerIssueIds: string[], companyId: string, actor) {
-            return callHost("issues.relations.addBlockers", {
-              issueId,
+          async addBlockers(taskId: string, blockerTaskIds: string[], companyId: string, actor) {
+            return callHost("tasks.relations.addBlockers", {
+              taskId,
               companyId,
-              blockerIssueIds,
+              blockerTaskIds,
               actorAgentId: actor?.actorAgentId,
               actorUserId: actor?.actorUserId,
               actorRunId: actor?.actorRunId,
             });
           },
 
-          async removeBlockers(issueId: string, blockerIssueIds: string[], companyId: string, actor) {
-            return callHost("issues.relations.removeBlockers", {
-              issueId,
+          async removeBlockers(taskId: string, blockerTaskIds: string[], companyId: string, actor) {
+            return callHost("tasks.relations.removeBlockers", {
+              taskId,
               companyId,
-              blockerIssueIds,
+              blockerTaskIds,
               actorAgentId: actor?.actorAgentId,
               actorUserId: actor?.actorUserId,
               actorRunId: actor?.actorRunId,
@@ -832,7 +832,7 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
 
         summaries: {
           async getOrchestration(input) {
-            return callHost("issues.summaries.getOrchestration", input);
+            return callHost("tasks.summaries.getOrchestration", input);
           },
         },
       },

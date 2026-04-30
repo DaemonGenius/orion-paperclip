@@ -5,14 +5,14 @@ describe("agent local JWT", () => {
   const secretEnv = "PAPERCLIP_AGENT_JWT_SECRET";
   const betterAuthSecretEnv = "BETTER_AUTH_SECRET";
   const ttlEnv = "PAPERCLIP_AGENT_JWT_TTL_SECONDS";
-  const issuerEnv = "PAPERCLIP_AGENT_JWT_ISSUER";
+  const taskrEnv = "PAPERCLIP_AGENT_JWT_TASKR";
   const audienceEnv = "PAPERCLIP_AGENT_JWT_AUDIENCE";
 
   const originalEnv = {
     secret: process.env[secretEnv],
     betterAuthSecret: process.env[betterAuthSecretEnv],
     ttl: process.env[ttlEnv],
-    issuer: process.env[issuerEnv],
+    taskr: process.env[taskrEnv],
     audience: process.env[audienceEnv],
   };
 
@@ -20,7 +20,7 @@ describe("agent local JWT", () => {
     process.env[secretEnv] = "test-secret";
     delete process.env[betterAuthSecretEnv];
     process.env[ttlEnv] = "3600";
-    delete process.env[issuerEnv];
+    delete process.env[taskrEnv];
     delete process.env[audienceEnv];
     vi.useFakeTimers();
   });
@@ -33,8 +33,8 @@ describe("agent local JWT", () => {
     else process.env[betterAuthSecretEnv] = originalEnv.betterAuthSecret;
     if (originalEnv.ttl === undefined) delete process.env[ttlEnv];
     else process.env[ttlEnv] = originalEnv.ttl;
-    if (originalEnv.issuer === undefined) delete process.env[issuerEnv];
-    else process.env[issuerEnv] = originalEnv.issuer;
+    if (originalEnv.taskr === undefined) delete process.env[taskrEnv];
+    else process.env[taskrEnv] = originalEnv.taskr;
     if (originalEnv.audience === undefined) delete process.env[audienceEnv];
     else process.env[audienceEnv] = originalEnv.audience;
   });
@@ -87,13 +87,13 @@ describe("agent local JWT", () => {
     expect(verifyLocalAgentJwt(token!)).toBeNull();
   });
 
-  it("rejects issuer/audience mismatch", () => {
-    process.env[issuerEnv] = "custom-issuer";
+  it("rejects taskr/audience mismatch", () => {
+    process.env[taskrEnv] = "custom-taskr";
     process.env[audienceEnv] = "custom-audience";
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
     const token = createLocalAgentJwt("agent-1", "company-1", "codex_local", "run-1");
 
-    process.env[issuerEnv] = "paperclip";
+    process.env[taskrEnv] = "paperclip";
     process.env[audienceEnv] = "paperclip-api";
     expect(verifyLocalAgentJwt(token!)).toBeNull();
   });

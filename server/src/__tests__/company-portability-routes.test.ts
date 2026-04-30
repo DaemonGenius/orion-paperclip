@@ -33,10 +33,10 @@ const mockCompanyPortabilityService = vi.hoisted(() => ({
 
 const mockLogActivity = vi.hoisted(() => vi.fn());
 const mockFeedbackService = vi.hoisted(() => ({
-  listIssueVotesForUser: vi.fn(),
+  listTaskVotesForUser: vi.fn(),
   listFeedbackTraces: vi.fn(),
   getFeedbackTraceById: vi.fn(),
-  saveIssueVote: vi.fn(),
+  saveTaskVote: vi.fn(),
 }));
 
 vi.mock("../services/access.js", () => ({
@@ -126,9 +126,9 @@ function createExportResult() {
       agents: [],
       skills: [],
       projects: [],
-      issues: [],
+      tasks: [],
       envInputs: [],
-      includes: { company: true, agents: true, projects: true, issues: false, skills: false },
+      includes: { company: true, agents: true, projects: true, tasks: false, skills: false },
       company: null,
       schemaVersion: 1,
       generatedAt: "2026-01-01T00:00:00.000Z",
@@ -150,10 +150,10 @@ describe.sequential("company portability routes", () => {
     mockCompanyPortabilityService.exportBundle.mockResolvedValue(createExportResult());
     mockCompanyPortabilityService.previewExport.mockResolvedValue({
       rootPath: "paperclip",
-      manifest: { agents: [], skills: [], projects: [], issues: [], envInputs: [], includes: { company: true, agents: true, projects: true, issues: false, skills: false }, company: null, schemaVersion: 1, generatedAt: new Date().toISOString(), source: null },
+      manifest: { agents: [], skills: [], projects: [], tasks: [], envInputs: [], includes: { company: true, agents: true, projects: true, tasks: false, skills: false }, company: null, schemaVersion: 1, generatedAt: new Date().toISOString(), source: null },
       files: {},
       fileInventory: [],
-      counts: { files: 0, agents: 0, skills: 0, projects: 0, issues: 0 },
+      counts: { files: 0, agents: 0, skills: 0, projects: 0, tasks: 0 },
       warnings: [],
       paperclipExtensionPath: ".paperclip.yaml",
     });
@@ -204,10 +204,10 @@ describe.sequential("company portability routes", () => {
   it.sequential("allows CEO agents to use company-scoped export preview routes", async () => {
     mockCompanyPortabilityService.previewExport.mockResolvedValue({
       rootPath: "paperclip",
-      manifest: { agents: [], skills: [], projects: [], issues: [], envInputs: [], includes: { company: true, agents: true, projects: true, issues: false, skills: false }, company: null, schemaVersion: 1, generatedAt: new Date().toISOString(), source: null },
+      manifest: { agents: [], skills: [], projects: [], tasks: [], envInputs: [], includes: { company: true, agents: true, projects: true, tasks: false, skills: false }, company: null, schemaVersion: 1, generatedAt: new Date().toISOString(), source: null },
       files: {},
       fileInventory: [],
-      counts: { files: 0, agents: 0, skills: 0, projects: 0, issues: 0 },
+      counts: { files: 0, agents: 0, skills: 0, projects: 0, tasks: 0 },
       warnings: [],
       paperclipExtensionPath: ".paperclip.yaml",
     });
@@ -280,7 +280,7 @@ describe.sequential("company portability routes", () => {
       .post("/api/companies/11111111-1111-4111-8111-111111111111/imports/preview")
       .send({
         source: { type: "inline", files: { "COMPANY.md": "---\nname: Test\n---\n" } },
-        include: { company: true, agents: true, projects: false, issues: false },
+        include: { company: true, agents: true, projects: false, tasks: false },
         target: { mode: "existing_company", companyId: "11111111-1111-4111-8111-111111111111" },
         collisionStrategy: "replace",
       });
@@ -303,7 +303,7 @@ describe.sequential("company portability routes", () => {
       .post("/api/companies/import/preview")
       .send({
         source: { type: "inline", files: { "COMPANY.md": "---\nname: Test\n---\n" } },
-        include: { company: true, agents: true, projects: false, issues: false },
+        include: { company: true, agents: true, projects: false, tasks: false },
         target: { mode: "existing_company", companyId: "11111111-1111-4111-8111-111111111111" },
         collisionStrategy: "rename",
       });
@@ -325,7 +325,7 @@ describe.sequential("company portability routes", () => {
       .post("/api/companies/import/preview")
       .send({
         source: { type: "inline", files: { "COMPANY.md": "---\nname: Test\n---\n" } },
-        include: { company: true, agents: true, projects: false, issues: false },
+        include: { company: true, agents: true, projects: false, tasks: false },
         target: { mode: "new_company", newCompanyName: "Imported Test" },
         collisionStrategy: "rename",
       });
@@ -348,7 +348,7 @@ describe.sequential("company portability routes", () => {
       .post("/api/companies/11111111-1111-4111-8111-111111111111/imports/apply")
       .send({
         source: { type: "inline", files: { "COMPANY.md": "---\nname: Test\n---\n" } },
-        include: { company: true, agents: true, projects: false, issues: false },
+        include: { company: true, agents: true, projects: false, tasks: false },
         target: { mode: "existing_company", companyId: "11111111-1111-4111-8111-111111111111" },
         collisionStrategy: "replace",
       });
@@ -371,7 +371,7 @@ describe.sequential("company portability routes", () => {
       .post("/api/companies/11111111-1111-4111-8111-111111111111/imports/preview")
       .send({
         source: { type: "inline", files: { "COMPANY.md": "---\nname: Test\n---\n" } },
-        include: { company: true, agents: true, projects: false, issues: false },
+        include: { company: true, agents: true, projects: false, tasks: false },
         target: { mode: "existing_company", companyId: "11111111-1111-4111-8111-111111111111" },
         collisionStrategy: "rename",
       });
@@ -394,7 +394,7 @@ describe.sequential("company portability routes", () => {
       .post("/api/companies/11111111-1111-4111-8111-111111111111/imports/apply")
       .send({
         source: { type: "inline", files: { "COMPANY.md": "---\nname: Test\n---\n" } },
-        include: { company: true, agents: true, projects: false, issues: false },
+        include: { company: true, agents: true, projects: false, tasks: false },
         target: { mode: "existing_company", companyId: "11111111-1111-4111-8111-111111111111" },
         collisionStrategy: "rename",
       });
@@ -417,7 +417,7 @@ describe.sequential("company portability routes", () => {
       .post("/api/companies/import")
       .send({
         source: { type: "inline", files: { "COMPANY.md": "---\nname: Test\n---\n" } },
-        include: { company: true, agents: true, projects: false, issues: false },
+        include: { company: true, agents: true, projects: false, tasks: false },
         target: { mode: "new_company", newCompanyName: "Imported Test" },
         collisionStrategy: "rename",
       });

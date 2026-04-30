@@ -8,13 +8,13 @@ import {
   environments,
   heartbeatRunEvents,
   heartbeatRuns,
-  issueComments,
-  issueDocuments,
-  issues,
-  issueWorkProducts,
+  taskComments,
+  taskDocuments,
+  tasks,
+  taskWorkProducts,
   workspaceOperations,
 } from "@paperclipai/db";
-import { ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY } from "@paperclipai/shared";
+import { TASK_CONTINUATION_SUMMARY_DOCUMENT_KEY } from "@paperclipai/shared";
 import { logger } from "../middleware/logger.js";
 import { classifyRunLiveness } from "./run-liveness.js";
 
@@ -36,7 +36,7 @@ export function normalizeActivityLimit(limit: number | undefined) {
 
 export function activityService(db: Db) {
   const scheduledLivenessBackfills = new Set<string>();
-  const issueIdAsText = sql<string>`${issues.id}::text`;
+  const taskIdAsText = sql<string>`${tasks.id}::text`;
   const summarizedUsageJson = sql<Record<string, unknown> | null>`
     case
       when ${heartbeatRuns.usageJson} is null then null
@@ -144,7 +144,7 @@ export function activityService(db: Db) {
     return typeof value === "number" && Number.isFinite(value) ? value : null;
   }
 
-  async function backfillMissingRunLivenessForIssue(companyId: string, issueId: string) {
+  async function backfillMissingRunLivenessForTask(companyId: string, taskId: string) {
     const runs = await db
       .select({
         id: heartbeatRuns.id,
@@ -165,13 +165,13 @@ export function activityService(db: Db) {
           isNull(heartbeatRuns.livenessState),
           sql`${heartbeatRuns.status} not in ('queued', 'running')`,
           or(
-            sql`${heartbeatRuns.contextSnapshot} ->> 'issueId' = ${issueId}`,
+            sql`${heartbeatRuns.contextSnapshot} ->> 'taskId' = ${taskId}`,
             sql`exists (
               select 1
               from ${activityLog}
               where ${activityLog.companyId} = ${companyId}
-                and ${activityLog.entityType} = 'issue'
-                and ${activityLog.entityId} = ${issueId}
+                and ${activityLog.entityType} = 'task'
+                and ${activityLog.entityId} = ${taskId}
                 and ${activityLog.runId} = ${heartbeatRuns.id}
             )`,
           ),
@@ -181,14 +181,14 @@ export function activityService(db: Db) {
 
     if (runs.length === 0) return;
 
-    const issue = await db
+    const task = await db
       .select({
-        status: issues.status,
-        title: issues.title,
-        description: issues.description,
+        status: tasks.status,
+        title: tasks.title,
+        description: tasks.description,
       })
-      .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.id, issueId)))
+      .from(tasks)
+      .where(and(eq(tasks.companyId, companyId), eq(tasks.id, taskId)))
       .then((rows) => rows[0] ?? null);
 
     for (const run of runs) {
@@ -202,46 +202,46 @@ export function activityService(db: Db) {
       const [commentStats] = await db
         .select({
           count: sql<number>`count(*)::int`,
-          latestAt: sql<Date | null>`max(${issueComments.createdAt})`,
+          latestAt: sql<Date | null>`max(${taskComments.createdAt})`,
         })
-        .from(issueComments)
+        .from(taskComments)
         .where(
           and(
-            eq(issueComments.companyId, companyId),
-            eq(issueComments.issueId, issueId),
-            eq(issueComments.createdByRunId, run.id),
+            eq(taskComments.companyId, companyId),
+            eq(taskComments.taskId, taskId),
+            eq(taskComments.createdByRunId, run.id),
           ),
         );
 
       const [documentStats] = await db
         .select({
           count: sql<number>`count(*)::int`,
-          planCount: sql<number>`count(*) filter (where ${issueDocuments.key} = 'plan')::int`,
+          planCount: sql<number>`count(*) filter (where ${taskDocuments.key} = 'plan')::int`,
           latestAt: sql<Date | null>`max(${documentRevisions.createdAt})`,
         })
         .from(documentRevisions)
-        .innerJoin(issueDocuments, eq(documentRevisions.documentId, issueDocuments.documentId))
+        .innerJoin(taskDocuments, eq(documentRevisions.documentId, taskDocuments.documentId))
         .where(
           and(
             eq(documentRevisions.companyId, companyId),
             eq(documentRevisions.createdByRunId, run.id),
-            eq(issueDocuments.companyId, companyId),
-            eq(issueDocuments.issueId, issueId),
-            sql`${issueDocuments.key} != ${ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY}`,
+            eq(taskDocuments.companyId, companyId),
+            eq(taskDocuments.taskId, taskId),
+            sql`${taskDocuments.key} != ${TASK_CONTINUATION_SUMMARY_DOCUMENT_KEY}`,
           ),
         );
 
       const [workProductStats] = await db
         .select({
           count: sql<number>`count(*)::int`,
-          latestAt: sql<Date | null>`max(${issueWorkProducts.createdAt})`,
+          latestAt: sql<Date | null>`max(${taskWorkProducts.createdAt})`,
         })
-        .from(issueWorkProducts)
+        .from(taskWorkProducts)
         .where(
           and(
-            eq(issueWorkProducts.companyId, companyId),
-            eq(issueWorkProducts.issueId, issueId),
-            eq(issueWorkProducts.createdByRunId, run.id),
+            eq(taskWorkProducts.companyId, companyId),
+            eq(taskWorkProducts.taskId, taskId),
+            eq(taskWorkProducts.createdByRunId, run.id),
           ),
         );
 
@@ -271,7 +271,7 @@ export function activityService(db: Db) {
 
       const classification = classifyRunLiveness({
         runStatus: run.status,
-        issue,
+        task,
         resultJson: asRecord(run.resultJson),
         stdoutExcerpt: run.stdoutExcerpt,
         stderrExcerpt: run.stderrExcerpt,
@@ -279,7 +279,7 @@ export function activityService(db: Db) {
         errorCode: run.errorCode,
         continuationAttempt,
         evidence: {
-          issueCommentsCreated: countValue(commentStats?.count),
+          taskCommentsCreated: countValue(commentStats?.count),
           documentRevisionsCreated: countValue(documentStats?.count),
           planDocumentRevisionsCreated: countValue(documentStats?.planCount),
           workProductsCreated: countValue(workProductStats?.count),
@@ -311,13 +311,13 @@ export function activityService(db: Db) {
     }
   }
 
-  function scheduleRunLivenessBackfill(companyId: string, issueId: string) {
-    const key = `${companyId}:${issueId}`;
+  function scheduleRunLivenessBackfill(companyId: string, taskId: string) {
+    const key = `${companyId}:${taskId}`;
     if (scheduledLivenessBackfills.has(key)) return;
     scheduledLivenessBackfills.add(key);
-    void backfillMissingRunLivenessForIssue(companyId, issueId)
+    void backfillMissingRunLivenessForTask(companyId, taskId)
       .catch((err: unknown) => {
-        logger.warn({ err, companyId, issueId }, "run liveness backfill failed");
+        logger.warn({ err, companyId, taskId }, "run liveness backfill failed");
       })
       .finally(() => {
         scheduledLivenessBackfills.delete(key);
@@ -343,18 +343,18 @@ export function activityService(db: Db) {
         .select({ activityLog })
         .from(activityLog)
         .leftJoin(
-          issues,
+          tasks,
           and(
-            eq(activityLog.entityType, sql`'issue'`),
-            eq(activityLog.entityId, issueIdAsText),
+            eq(activityLog.entityType, sql`'task'`),
+            eq(activityLog.entityId, taskIdAsText),
           ),
         )
         .where(
           and(
             ...conditions,
             or(
-              sql`${activityLog.entityType} != 'issue'`,
-              isNull(issues.hiddenAt),
+              sql`${activityLog.entityType} != 'task'`,
+              isNull(tasks.hiddenAt),
             ),
           ),
         )
@@ -363,20 +363,20 @@ export function activityService(db: Db) {
         .then((rows) => rows.map((r) => r.activityLog));
     },
 
-    forIssue: (issueId: string) =>
+    forTask: (taskId: string) =>
       db
         .select()
         .from(activityLog)
         .where(
           and(
-            eq(activityLog.entityType, "issue"),
-            eq(activityLog.entityId, issueId),
+            eq(activityLog.entityType, "task"),
+            eq(activityLog.entityId, taskId),
           ),
         )
         .orderBy(desc(activityLog.createdAt)),
 
-    runsForIssue: async (companyId: string, issueId: string) => {
-      scheduleRunLivenessBackfill(companyId, issueId);
+    runsForTask: async (companyId: string, taskId: string) => {
+      scheduleRunLivenessBackfill(companyId, taskId);
       const runs = await db
         .select({
           runId: heartbeatRuns.id,
@@ -413,13 +413,13 @@ export function activityService(db: Db) {
           and(
             eq(heartbeatRuns.companyId, companyId),
             or(
-              sql`${heartbeatRuns.contextSnapshot} ->> 'issueId' = ${issueId}`,
+              sql`${heartbeatRuns.contextSnapshot} ->> 'taskId' = ${taskId}`,
               sql`exists (
                 select 1
                 from ${activityLog}
                 where ${activityLog.companyId} = ${companyId}
-                  and ${activityLog.entityType} = 'issue'
-                  and ${activityLog.entityId} = ${issueId}
+                  and ${activityLog.entityType} = 'task'
+                  and ${activityLog.entityId} = ${taskId}
                   and ${activityLog.runId} = ${heartbeatRuns.id}
               )`,
             ),
@@ -516,7 +516,7 @@ export function activityService(db: Db) {
       });
     },
 
-    issuesForRun: async (runId: string) => {
+    tasksForRun: async (runId: string) => {
       const run = await db
         .select({
           companyId: heartbeatRuns.companyId,
@@ -528,47 +528,47 @@ export function activityService(db: Db) {
       if (!run) return [];
 
       const fromActivity = await db
-        .selectDistinctOn([issueIdAsText], {
-          issueId: issues.id,
-          identifier: issues.identifier,
-          title: issues.title,
-          status: issues.status,
-          priority: issues.priority,
+        .selectDistinctOn([taskIdAsText], {
+          taskId: tasks.id,
+          identifier: tasks.identifier,
+          title: tasks.title,
+          status: tasks.status,
+          priority: tasks.priority,
         })
         .from(activityLog)
-        .innerJoin(issues, eq(activityLog.entityId, issueIdAsText))
+        .innerJoin(tasks, eq(activityLog.entityId, taskIdAsText))
         .where(
           and(
             eq(activityLog.companyId, run.companyId),
             eq(activityLog.runId, runId),
-            eq(activityLog.entityType, "issue"),
-            isNull(issues.hiddenAt),
+            eq(activityLog.entityType, "task"),
+            isNull(tasks.hiddenAt),
           ),
         )
-        .orderBy(issueIdAsText);
+        .orderBy(taskIdAsText);
 
       const context = run.contextSnapshot;
-      const contextIssueId =
-        context && typeof context === "object" && typeof (context as Record<string, unknown>).issueId === "string"
-          ? ((context as Record<string, unknown>).issueId as string)
+      const contextTaskId =
+        context && typeof context === "object" && typeof (context as Record<string, unknown>).taskId === "string"
+          ? ((context as Record<string, unknown>).taskId as string)
           : null;
-      if (!contextIssueId) return fromActivity;
-      if (fromActivity.some((issue) => issue.issueId === contextIssueId)) return fromActivity;
+      if (!contextTaskId) return fromActivity;
+      if (fromActivity.some((task) => task.taskId === contextTaskId)) return fromActivity;
 
       const fromContext = await db
         .select({
-          issueId: issues.id,
-          identifier: issues.identifier,
-          title: issues.title,
-          status: issues.status,
-          priority: issues.priority,
+          taskId: tasks.id,
+          identifier: tasks.identifier,
+          title: tasks.title,
+          status: tasks.status,
+          priority: tasks.priority,
         })
-        .from(issues)
+        .from(tasks)
         .where(
           and(
-            eq(issues.companyId, run.companyId),
-            eq(issues.id, contextIssueId),
-            isNull(issues.hiddenAt),
+            eq(tasks.companyId, run.companyId),
+            eq(tasks.id, contextTaskId),
+            isNull(tasks.hiddenAt),
           ),
         )
         .then((rows) => rows[0] ?? null);

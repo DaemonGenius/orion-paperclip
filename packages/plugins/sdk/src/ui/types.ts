@@ -89,11 +89,11 @@ export interface PluginHostContext {
   projectId: string | null;
   /** UUID of the current entity (for detail tab contexts), if any. */
   entityId: string | null;
-  /** Type of the current entity (e.g. `"issue"`, `"agent"`). */
+  /** Type of the current entity (e.g. `"task"`, `"agent"`). */
   entityType: string | null;
   /**
    * UUID of the parent entity when rendering nested slots.
-   * For `commentAnnotation` slots this is the issue ID containing the comment.
+   * For `commentAnnotation` slots this is the task ID containing the comment.
    */
   parentEntityId?: string | null;
   /** UUID of the current authenticated user. */
@@ -163,7 +163,7 @@ export interface PluginWidgetProps {
 /**
  * Props passed to a plugin detail tab component.
  *
- * A detail tab is rendered as an additional tab on a project, issue, agent,
+ * A detail tab is rendered as an additional tab on a project, task, agent,
  * goal, or run detail page.
  *
  * @see PLUGIN_SPEC.md §19.3 — Detail Tabs
@@ -212,8 +212,8 @@ export interface PluginProjectSidebarItemProps {
  * Props passed to a plugin comment annotation component.
  *
  * A comment annotation is rendered below each individual comment in the
- * issue detail timeline. The host passes the comment ID as `entityId`
- * and `"comment"` as `entityType`, plus the parent issue ID as
+ * task detail timeline. The host passes the comment ID as `entityId`
+ * and `"comment"` as `entityType`, plus the parent task ID as
  * `parentEntityId` so the plugin can scope data fetches to both.
  *
  * Use this slot to augment comments with parsed file links, sentiment
@@ -222,13 +222,13 @@ export interface PluginProjectSidebarItemProps {
  * @see PLUGIN_SPEC.md §19.6 — Comment Annotations
  */
 export interface PluginCommentAnnotationProps {
-  /** Host context with comment and parent issue identifiers. */
+  /** Host context with comment and parent task identifiers. */
   context: PluginHostContext & {
     /** UUID of the comment being annotated. */
     entityId: string;
     /** Always `"comment"` for comment annotation slots. */
     entityType: "comment";
-    /** UUID of the parent issue containing this comment. */
+    /** UUID of the parent task containing this comment. */
     parentEntityId: string;
   };
 }
@@ -237,23 +237,23 @@ export interface PluginCommentAnnotationProps {
  * Props passed to a plugin comment context menu item component.
  *
  * A comment context menu item is rendered in a "more" dropdown menu on
- * each comment in the issue detail timeline. The host passes the comment
+ * each comment in the task detail timeline. The host passes the comment
  * ID as `entityId` and `"comment"` as `entityType`, plus the parent
- * issue ID as `parentEntityId`.
+ * task ID as `parentEntityId`.
  *
- * Use this slot to add per-comment actions such as "Create sub-issue from
+ * Use this slot to add per-comment actions such as "Create sub-task from
  * comment", "Translate", "Flag for review", or any custom plugin action.
  *
  * @see PLUGIN_SPEC.md §19.7 — Comment Context Menu Items
  */
 export interface PluginCommentContextMenuItemProps {
-  /** Host context with comment and parent issue identifiers. */
+  /** Host context with comment and parent task identifiers. */
   context: PluginHostContext & {
     /** UUID of the comment this menu item acts on. */
     entityId: string;
     /** Always `"comment"` for comment context menu item slots. */
     entityType: "comment";
-    /** UUID of the parent issue containing this comment. */
+    /** UUID of the parent task containing this comment. */
     parentEntityId: string;
   };
 }

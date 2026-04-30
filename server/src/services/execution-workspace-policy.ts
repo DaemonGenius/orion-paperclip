@@ -1,7 +1,7 @@
 import type {
   ExecutionWorkspaceMode,
   ExecutionWorkspaceStrategy,
-  IssueExecutionWorkspaceSettings,
+  TaskExecutionWorkspaceSettings,
   ProjectExecutionWorkspaceDefaultMode,
   ProjectExecutionWorkspacePolicy,
 } from "@paperclipai/shared";
@@ -39,8 +39,8 @@ export function parseProjectExecutionWorkspacePolicy(raw: unknown): ProjectExecu
   const defaultProjectWorkspaceId =
     typeof parsed.defaultProjectWorkspaceId === "string" ? parsed.defaultProjectWorkspaceId : undefined;
   const environmentId = typeof parsed.environmentId === "string" ? parsed.environmentId : undefined;
-  const allowIssueOverride =
-    typeof parsed.allowIssueOverride === "boolean" ? parsed.allowIssueOverride : undefined;
+  const allowTaskOverride =
+    typeof parsed.allowTaskOverride === "boolean" ? parsed.allowTaskOverride : undefined;
   const normalizedDefaultMode = (() => {
     if (
       defaultMode === "shared_workspace" ||
@@ -57,7 +57,7 @@ export function parseProjectExecutionWorkspacePolicy(raw: unknown): ProjectExecu
   return {
     enabled,
     ...(normalizedDefaultMode ? { defaultMode: normalizedDefaultMode } : {}),
-    ...(allowIssueOverride !== undefined ? { allowIssueOverride } : {}),
+    ...(allowTaskOverride !== undefined ? { allowTaskOverride } : {}),
     ...(defaultProjectWorkspaceId ? { defaultProjectWorkspaceId } : {}),
     ...(environmentId !== undefined ? { environmentId } : {}),
     ...(workspaceStrategy ? { workspaceStrategy } : {}),
@@ -87,7 +87,7 @@ export function gateProjectExecutionWorkspacePolicy(
   return projectPolicy;
 }
 
-export function parseIssueExecutionWorkspaceSettings(raw: unknown): IssueExecutionWorkspaceSettings | null {
+export function parseTaskExecutionWorkspaceSettings(raw: unknown): TaskExecutionWorkspaceSettings | null {
   const parsed = parseObject(raw);
   if (Object.keys(parsed).length === 0) return null;
   const workspaceStrategy = parseExecutionWorkspaceStrategy(parsed.workspaceStrategy);
@@ -109,7 +109,7 @@ export function parseIssueExecutionWorkspaceSettings(raw: unknown): IssueExecuti
   })();
   return {
     ...(normalizedMode
-      ? { mode: normalizedMode as IssueExecutionWorkspaceSettings["mode"] }
+      ? { mode: normalizedMode as TaskExecutionWorkspaceSettings["mode"] }
       : {}),
     ...(typeof parsed.environmentId === "string" ? { environmentId: parsed.environmentId } : {}),
     ...(workspaceStrategy ? { workspaceStrategy } : {}),
@@ -121,7 +121,7 @@ export function parseIssueExecutionWorkspaceSettings(raw: unknown): IssueExecuti
 
 export function resolveExecutionWorkspaceEnvironmentId(input: {
   projectPolicy: ProjectExecutionWorkspacePolicy | null;
-  issueSettings: IssueExecutionWorkspaceSettings | null;
+  taskSettings: TaskExecutionWorkspaceSettings | null;
   workspaceConfig: { environmentId?: string | null } | null;
   agentDefaultEnvironmentId: string | null;
   defaultEnvironmentId: string;
@@ -129,8 +129,8 @@ export function resolveExecutionWorkspaceEnvironmentId(input: {
   if (input.workspaceConfig?.environmentId !== undefined) {
     return input.workspaceConfig.environmentId ?? input.defaultEnvironmentId;
   }
-  if (input.issueSettings?.environmentId !== undefined) {
-    return input.issueSettings.environmentId ?? input.defaultEnvironmentId;
+  if (input.taskSettings?.environmentId !== undefined) {
+    return input.taskSettings.environmentId ?? input.defaultEnvironmentId;
   }
   if (input.projectPolicy?.environmentId !== undefined) {
     return input.projectPolicy.environmentId ?? input.defaultEnvironmentId;
@@ -141,9 +141,9 @@ export function resolveExecutionWorkspaceEnvironmentId(input: {
   return input.defaultEnvironmentId;
 }
 
-export function defaultIssueExecutionWorkspaceSettingsForProject(
+export function defaultTaskExecutionWorkspaceSettingsForProject(
   projectPolicy: ProjectExecutionWorkspacePolicy | null,
-): IssueExecutionWorkspaceSettings | null {
+): TaskExecutionWorkspaceSettings | null {
   if (!projectPolicy?.enabled) return null;
   return {
     mode:
@@ -157,9 +157,9 @@ export function defaultIssueExecutionWorkspaceSettingsForProject(
   };
 }
 
-export function issueExecutionWorkspaceModeForPersistedWorkspace(
+export function taskExecutionWorkspaceModeForPersistedWorkspace(
   mode: string | null | undefined,
-): IssueExecutionWorkspaceSettings["mode"] {
+): TaskExecutionWorkspaceSettings["mode"] {
   if (mode === null || mode === undefined) {
     return "agent_default";
   }
@@ -174,12 +174,12 @@ export function issueExecutionWorkspaceModeForPersistedWorkspace(
 
 export function resolveExecutionWorkspaceMode(input: {
   projectPolicy: ProjectExecutionWorkspacePolicy | null;
-  issueSettings: IssueExecutionWorkspaceSettings | null;
+  taskSettings: TaskExecutionWorkspaceSettings | null;
   legacyUseProjectWorkspace: boolean | null;
 }): ParsedExecutionWorkspaceMode {
-  const issueMode = input.issueSettings?.mode;
-  if (issueMode && issueMode !== "inherit" && issueMode !== "reuse_existing") {
-    return issueMode;
+  const taskMode = input.taskSettings?.mode;
+  if (taskMode && taskMode !== "inherit" && taskMode !== "reuse_existing") {
+    return taskMode;
   }
   if (input.projectPolicy?.enabled) {
     if (input.projectPolicy.defaultMode === "isolated_workspace") return "isolated_workspace";
@@ -196,23 +196,23 @@ export function resolveExecutionWorkspaceMode(input: {
 export function buildExecutionWorkspaceAdapterConfig(input: {
   agentConfig: Record<string, unknown>;
   projectPolicy: ProjectExecutionWorkspacePolicy | null;
-  issueSettings: IssueExecutionWorkspaceSettings | null;
+  taskSettings: TaskExecutionWorkspaceSettings | null;
   mode: ParsedExecutionWorkspaceMode;
   legacyUseProjectWorkspace: boolean | null;
 }): Record<string, unknown> {
   const nextConfig = { ...input.agentConfig };
   const projectHasPolicy = Boolean(input.projectPolicy?.enabled);
-  const issueHasWorkspaceOverrides = Boolean(
-    input.issueSettings?.mode ||
-    input.issueSettings?.workspaceStrategy ||
-    input.issueSettings?.workspaceRuntime,
+  const taskHasWorkspaceOverrides = Boolean(
+    input.taskSettings?.mode ||
+    input.taskSettings?.workspaceStrategy ||
+    input.taskSettings?.workspaceRuntime,
   );
-  const hasWorkspaceControl = projectHasPolicy || issueHasWorkspaceOverrides || input.legacyUseProjectWorkspace === false;
+  const hasWorkspaceControl = projectHasPolicy || taskHasWorkspaceOverrides || input.legacyUseProjectWorkspace === false;
 
   if (hasWorkspaceControl) {
     if (input.mode === "isolated_workspace") {
       const strategy =
-        input.issueSettings?.workspaceStrategy ??
+        input.taskSettings?.workspaceStrategy ??
         input.projectPolicy?.workspaceStrategy ??
         parseExecutionWorkspaceStrategy(nextConfig.workspaceStrategy) ??
         ({ type: "git_worktree" } satisfies ExecutionWorkspaceStrategy);
@@ -223,8 +223,8 @@ export function buildExecutionWorkspaceAdapterConfig(input: {
 
     if (input.mode === "agent_default") {
       delete nextConfig.workspaceRuntime;
-    } else if (input.issueSettings?.workspaceRuntime) {
-      nextConfig.workspaceRuntime = cloneRecord(input.issueSettings.workspaceRuntime) ?? undefined;
+    } else if (input.taskSettings?.workspaceRuntime) {
+      nextConfig.workspaceRuntime = cloneRecord(input.taskSettings.workspaceRuntime) ?? undefined;
     } else if (input.projectPolicy?.workspaceRuntime) {
       nextConfig.workspaceRuntime = cloneRecord(input.projectPolicy.workspaceRuntime) ?? undefined;
     }

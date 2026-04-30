@@ -4,7 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { executionWorkspaces, issues, projects, projectWorkspaces, workspaceRuntimeServices } from "@paperclipai/db";
+import { executionWorkspaces, tasks, projects, projectWorkspaces, workspaceRuntimeServices } from "@paperclipai/db";
 import type {
   ExecutionWorkspace,
   ExecutionWorkspaceSummary,
@@ -24,7 +24,7 @@ import {
 type ExecutionWorkspaceRow = typeof executionWorkspaces.$inferSelect;
 type WorkspaceRuntimeServiceRow = typeof workspaceRuntimeServices.$inferSelect;
 const execFileAsync = promisify(execFile);
-const TERMINAL_ISSUE_STATUSES = new Set(["done", "cancelled"]);
+const TERMINAL_TASK_STATUSES = new Set(["done", "cancelled"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -285,7 +285,7 @@ function toRuntimeService(row: WorkspaceRuntimeServiceRow): WorkspaceRuntimeServ
     projectId: row.projectId ?? null,
     projectWorkspaceId: row.projectWorkspaceId ?? null,
     executionWorkspaceId: row.executionWorkspaceId ?? null,
-    issueId: row.issueId ?? null,
+    taskId: row.taskId ?? null,
     scopeType: row.scopeType as WorkspaceRuntimeService["scopeType"],
     scopeId: row.scopeId ?? null,
     serviceName: row.serviceName,
@@ -319,7 +319,7 @@ function toExecutionWorkspace(
     companyId: row.companyId,
     projectId: row.projectId,
     projectWorkspaceId: row.projectWorkspaceId ?? null,
-    sourceIssueId: row.sourceIssueId ?? null,
+    sourceTaskId: row.sourceTaskId ?? null,
     mode: row.mode as ExecutionWorkspace["mode"],
     strategyType: row.strategyType as ExecutionWorkspace["strategyType"],
     name: row.name,
@@ -394,7 +394,7 @@ export function executionWorkspaceService(db: Db) {
     filters?: {
       projectId?: string;
       projectWorkspaceId?: string;
-      issueId?: string;
+      taskId?: string;
       status?: string;
       reuseEligible?: boolean;
     },
@@ -404,7 +404,7 @@ export function executionWorkspaceService(db: Db) {
     if (filters?.projectWorkspaceId) {
       conditions.push(eq(executionWorkspaces.projectWorkspaceId, filters.projectWorkspaceId));
     }
-    if (filters?.issueId) conditions.push(eq(executionWorkspaces.sourceIssueId, filters.issueId));
+    if (filters?.taskId) conditions.push(eq(executionWorkspaces.sourceTaskId, filters.taskId));
     if (filters?.status) {
       const statuses = filters.status.split(",").map((value) => value.trim()).filter(Boolean);
       if (statuses.length === 1) conditions.push(eq(executionWorkspaces.status, statuses[0]!));
@@ -420,7 +420,7 @@ export function executionWorkspaceService(db: Db) {
     list: async (companyId: string, filters?: {
       projectId?: string;
       projectWorkspaceId?: string;
-      issueId?: string;
+      taskId?: string;
       status?: string;
       reuseEligible?: boolean;
     }) => {
@@ -442,7 +442,7 @@ export function executionWorkspaceService(db: Db) {
     listSummaries: async (companyId: string, filters?: {
       projectId?: string;
       projectWorkspaceId?: string;
-      issueId?: string;
+      taskId?: string;
       status?: string;
       reuseEligible?: boolean;
     }) => {
@@ -485,15 +485,15 @@ export function executionWorkspaceService(db: Db) {
       const runtimeServicesByWorkspaceId = await loadEffectiveRuntimeServicesByExecutionWorkspace(db, workspace.companyId, [workspace]);
       const runtimeServices = (runtimeServicesByWorkspaceId.get(workspace.id) ?? []).map(toRuntimeService);
 
-      const linkedIssues = await db
+      const linkedTasks = await db
         .select({
-          id: issues.id,
-          identifier: issues.identifier,
-          title: issues.title,
-          status: issues.status,
+          id: tasks.id,
+          identifier: tasks.identifier,
+          title: tasks.title,
+          status: tasks.status,
         })
-        .from(issues)
-        .where(and(eq(issues.companyId, workspace.companyId), eq(issues.executionWorkspaceId, workspace.id)));
+        .from(tasks)
+        .where(and(eq(tasks.companyId, workspace.companyId), eq(tasks.executionWorkspaceId, workspace.id)));
 
       const projectWorkspace = workspace.projectWorkspaceId
         ? await db
@@ -555,21 +555,21 @@ export function executionWorkspaceService(db: Db) {
         && resolvedPrimaryWorkspacePath != null
         && resolvedWorkspacePath === resolvedPrimaryWorkspacePath;
 
-      const linkedIssueSummaries = linkedIssues.map((issue) => ({
-        ...issue,
-        isTerminal: TERMINAL_ISSUE_STATUSES.has(issue.status),
+      const linkedTaskSummaries = linkedTasks.map((task) => ({
+        ...task,
+        isTerminal: TERMINAL_TASK_STATUSES.has(task.status),
       }));
 
-      const blockingIssues = linkedIssueSummaries.filter((issue) => !issue.isTerminal);
-      if (blockingIssues.length > 0) {
-        const linkedIssueMessage =
-          blockingIssues.length === 1
-            ? "This workspace is still linked to an open issue."
-            : `This workspace is still linked to ${blockingIssues.length} open issues.`;
+      const blockingTasks = linkedTaskSummaries.filter((task) => !task.isTerminal);
+      if (blockingTasks.length > 0) {
+        const linkedTaskMessage =
+          blockingTasks.length === 1
+            ? "This workspace is still linked to an open task."
+            : `This workspace is still linked to ${blockingTasks.length} open tasks.`;
         if (isSharedWorkspace) {
-          warnings.push(`${linkedIssueMessage} Archiving it will detach this shared workspace session from those issues, but keep the underlying project workspace available.`);
+          warnings.push(`${linkedTaskMessage} Archiving it will detach this shared workspace session from those tasks, but keep the underlying project workspace available.`);
         } else {
-          blockingReasons.push(linkedIssueMessage);
+          blockingReasons.push(linkedTaskMessage);
         }
       }
 
@@ -618,7 +618,7 @@ export function executionWorkspaceService(db: Db) {
         {
           kind: "archive_record",
           label: "Archive workspace record",
-          description: "Keep the execution workspace history and issue linkage, but remove it from active workspace lists.",
+          description: "Keep the execution workspace history and task linkage, but remove it from active workspace lists.",
           command: null,
         },
       ];
@@ -715,7 +715,7 @@ export function executionWorkspaceService(db: Db) {
         state,
         blockingReasons,
         warnings,
-        linkedIssues: linkedIssueSummaries,
+        linkedTasks: linkedTaskSummaries,
         plannedActions,
         isDestructiveCloseAllowed: blockingReasons.length === 0,
         isSharedWorkspace,

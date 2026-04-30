@@ -223,7 +223,7 @@ describe("buildRealizedExecutionWorkspaceFromPersisted", () => {
         companyId: "company-1",
         projectId: "project-1",
         projectWorkspaceId: "workspace-1",
-        sourceIssueId: "issue-1",
+        sourceTaskId: "task-1",
         mode: "isolated_workspace",
         strategyType: "git_worktree",
         name: "PAP-880-thumbs-capture-for-evals-feature",
@@ -284,7 +284,7 @@ describe("stripWorkspaceRuntimeFromExecutionRunConfig", () => {
 
 describe("shouldResetTaskSessionForWake", () => {
   it("resets session context on assignment wake", () => {
-    expect(shouldResetTaskSessionForWake({ wakeReason: "issue_assigned" })).toBe(true);
+    expect(shouldResetTaskSessionForWake({ wakeReason: "task_assigned" })).toBe(true);
   });
 
   it("resets session context on execution review wakes", () => {
@@ -325,7 +325,7 @@ describe("shouldResetTaskSessionForWake", () => {
   it("does not reset session context on mention wake comment", () => {
     expect(
       shouldResetTaskSessionForWake({
-        wakeReason: "issue_comment_mentioned",
+        wakeReason: "task_comment_mentioned",
         wakeCommentId: "comment-1",
       }),
     ).toBe(false);
@@ -334,14 +334,14 @@ describe("shouldResetTaskSessionForWake", () => {
   it("does not reset session context when commentId is present", () => {
     expect(
       shouldResetTaskSessionForWake({
-        wakeReason: "issue_commented",
+        wakeReason: "task_commented",
         commentId: "comment-2",
       }),
     ).toBe(false);
   });
 
   it("does not reset for comment wakes", () => {
-    expect(shouldResetTaskSessionForWake({ wakeReason: "issue_commented" })).toBe(false);
+    expect(shouldResetTaskSessionForWake({ wakeReason: "task_commented" })).toBe(false);
   });
 
   it("does not reset when wake reason is missing", () => {
@@ -360,11 +360,11 @@ describe("shouldResetTaskSessionForWake", () => {
 
 describe("deriveTaskKeyWithHeartbeatFallback", () => {
   it("returns explicit taskKey when present", () => {
-    expect(deriveTaskKeyWithHeartbeatFallback({ taskKey: "issue-123" }, null)).toBe("issue-123");
+    expect(deriveTaskKeyWithHeartbeatFallback({ taskKey: "task-123" }, null)).toBe("task-123");
   });
 
-  it("returns explicit issueId when no taskKey", () => {
-    expect(deriveTaskKeyWithHeartbeatFallback({ issueId: "issue-456" }, null)).toBe("issue-456");
+  it("returns explicit taskId when no taskKey", () => {
+    expect(deriveTaskKeyWithHeartbeatFallback({ taskId: "task-456" }, null)).toBe("task-456");
   });
 
   it("returns __heartbeat__ for timer wakes with no explicit key", () => {
@@ -373,8 +373,8 @@ describe("deriveTaskKeyWithHeartbeatFallback", () => {
 
   it("prefers explicit key over heartbeat fallback even on timer wakes", () => {
     expect(
-      deriveTaskKeyWithHeartbeatFallback({ wakeSource: "timer", taskKey: "issue-789" }, null),
-    ).toBe("issue-789");
+      deriveTaskKeyWithHeartbeatFallback({ wakeSource: "timer", taskKey: "task-789" }, null),
+    ).toBe("task-789");
   });
 
   it("returns null for non-timer wakes with no explicit key", () => {
@@ -390,8 +390,8 @@ describe("comment wake batching", () => {
   it("preserves ordered wake comment ids when coalescing queued follow-up wakes", () => {
     const merged = mergeCoalescedContextSnapshot(
       {
-        issueId: "issue-1",
-        wakeReason: "issue_commented",
+        taskId: "task-1",
+        wakeReason: "task_commented",
         wakeCommentId: "comment-1",
         wakeCommentIds: ["comment-1"],
         paperclipWake: {
@@ -399,8 +399,8 @@ describe("comment wake batching", () => {
         },
       },
       {
-        issueId: "issue-1",
-        wakeReason: "issue_commented",
+        taskId: "task-1",
+        wakeReason: "task_commented",
         wakeCommentId: "comment-2",
       },
     );

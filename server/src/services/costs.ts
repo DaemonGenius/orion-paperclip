@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, isNotNull, lt, lte, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { activityLog, agents, companies, costEvents, issues, projects } from "@paperclipai/db";
+import { activityLog, agents, companies, costEvents, tasks, projects } from "@paperclipai/db";
 import { notFound, unprocessable } from "../errors.js";
 import { budgetService, type BudgetServiceHooks } from "./budgets.js";
 
@@ -316,29 +316,29 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
     },
 
     byProject: async (companyId: string, range?: CostDateRange) => {
-      const issueIdAsText = sql<string>`${issues.id}::text`;
+      const taskIdAsText = sql<string>`${tasks.id}::text`;
       const runProjectLinks = db
-        .selectDistinctOn([activityLog.runId, issues.projectId], {
+        .selectDistinctOn([activityLog.runId, tasks.projectId], {
           runId: activityLog.runId,
-          projectId: issues.projectId,
+          projectId: tasks.projectId,
         })
         .from(activityLog)
         .innerJoin(
-          issues,
+          tasks,
           and(
-            eq(activityLog.entityType, "issue"),
-            eq(activityLog.entityId, issueIdAsText),
+            eq(activityLog.entityType, "task"),
+            eq(activityLog.entityId, taskIdAsText),
           ),
         )
         .where(
           and(
             eq(activityLog.companyId, companyId),
-            eq(issues.companyId, companyId),
+            eq(tasks.companyId, companyId),
             isNotNull(activityLog.runId),
-            isNotNull(issues.projectId),
+            isNotNull(tasks.projectId),
           ),
         )
-        .orderBy(activityLog.runId, issues.projectId, desc(activityLog.createdAt))
+        .orderBy(activityLog.runId, tasks.projectId, desc(activityLog.createdAt))
         .as("run_project_links");
 
       const effectiveProjectId = sql<string | null>`coalesce(${costEvents.projectId}, ${runProjectLinks.projectId})`;

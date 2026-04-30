@@ -26,7 +26,7 @@ const MINIMAL_WORKTREE_EXCLUDED_TABLES = [
 ];
 
 const MINIMAL_WORKTREE_NULLIFIED_COLUMNS: Record<string, string[]> = {
-  issues: ["checkout_run_id", "execution_run_id"],
+  tasks: ["checkout_run_id", "execution_run_id"],
 };
 
 export type WorktreeLocalPaths = {

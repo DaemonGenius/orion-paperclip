@@ -106,7 +106,7 @@ export interface ExecutionWorkspaceCloseAction {
   command: string | null;
 }
 
-export interface ExecutionWorkspaceCloseLinkedIssue {
+export interface ExecutionWorkspaceCloseLinkedTask {
   id: string;
   identifier: string | null;
   title: string;
@@ -134,7 +134,7 @@ export interface ExecutionWorkspaceCloseReadiness {
   state: ExecutionWorkspaceCloseReadinessState;
   blockingReasons: string[];
   warnings: string[];
-  linkedIssues: ExecutionWorkspaceCloseLinkedIssue[];
+  linkedTasks: ExecutionWorkspaceCloseLinkedTask[];
   plannedActions: ExecutionWorkspaceCloseAction[];
   isDestructiveCloseAllowed: boolean;
   isSharedWorkspace: boolean;
@@ -146,7 +146,7 @@ export interface ExecutionWorkspaceCloseReadiness {
 export interface ProjectExecutionWorkspacePolicy {
   enabled: boolean;
   defaultMode?: ProjectExecutionWorkspaceDefaultMode;
-  allowIssueOverride?: boolean;
+  allowTaskOverride?: boolean;
   defaultProjectWorkspaceId?: string | null;
   environmentId?: string | null;
   workspaceStrategy?: ExecutionWorkspaceStrategy | null;
@@ -157,7 +157,7 @@ export interface ProjectExecutionWorkspacePolicy {
   cleanupPolicy?: Record<string, unknown> | null;
 }
 
-export interface IssueExecutionWorkspaceSettings {
+export interface TaskExecutionWorkspaceSettings {
   mode?: ExecutionWorkspaceMode;
   environmentId?: string | null;
   workspaceStrategy?: ExecutionWorkspaceStrategy | null;
@@ -176,7 +176,7 @@ export interface ExecutionWorkspace {
   companyId: string;
   projectId: string;
   projectWorkspaceId: string | null;
-  sourceIssueId: string | null;
+  sourceTaskId: string | null;
   mode: Exclude<ExecutionWorkspaceMode, "inherit" | "reuse_existing" | "agent_default"> | "adapter_managed" | "cloud_sandbox";
   strategyType: ExecutionWorkspaceStrategyType;
   name: string;
@@ -206,7 +206,7 @@ export interface WorkspaceRuntimeService {
   projectId: string | null;
   projectWorkspaceId: string | null;
   executionWorkspaceId: string | null;
-  issueId: string | null;
+  taskId: string | null;
   scopeType: "project_workspace" | "execution_workspace" | "run" | "agent";
   scopeId: string | null;
   serviceName: string;
@@ -245,7 +245,7 @@ export interface WorkspaceRealizationRequest {
   companyId: string;
   environmentId: string;
   executionWorkspaceId: string | null;
-  issueId: string | null;
+  taskId: string | null;
   heartbeatRunId: string;
   requestedMode: string | null;
   source: {

@@ -65,7 +65,7 @@ The CLI has two tiers (see `doc/DEVELOPING.md` for full option tables):
 |---------|---------|
 | `worktree:make <name>` | Create worktree + isolated instance in one step |
 | `worktree:list` | List worktrees and their Paperclip status |
-| `worktree:merge-history` | Preview/import issue history between worktrees |
+| `worktree:merge-history` | Preview/import task history between worktrees |
 | `worktree:cleanup <name>` | Remove worktree, branch, and instance data |
 | `worktree init` | Bootstrap instance inside existing worktree |
 | `worktree env` | Print shell exports for worktree instance |

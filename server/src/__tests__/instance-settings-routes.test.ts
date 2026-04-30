@@ -58,7 +58,7 @@ describe("instance settings routes", () => {
       enableEnvironments: false,
       enableIsolatedWorkspaces: false,
       autoRestartDevServerWhenIdle: false,
-      enableIssueGraphLivenessAutoRecovery: false,
+      enableTaskGraphLivenessAutoRecovery: false,
     });
     mockInstanceSettingsService.updateGeneral.mockResolvedValue({
       id: "instance-settings-1",
@@ -74,7 +74,7 @@ describe("instance settings routes", () => {
         enableEnvironments: true,
         enableIsolatedWorkspaces: true,
         autoRestartDevServerWhenIdle: false,
-        enableIssueGraphLivenessAutoRecovery: false,
+        enableTaskGraphLivenessAutoRecovery: false,
       },
     });
     mockInstanceSettingsService.listCompanyIds.mockResolvedValue(["company-1", "company-2"]);
@@ -94,7 +94,7 @@ describe("instance settings routes", () => {
       enableEnvironments: false,
       enableIsolatedWorkspaces: false,
       autoRestartDevServerWhenIdle: false,
-      enableIssueGraphLivenessAutoRecovery: false,
+      enableTaskGraphLivenessAutoRecovery: false,
     });
 
     const patchRes = await request(app)
@@ -128,7 +128,7 @@ describe("instance settings routes", () => {
     ).toBe(true);
   });
 
-  it("allows local board users to update issue graph liveness auto-recovery", async () => {
+  it("allows local board users to update task graph liveness auto-recovery", async () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
@@ -138,11 +138,11 @@ describe("instance settings routes", () => {
 
     await request(app)
       .patch("/api/instance/settings/experimental")
-      .send({ enableIssueGraphLivenessAutoRecovery: true })
+      .send({ enableTaskGraphLivenessAutoRecovery: true })
       .expect(200);
 
     expect(mockInstanceSettingsService.updateExperimental).toHaveBeenCalledWith({
-      enableIssueGraphLivenessAutoRecovery: true,
+      enableTaskGraphLivenessAutoRecovery: true,
     });
   });
 

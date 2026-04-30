@@ -6,9 +6,9 @@ import {
   companies,
   companyExternalAppBindings,
   externalObjectRefs,
-  issues,
-  issueInboxArchives,
-  issueReadStates,
+  tasks,
+  taskInboxArchives,
+  taskReadStates,
   knowledgeProposals,
   projects,
   syncConflicts,
@@ -33,8 +33,16 @@ import type {
   NotionKnowledgeSyncResult,
   SyncOwnerClass,
 } from "@paperclipai/shared";
+import {
+  NOTION_TASK_PROPERTY_NAMES,
+  NOTION_TASK_RELATION_PROPERTY_NAMES,
+  mapNotionTaskPriority,
+  mapNotionTaskRouteMode,
+  mapNotionTaskStatus,
+  normalizeNotionTaskPropertyName,
+} from "@paperclipai/shared";
 import { notFound, unprocessable } from "../errors.js";
-import { issueService } from "./issues.js";
+import { taskService } from "./tasks.js";
 import { projectService } from "./projects.js";
 import { secretService } from "./secrets.js";
 
@@ -266,12 +274,12 @@ function normalizeProjectName(value: string) {
     .trim();
 }
 
-function normalizeProjectIssuePrefix(value: string | null | undefined) {
+function normalizeProjectTaskPrefix(value: string | null | undefined) {
   const normalized = value?.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) ?? "";
   return normalized || null;
 }
 
-function deriveProjectIssuePrefix(projectName: string) {
+function deriveProjectTaskPrefix(projectName: string) {
   const normalized = normalizeTitle(projectName);
   const explicit: Record<string, string> = {
     homelab: "HOME",
@@ -280,7 +288,7 @@ function deriveProjectIssuePrefix(projectName: string) {
   };
   const compact = normalized.replace(/\s+/g, "");
   if (explicit[compact]) return explicit[compact];
-  return normalizeProjectIssuePrefix(projectName.replace(/[^A-Za-z0-9]/g, "").slice(0, 4)) ?? "PROJ";
+  return normalizeProjectTaskPrefix(projectName.replace(/[^A-Za-z0-9]/g, "").slice(0, 4)) ?? "PROJ";
 }
 
 function isNotionProjectContainerTitle(value: string) {
@@ -488,33 +496,69 @@ function notionPropertyText(property: unknown): string {
 }
 
 function propertyTextByNames(properties: unknown, names: string[]) {
-  const normalizedNames = new Set(names.map(normalizeTitle));
+  const normalizedNames = new Set(names.map(normalizeNotionTaskPropertyName));
   for (const [name, property] of Object.entries(asRecord(properties))) {
-    if (!normalizedNames.has(normalizeTitle(name))) continue;
+    if (!normalizedNames.has(normalizeNotionTaskPropertyName(name))) continue;
     const text = notionPropertyText(property).trim();
     if (text) return text;
   }
   return null;
 }
 
-function mapNotionTaskStatus(value: string | null) {
-  const normalized = normalizeTitle(value ?? "");
-  if (!normalized) return "backlog";
-  if (["done", "complete", "completed", "final", "shipped"].some((item) => normalized.includes(item))) return "done";
-  if (["cancelled", "canceled", "wont do", "won t do"].some((item) => normalized.includes(item))) return "cancelled";
-  if (["blocked", "stuck", "waiting"].some((item) => normalized.includes(item))) return "blocked";
-  if (["review", "pending pr", "pr"].some((item) => normalized.includes(item))) return "in_review";
-  if (["progress", "active", "doing", "started"].some((item) => normalized.includes(item))) return "in_progress";
-  if (["todo", "to do", "ready", "next", "open"].some((item) => normalized.includes(item))) return "todo";
-  return "backlog";
+function propertyByCanonicalName(properties: unknown, canonicalName: string) {
+  const normalized = normalizeNotionTaskPropertyName(canonicalName);
+  for (const [name, property] of Object.entries(asRecord(properties))) {
+    if (normalizeNotionTaskPropertyName(name) === normalized) return property;
+  }
+  return null;
 }
 
-function mapNotionPriority(value: string | null) {
-  const normalized = normalizeTitle(value ?? "");
-  if (normalized.includes("critical") || normalized.includes("urgent")) return "critical";
-  if (normalized.includes("high")) return "high";
-  if (normalized.includes("low")) return "low";
-  return "medium";
+function normalizedNotionProperties(properties: unknown) {
+  const output: Record<string, unknown> = {};
+  for (const [name, property] of Object.entries(asRecord(properties))) {
+    const value = notionPropertyValue(property);
+    output[name] = {
+      type: typeof asRecord(property).type === "string" ? asRecord(property).type : null,
+      value,
+      text: notionPropertyText(property),
+    };
+  }
+  return output;
+}
+
+function notionRelationRefs(
+  properties: unknown,
+  pageMetadataById: Map<string, { title: string | null; url: string | null }>,
+) {
+  const relations: Record<string, Array<{ pageId: string; title: string | null; url: string | null }>> = {};
+  for (const propertyName of NOTION_TASK_RELATION_PROPERTY_NAMES) {
+    const property = propertyByCanonicalName(properties, propertyName);
+    const ids = notionPropertyValue(property);
+    if (!Array.isArray(ids)) {
+      relations[propertyName] = [];
+      continue;
+    }
+    relations[propertyName] = ids
+      .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+      .map((pageId) => {
+        const metadata = pageMetadataById.get(pageId);
+        return {
+          pageId,
+          title: metadata?.title ?? null,
+          url: metadata?.url ?? notionPageUrl(pageId),
+        };
+      });
+  }
+  return relations;
+}
+
+function canonicalTaskPropertyText(properties: unknown, canonicalName: string) {
+  return propertyTextByNames(properties, [canonicalName]);
+}
+
+function normalizeImportedTaskIdentifier(value: string | null) {
+  const normalized = value?.trim().toUpperCase() ?? "";
+  return normalized.length > 0 ? normalized : null;
 }
 
 function taskProjectNameFromProperties(properties: unknown) {
@@ -531,12 +575,12 @@ function taskProjectNameFromProperties(properties: unknown) {
 }
 
 function taskProjectTagFromProperties(properties: unknown) {
-  return normalizeProjectIssuePrefix(propertyTextByNames(properties, [
+  return normalizeProjectTaskPrefix(propertyTextByNames(properties, [
     "project tag",
     "project tag name",
     "project key",
     "project prefix",
-    "issue prefix",
+    "task prefix",
   ]));
 }
 
@@ -666,7 +710,7 @@ async function collectMarkdownFiles(root: string, opts: { includePatterns?: stri
 
 export function knowledgeService(db: Db) {
   const secrets = secretService(db);
-  const issuesSvc = issueService(db);
+  const tasksSvc = taskService(db);
   const projectsSvc = projectService(db);
 
   async function getObsidianBinding(companyId: string) {
@@ -982,7 +1026,7 @@ export function knowledgeService(db: Db) {
         patch.archivedAt = null;
       }
       if (notionProjectTag && !input.projectPrefixesById.get(existingId)) {
-        patch.issuePrefix = notionProjectTag;
+        patch.taskPrefix = notionProjectTag;
       }
       if (Object.keys(patch).length > 0) {
         const updated = await projectsSvc.update(existingId, patch);
@@ -990,7 +1034,7 @@ export function knowledgeService(db: Db) {
           input.projectsByName.set(updated.name, updated.id);
           input.projectNamesById.set(updated.id, updated.name);
           input.projectArchivedAtById?.set(updated.id, updated.archivedAt);
-          const normalizedPrefix = normalizeProjectIssuePrefix(updated.issuePrefix);
+          const normalizedPrefix = normalizeProjectTaskPrefix(updated.taskPrefix);
           input.projectPrefixesById.set(updated.id, normalizedPrefix);
           if (normalizedPrefix) input.projectsByPrefix.set(normalizedPrefix, updated.id);
         }
@@ -998,22 +1042,22 @@ export function knowledgeService(db: Db) {
       return existingId;
     }
 
-    const issuePrefix = notionProjectTag ?? deriveProjectIssuePrefix(notionProjectName);
+    const taskPrefix = notionProjectTag ?? deriveProjectTaskPrefix(notionProjectName);
     const project = await projectsSvc.create(input.companyId, {
       name: notionProjectName,
       description: "Created from Notion task sync.",
       status: "in_progress",
-      issuePrefix,
+      taskPrefix,
     });
     input.projectsByName.set(project.name, project.id);
     input.projectNamesById.set(project.id, project.name);
-    input.projectPrefixesById.set(project.id, normalizeProjectIssuePrefix(project.issuePrefix));
+    input.projectPrefixesById.set(project.id, normalizeProjectTaskPrefix(project.taskPrefix));
     input.projectArchivedAtById?.set(project.id, project.archivedAt);
-    if (project.issuePrefix) input.projectsByPrefix.set(project.issuePrefix, project.id);
+    if (project.taskPrefix) input.projectsByPrefix.set(project.taskPrefix, project.id);
     return project.id;
   }
 
-  async function upsertIssueFromNotionTask(input: {
+  async function upsertTaskFromNotionTask(input: {
     companyId: string;
     row: {
       id: string;
@@ -1027,11 +1071,19 @@ export function knowledgeService(db: Db) {
     databaseTitle: string;
     projectId: string | null;
     syncedAt: Date;
+    pageMetadataById: Map<string, { title: string | null; url: string | null }>;
   }) {
-    const notionStatus = propertyTextByNames(input.row.properties, ["status", "state"]);
+    const props = input.row.properties;
+    const notionStatus = propertyTextByNames(props, ["status", "state"]);
     const mappedStatus = mapNotionTaskStatus(notionStatus);
-    const status = mappedStatus === "in_progress" ? "todo" : mappedStatus;
-    const priority = mapNotionPriority(propertyTextByNames(input.row.properties, ["priority", "importance", "risk level"]));
+    const status = mappedStatus;
+    const notionPriority = propertyTextByNames(props, ["priority", "importance", "risk level"]);
+    const priority = mapNotionTaskPriority(notionPriority);
+    const taskKey = normalizeImportedTaskIdentifier(canonicalTaskPropertyText(props, NOTION_TASK_PROPERTY_NAMES.taskKey));
+    const rawRouteMode = canonicalTaskPropertyText(props, NOTION_TASK_PROPERTY_NAMES.routeMode);
+    const routeMode = mapNotionTaskRouteMode(rawRouteMode);
+    const notionProperties = normalizedNotionProperties(props);
+    const notionRelations = notionRelationRefs(props, input.pageMetadataById);
     const description = [
       input.row.notionUrl ? `Source: ${input.row.notionUrl}` : null,
       `Source database: ${input.databaseTitle}`,
@@ -1041,22 +1093,52 @@ export function knowledgeService(db: Db) {
 
     const existing = await db
       .select()
-      .from(issues)
+      .from(tasks)
       .where(and(
-        eq(issues.companyId, input.companyId),
-        eq(issues.originKind, "notion_task"),
-        eq(issues.originId, input.row.id),
+        eq(tasks.companyId, input.companyId),
+        eq(tasks.originKind, "notion_task"),
+        eq(tasks.originId, input.row.id),
       ))
-      .orderBy(desc(issues.updatedAt))
+      .orderBy(desc(tasks.updatedAt))
       .limit(1)
       .then((rows) => rows[0] ?? null);
 
-    const issuePatch = {
+    const safeIdentifier = taskKey
+      ? await db
+        .select({ id: tasks.id })
+        .from(tasks)
+        .where(eq(tasks.identifier, taskKey))
+        .limit(1)
+        .then((rows) => {
+          const owner = rows[0]?.id ?? null;
+          return !owner || owner === existing?.id ? taskKey : null;
+        })
+      : null;
+
+    const taskPatch = {
       title: input.row.title,
       description,
       status,
       priority,
       projectId: input.projectId,
+      ...(safeIdentifier ? { identifier: safeIdentifier } : {}),
+      taskKey,
+      acceptanceCriteria: canonicalTaskPropertyText(props, NOTION_TASK_PROPERTY_NAMES.acceptanceCriteria),
+      blockedByText: canonicalTaskPropertyText(props, NOTION_TASK_PROPERTY_NAMES.blockedBy),
+      dueDate: canonicalTaskPropertyText(props, NOTION_TASK_PROPERTY_NAMES.dueDate),
+      layer: canonicalTaskPropertyText(props, NOTION_TASK_PROPERTY_NAMES.layer),
+      module: canonicalTaskPropertyText(props, NOTION_TASK_PROPERTY_NAMES.module),
+      repoPath: canonicalTaskPropertyText(props, NOTION_TASK_PROPERTY_NAMES.repoPath),
+      riskLevel: canonicalTaskPropertyText(props, NOTION_TASK_PROPERTY_NAMES.riskLevel),
+      sprintPhase: canonicalTaskPropertyText(props, NOTION_TASK_PROPERTY_NAMES.sprintPhase),
+      taskType: canonicalTaskPropertyText(props, NOTION_TASK_PROPERTY_NAMES.type),
+      routeMode: routeMode ?? rawRouteMode,
+      reqId: canonicalTaskPropertyText(props, NOTION_TASK_PROPERTY_NAMES.reqId),
+      prState: canonicalTaskPropertyText(props, NOTION_TASK_PROPERTY_NAMES.prState),
+      prUrl: canonicalTaskPropertyText(props, NOTION_TASK_PROPERTY_NAMES.prUrl),
+      agentConfidenceLevel: canonicalTaskPropertyText(props, NOTION_TASK_PROPERTY_NAMES.agentConfidenceLevel),
+      notionProperties,
+      notionRelations,
       originKind: "notion_task",
       originId: input.row.id,
       originFingerprint: sha256(`${input.databaseId}:${input.row.id}`),
@@ -1068,16 +1150,72 @@ export function knowledgeService(db: Db) {
         sourceUrl: input.row.notionUrl,
         notionStatus,
         mappedNotionStatus: mappedStatus,
+        notionPriority,
+        mappedNotionPriority: priority,
+        notionRouteMode: rawRouteMode,
+        mappedNotionRouteMode: routeMode,
         lastNotionEditedAt: input.row.lastEditedAt?.toISOString() ?? null,
         lastSyncedAt: input.syncedAt.toISOString(),
       },
-    } satisfies Partial<typeof issues.$inferInsert>;
+    } satisfies Partial<typeof tasks.$inferInsert>;
 
-    if (existing) {
-      return issuesSvc.update(existing.id, issuePatch);
+    const saved = existing
+      ? await tasksSvc.update(existing.id, taskPatch)
+      : await tasksSvc.create(input.companyId, taskPatch);
+    if (!saved) return saved;
+    if (rawRouteMode && !routeMode) {
+      await upsertSyncConflict({
+        companyId: input.companyId,
+        localObjectId: saved.id,
+        externalObjectId: input.row.id,
+        field: "Route Mode",
+        value: rawRouteMode,
+        message: "Unknown Notion Route Mode option for task routing.",
+      });
     }
+    return saved;
+  }
 
-    return issuesSvc.create(input.companyId, issuePatch);
+  async function upsertSyncConflict(input: {
+    companyId: string;
+    localObjectId: string;
+    externalObjectId: string;
+    field: string;
+    value: string;
+    message: string;
+  }) {
+    const existing = await db
+      .select({ id: syncConflicts.id })
+      .from(syncConflicts)
+      .where(and(
+        eq(syncConflicts.companyId, input.companyId),
+        eq(syncConflicts.provider, "notion"),
+        eq(syncConflicts.localObjectType, "task"),
+        eq(syncConflicts.localObjectId, input.localObjectId),
+        eq(syncConflicts.externalObjectId, input.externalObjectId),
+        eq(syncConflicts.status, "open"),
+      ))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    const conflictJson = {
+      kind: "unknown_notion_task_option",
+      field: input.field,
+      value: input.value,
+      message: input.message,
+    };
+    if (existing) {
+      await db.update(syncConflicts).set({ conflictJson, updatedAt: new Date() }).where(eq(syncConflicts.id, existing.id));
+      return;
+    }
+    await db.insert(syncConflicts).values({
+      companyId: input.companyId,
+      provider: "notion",
+      localObjectType: "task",
+      localObjectId: input.localObjectId,
+      externalObjectId: input.externalObjectId,
+      status: "open",
+      conflictJson,
+    });
   }
 
   async function upsertExternalRef(input: typeof externalObjectRefs.$inferInsert) {
@@ -1348,29 +1486,29 @@ export function knowledgeService(db: Db) {
         }
       }
 
-      const importedIssues = await db
-        .select({ id: issues.id })
-        .from(issues)
-        .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "notion_task")));
-      let deletedImportedIssues = 0;
-      const importedIssueIds = importedIssues.map((issue) => issue.id);
-      if (importedIssueIds.length > 0) {
+      const importedTasks = await db
+        .select({ id: tasks.id })
+        .from(tasks)
+        .where(and(eq(tasks.companyId, companyId), eq(tasks.originKind, "notion_task")));
+      let deletedImportedTasks = 0;
+      const importedTaskIds = importedTasks.map((task) => task.id);
+      if (importedTaskIds.length > 0) {
         await db
-          .delete(issueReadStates)
+          .delete(taskReadStates)
           .where(and(
-            eq(issueReadStates.companyId, companyId),
-            inArray(issueReadStates.issueId, importedIssueIds),
+            eq(taskReadStates.companyId, companyId),
+            inArray(taskReadStates.taskId, importedTaskIds),
           ));
         await db
-          .delete(issueInboxArchives)
+          .delete(taskInboxArchives)
           .where(and(
-            eq(issueInboxArchives.companyId, companyId),
-            inArray(issueInboxArchives.issueId, importedIssueIds),
+            eq(taskInboxArchives.companyId, companyId),
+            inArray(taskInboxArchives.taskId, importedTaskIds),
           ));
       }
-      for (const issue of importedIssues) {
-        const removed = await issuesSvc.remove(issue.id);
-        if (removed) deletedImportedIssues += 1;
+      for (const task of importedTasks) {
+        const removed = await tasksSvc.remove(task.id);
+        if (removed) deletedImportedTasks += 1;
       }
 
       let deletedImportedProjects = 0;
@@ -1383,17 +1521,17 @@ export function knowledgeService(db: Db) {
           .then((rows) => rows[0] ?? null);
         if (!project) continue;
 
-        const remainingNonNotionIssue = await db
-          .select({ id: issues.id })
-          .from(issues)
-          .where(and(eq(issues.companyId, companyId), eq(issues.projectId, projectId), ne(issues.originKind, "notion_task")))
+        const remainingNonNotionTask = await db
+          .select({ id: tasks.id })
+          .from(tasks)
+          .where(and(eq(tasks.companyId, companyId), eq(tasks.projectId, projectId), ne(tasks.originKind, "notion_task")))
           .limit(1)
           .then((rows) => rows[0] ?? null);
-        if (remainingNonNotionIssue) {
+        if (remainingNonNotionTask) {
           skippedProjects.push({
             projectId,
             projectName: project.name,
-            reason: "Project still has non-Notion issues.",
+            reason: "Project still has non-Notion tasks.",
           });
           continue;
         }
@@ -1431,7 +1569,7 @@ export function knowledgeService(db: Db) {
       return {
         clearedRefs: refs.length,
         removedMirrorFiles,
-        deletedImportedIssues,
+        deletedImportedTasks,
         deletedImportedProjects,
         deletedKnowledgeProposals,
         deletedSyncConflicts,
@@ -1849,16 +1987,16 @@ export function knowledgeService(db: Db) {
       }
 
       const companyProjects = await db
-        .select({ id: projects.id, name: projects.name, issuePrefix: projects.issuePrefix, archivedAt: projects.archivedAt })
+        .select({ id: projects.id, name: projects.name, taskPrefix: projects.taskPrefix, archivedAt: projects.archivedAt })
         .from(projects)
         .where(eq(projects.companyId, companyId));
       const projectsByName = new Map(companyProjects.map((project) => [project.name, project.id]));
       const projectNamesById = new Map(companyProjects.map((project) => [project.id, project.name]));
-      const projectPrefixesById = new Map(companyProjects.map((project) => [project.id, normalizeProjectIssuePrefix(project.issuePrefix)]));
+      const projectPrefixesById = new Map(companyProjects.map((project) => [project.id, normalizeProjectTaskPrefix(project.taskPrefix)]));
       const projectArchivedAtById = new Map(companyProjects.map((project) => [project.id, project.archivedAt]));
       const projectsByPrefix = new Map(
         companyProjects
-          .map((project) => [normalizeProjectIssuePrefix(project.issuePrefix), project.id] as const)
+          .map((project) => [normalizeProjectTaskPrefix(project.taskPrefix), project.id] as const)
           .filter((entry): entry is [string, string] => Boolean(entry[0])),
       );
 
@@ -1875,13 +2013,13 @@ export function knowledgeService(db: Db) {
           .find(([projectName]) => normalizeTitle(projectName) === normalized)?.[1] ?? null;
       }
 
-      async function reviveNotionProjectIfNeeded(projectId: string, issuePrefix: string) {
+      async function reviveNotionProjectIfNeeded(projectId: string, taskPrefix: string) {
         const patch: Partial<typeof projects.$inferInsert> = {};
         if (projectArchivedAtById.get(projectId)) {
           patch.archivedAt = null;
         }
-        if (issuePrefix && !projectPrefixesById.get(projectId)) {
-          patch.issuePrefix = issuePrefix;
+        if (taskPrefix && !projectPrefixesById.get(projectId)) {
+          patch.taskPrefix = taskPrefix;
         }
         if (Object.keys(patch).length === 0) return;
 
@@ -1890,7 +2028,7 @@ export function knowledgeService(db: Db) {
         projectsByName.set(updated.name, updated.id);
         projectNamesById.set(updated.id, updated.name);
         projectArchivedAtById.set(updated.id, updated.archivedAt);
-        const normalizedPrefix = normalizeProjectIssuePrefix(updated.issuePrefix);
+        const normalizedPrefix = normalizeProjectTaskPrefix(updated.taskPrefix);
         projectPrefixesById.set(updated.id, normalizedPrefix);
         if (normalizedPrefix) projectsByPrefix.set(normalizedPrefix, updated.id);
       }
@@ -1898,9 +2036,9 @@ export function knowledgeService(db: Db) {
       async function ensureProjectFromNotionRoot(title: string) {
         const projectName = normalizeProjectName(title);
         const existingId = findProjectIdByName(projectName);
-        const issuePrefix = deriveProjectIssuePrefix(projectName);
+        const taskPrefix = deriveProjectTaskPrefix(projectName);
         if (existingId) {
-          await reviveNotionProjectIfNeeded(existingId, issuePrefix);
+          await reviveNotionProjectIfNeeded(existingId, taskPrefix);
           return { id: existingId, name: projectNamesById.get(existingId) ?? projectName, created: false };
         }
 
@@ -1908,13 +2046,13 @@ export function knowledgeService(db: Db) {
           name: projectName,
           description: "Created from Notion project workspace sync.",
           status: "in_progress",
-          issuePrefix,
+          taskPrefix,
         });
         projectsByName.set(project.name, project.id);
         projectNamesById.set(project.id, project.name);
-        projectPrefixesById.set(project.id, normalizeProjectIssuePrefix(project.issuePrefix));
+        projectPrefixesById.set(project.id, normalizeProjectTaskPrefix(project.taskPrefix));
         projectArchivedAtById.set(project.id, project.archivedAt);
-        if (project.issuePrefix) projectsByPrefix.set(project.issuePrefix, project.id);
+        if (project.taskPrefix) projectsByPrefix.set(project.taskPrefix, project.id);
         importedProjects += 1;
         return { id: project.id, name: project.name, created: true };
       }
@@ -2076,7 +2214,7 @@ export function knowledgeService(db: Db) {
             source: notionObject.source,
             projectId,
             projectName,
-            projectIssuePrefix: projectId ? projectPrefixesById.get(projectId) ?? null : null,
+            projectTaskPrefix: projectId ? projectPrefixesById.get(projectId) ?? null : null,
             path: relativePath,
           };
           const checksum = sha256(JSON.stringify({
@@ -2112,6 +2250,10 @@ export function knowledgeService(db: Db) {
                 relativePath: notionDatabaseRowRelativePath(relativePath, row.title, row.id, usedPaths),
                 row,
               }));
+              const pageMetadataById = new Map(rowLinks.map((row) => [
+                row.row.id,
+                { title: row.row.title, url: row.row.notionUrl },
+              ]));
               const indexMarkdownBody = exported.markdownForIndex(rowLinks.map((row) => ({
                 title: row.title,
                 relativePath: normalizeRelativePath(path.relative(path.dirname(relativePath), row.relativePath)),
@@ -2158,17 +2300,18 @@ export function knowledgeService(db: Db) {
                   })
                   : projectId;
                 const rowProjectName = rowProjectId ? projectNamesById.get(rowProjectId) ?? null : null;
-                const rowIssue = isTasksClassification(classification)
-                  ? await upsertIssueFromNotionTask({
+                const rowTask = isTasksClassification(classification)
+                  ? await upsertTaskFromNotionTask({
                     companyId,
                     row: rowLink.row,
                     databaseId: objectId,
                     databaseTitle: exported.title,
                     projectId: rowProjectId,
                     syncedAt,
+                    pageMetadataById,
                   })
                   : null;
-                if (rowIssue) importedTasks += 1;
+                if (rowTask) importedTasks += 1;
                 const rowMarkdown = notionMirrorMarkdown({
                   title: rowLink.row.title,
                   objectId: rowLink.row.id,
@@ -2206,9 +2349,9 @@ export function knowledgeService(db: Db) {
                     source: "notion_database_row",
                     projectId: rowProjectId,
                     projectName: rowProjectName,
-                    projectIssuePrefix: rowProjectId ? projectPrefixesById.get(rowProjectId) ?? null : null,
-                    issueId: rowIssue?.id ?? null,
-                    issueIdentifier: rowIssue?.identifier ?? null,
+                    projectTaskPrefix: rowProjectId ? projectPrefixesById.get(rowProjectId) ?? null : null,
+                    taskId: rowTask?.id ?? null,
+                    taskIdentifier: rowTask?.identifier ?? null,
                   },
                   lastExternalEditedAt: rowLink.row.lastEditedAt,
                   lastOrionEditedAt: syncedAt,

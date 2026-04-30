@@ -47,7 +47,7 @@ export interface ExecutionWorkspaceInput {
   repoRef: string | null;
 }
 
-export interface ExecutionWorkspaceIssueRef {
+export interface ExecutionWorkspaceTaskRef {
   id: string;
   identifier: string | null;
   title: string | null;
@@ -74,7 +74,7 @@ export interface RuntimeServiceRef {
   projectId: string | null;
   projectWorkspaceId: string | null;
   executionWorkspaceId: string | null;
-  issueId: string | null;
+  taskId: string | null;
   serviceName: string;
   status: "starting" | "running" | "stopped" | "failed";
   lifecycle: "shared" | "ephemeral";
@@ -325,7 +325,7 @@ function toRuntimeServiceRef(record: RuntimeServiceRecord, overrides?: Partial<R
     projectId: record.projectId,
     projectWorkspaceId: record.projectWorkspaceId,
     executionWorkspaceId: record.executionWorkspaceId,
-    issueId: record.issueId,
+    taskId: record.taskId,
     serviceName: record.serviceName,
     status: record.status,
     lifecycle: record.lifecycle,
@@ -360,18 +360,18 @@ function sanitizeSlugPart(value: string | null | undefined, fallback: string): s
 }
 
 function renderWorkspaceTemplate(template: string, input: {
-  issue: ExecutionWorkspaceIssueRef | null;
+  task: ExecutionWorkspaceTaskRef | null;
   agent: ExecutionWorkspaceAgentRef;
   projectId: string | null;
   repoRef: string | null;
 }) {
-  const issueIdentifier = input.issue?.identifier ?? input.issue?.id ?? "issue";
-  const slug = sanitizeSlugPart(input.issue?.title, sanitizeSlugPart(issueIdentifier, "issue"));
+  const taskIdentifier = input.task?.identifier ?? input.task?.id ?? "task";
+  const slug = sanitizeSlugPart(input.task?.title, sanitizeSlugPart(taskIdentifier, "task"));
   return renderTemplate(template, {
-    issue: {
-      id: input.issue?.id ?? "",
-      identifier: input.issue?.identifier ?? "",
-      title: input.issue?.title ?? "",
+    task: {
+      id: input.task?.id ?? "",
+      identifier: input.task?.identifier ?? "",
+      title: input.task?.title ?? "",
     },
     agent: {
       id: input.agent.id ?? "",
@@ -684,7 +684,7 @@ function buildWorkspaceCommandEnv(input: {
   repoRoot: string;
   worktreePath: string;
   branchName: string;
-  issue: ExecutionWorkspaceIssueRef | null;
+  task: ExecutionWorkspaceTaskRef | null;
   agent: ExecutionWorkspaceAgentRef;
   created: boolean;
 }) {
@@ -704,9 +704,9 @@ function buildWorkspaceCommandEnv(input: {
   env.PAPERCLIP_AGENT_ID = input.agent.id ?? "";
   env.PAPERCLIP_AGENT_NAME = input.agent.name;
   env.PAPERCLIP_COMPANY_ID = input.agent.companyId;
-  env.PAPERCLIP_ISSUE_ID = input.issue?.id ?? "";
-  env.PAPERCLIP_ISSUE_IDENTIFIER = input.issue?.identifier ?? "";
-  env.PAPERCLIP_ISSUE_TITLE = input.issue?.title ?? "";
+  env.PAPERCLIP_TASK_ID = input.task?.id ?? "";
+  env.PAPERCLIP_TASK_IDENTIFIER = input.task?.identifier ?? "";
+  env.PAPERCLIP_TASK_TITLE = input.task?.title ?? "";
   return env;
 }
 
@@ -894,7 +894,7 @@ async function provisionExecutionWorktree(input: {
   repoRoot: string;
   worktreePath: string;
   branchName: string;
-  issue: ExecutionWorkspaceIssueRef | null;
+  task: ExecutionWorkspaceTaskRef | null;
   agent: ExecutionWorkspaceAgentRef;
   created: boolean;
   recorder?: WorkspaceOperationRecorder | null;
@@ -913,7 +913,7 @@ async function provisionExecutionWorktree(input: {
       repoRoot: input.repoRoot,
       worktreePath: input.worktreePath,
       branchName: input.branchName,
-      issue: input.issue,
+      task: input.task,
       agent: input.agent,
       created: input.created,
     }),
@@ -938,7 +938,7 @@ function buildExecutionWorkspaceCleanupEnv(input: {
     baseRef: string | null;
     projectId: string | null;
     projectWorkspaceId: string | null;
-    sourceIssueId: string | null;
+    sourceTaskId: string | null;
   };
   projectWorkspaceCwd?: string | null;
 }) {
@@ -954,7 +954,7 @@ function buildExecutionWorkspaceCleanupEnv(input: {
   env.PAPERCLIP_WORKSPACE_REPO_REF = input.workspace.baseRef ?? "";
   env.PAPERCLIP_PROJECT_ID = input.workspace.projectId ?? "";
   env.PAPERCLIP_PROJECT_WORKSPACE_ID = input.workspace.projectWorkspaceId ?? "";
-  env.PAPERCLIP_ISSUE_ID = input.workspace.sourceIssueId ?? "";
+  env.PAPERCLIP_TASK_ID = input.workspace.sourceTaskId ?? "";
   return env;
 }
 
@@ -981,7 +981,7 @@ async function resolveGitRepoRootForWorkspaceCleanup(
 export async function realizeExecutionWorkspace(input: {
   base: ExecutionWorkspaceInput;
   config: Record<string, unknown>;
-  issue: ExecutionWorkspaceIssueRef | null;
+  task: ExecutionWorkspaceTaskRef | null;
   agent: ExecutionWorkspaceAgentRef;
   recorder?: WorkspaceOperationRecorder | null;
 }): Promise<RealizedExecutionWorkspace> {
@@ -1000,9 +1000,9 @@ export async function realizeExecutionWorkspace(input: {
   }
 
   const repoRoot = await resolveGitOwnerRepoRoot(input.base.baseCwd);
-  const branchTemplate = asString(rawStrategy.branchTemplate, "{{issue.identifier}}-{{slug}}");
+  const branchTemplate = asString(rawStrategy.branchTemplate, "{{task.identifier}}-{{slug}}");
   const renderedBranch = renderWorkspaceTemplate(branchTemplate, {
-    issue: input.issue,
+    task: input.task,
     agent: input.agent,
     projectId: input.base.projectId,
     repoRef: input.base.repoRef,
@@ -1048,7 +1048,7 @@ export async function realizeExecutionWorkspace(input: {
       repoRoot,
       worktreePath: reusablePath,
       branchName,
-      issue: input.issue,
+      task: input.task,
       agent: input.agent,
       created: false,
       recorder: input.recorder ?? null,
@@ -1144,7 +1144,7 @@ export async function realizeExecutionWorkspace(input: {
     repoRoot,
     worktreePath,
     branchName,
-    issue: input.issue,
+    task: input.task,
     agent: input.agent,
     created: true,
     recorder: input.recorder ?? null,
@@ -1177,7 +1177,7 @@ export async function ensurePersistedExecutionWorkspaceAvailable(input: {
       provisionCommand?: string | null;
     } | null;
   };
-  issue: ExecutionWorkspaceIssueRef | null;
+  task: ExecutionWorkspaceTaskRef | null;
   agent: ExecutionWorkspaceAgentRef;
   recorder?: WorkspaceOperationRecorder | null;
 }): Promise<RealizedExecutionWorkspace | null> {
@@ -1216,7 +1216,7 @@ export async function ensurePersistedExecutionWorkspaceAvailable(input: {
         repoRoot,
         worktreePath: realized.worktreePath ?? cwd,
         branchName: realized.branchName ?? "",
-        issue: input.issue,
+        task: input.task,
         agent: input.agent,
         created: false,
         recorder: input.recorder ?? null,
@@ -1288,7 +1288,7 @@ export async function ensurePersistedExecutionWorkspaceAvailable(input: {
     repoRoot,
     worktreePath,
     branchName,
-    issue: input.issue,
+    task: input.task,
     agent: input.agent,
     created,
     recorder: input.recorder ?? null,
@@ -1313,7 +1313,7 @@ export async function cleanupExecutionWorkspaceArtifacts(input: {
     baseRef: string | null;
     projectId: string | null;
     projectWorkspaceId: string | null;
-    sourceIssueId: string | null;
+    sourceTaskId: string | null;
     metadata?: Record<string, unknown> | null;
   };
   projectWorkspace?: {
@@ -1487,7 +1487,7 @@ async function allocatePort(): Promise<number> {
 function buildTemplateData(input: {
   workspace: RealizedExecutionWorkspace;
   agent: ExecutionWorkspaceAgentRef;
-  issue: ExecutionWorkspaceIssueRef | null;
+  task: ExecutionWorkspaceTaskRef | null;
   adapterEnv: Record<string, string>;
   port: number | null;
 }) {
@@ -1500,10 +1500,10 @@ function buildTemplateData(input: {
       repoRef: input.workspace.repoRef ?? "",
       env: input.adapterEnv,
     },
-    issue: {
-      id: input.issue?.id ?? "",
-      identifier: input.issue?.identifier ?? "",
-      title: input.issue?.title ?? "",
+    task: {
+      id: input.task?.id ?? "",
+      identifier: input.task?.identifier ?? "",
+      title: input.task?.title ?? "",
     },
     agent: {
       id: input.agent.id ?? "",
@@ -1529,7 +1529,7 @@ function resolveRuntimeServiceReuseIdentity(input: {
   service: Record<string, unknown>;
   workspace: RealizedExecutionWorkspace;
   agent: ExecutionWorkspaceAgentRef;
-  issue: ExecutionWorkspaceIssueRef | null;
+  task: ExecutionWorkspaceTaskRef | null;
   adapterEnv: Record<string, string>;
   scopeType: RuntimeServiceRef["scopeType"];
   scopeId: string | null;
@@ -1555,7 +1555,7 @@ function resolveRuntimeServiceReuseIdentity(input: {
   const templateData = buildTemplateData({
     workspace: input.workspace,
     agent: input.agent,
-    issue: input.issue,
+    task: input.task,
     adapterEnv: input.adapterEnv,
     port: identityPort,
   });
@@ -1599,7 +1599,7 @@ function resolveWorkspaceCommandExecution(input: {
   command: Record<string, unknown>;
   workspace: RealizedExecutionWorkspace;
   agent: ExecutionWorkspaceAgentRef;
-  issue: ExecutionWorkspaceIssueRef | null;
+  task: ExecutionWorkspaceTaskRef | null;
   adapterEnv: Record<string, string>;
 }) {
   const name =
@@ -1611,7 +1611,7 @@ function resolveWorkspaceCommandExecution(input: {
   const templateData = buildTemplateData({
     workspace: input.workspace,
     agent: input.agent,
-    issue: input.issue,
+    task: input.task,
     adapterEnv: input.adapterEnv,
     port: null,
   });
@@ -1638,7 +1638,7 @@ function resolveWorkspaceCommandExecution(input: {
 
 export async function runWorkspaceJobForControl(input: {
   actor: ExecutionWorkspaceAgentRef;
-  issue: ExecutionWorkspaceIssueRef | null;
+  task: ExecutionWorkspaceTaskRef | null;
   workspace: RealizedExecutionWorkspace;
   command: Record<string, unknown>;
   adapterEnv?: Record<string, string>;
@@ -1649,7 +1649,7 @@ export async function runWorkspaceJobForControl(input: {
     command: input.command,
     workspace: input.workspace,
     agent: input.actor,
-    issue: input.issue,
+    task: input.task,
     adapterEnv: input.adapterEnv ?? {},
   });
   if (!resolved.command) {
@@ -1676,7 +1676,7 @@ function resolveServiceScopeId(input: {
   service: Record<string, unknown>;
   workspace: RealizedExecutionWorkspace;
   executionWorkspaceId?: string | null;
-  issue: ExecutionWorkspaceIssueRef | null;
+  task: ExecutionWorkspaceTaskRef | null;
   runId: string;
   agent: ExecutionWorkspaceAgentRef;
 }): {
@@ -1754,7 +1754,7 @@ function toPersistedWorkspaceRuntimeService(record: RuntimeServiceRecord): typeo
     projectId: record.projectId,
     projectWorkspaceId: record.projectWorkspaceId,
     executionWorkspaceId: record.executionWorkspaceId,
-    issueId: record.issueId,
+    taskId: record.taskId,
     scopeType: record.scopeType,
     scopeId: record.scopeId,
     serviceName: record.serviceName,
@@ -1790,7 +1790,7 @@ async function persistRuntimeServiceRecord(db: Db | undefined, record: RuntimeSe
         projectId: values.projectId,
         projectWorkspaceId: values.projectWorkspaceId,
         executionWorkspaceId: values.executionWorkspaceId,
-        issueId: values.issueId,
+        taskId: values.taskId,
         scopeType: values.scopeType,
         scopeId: values.scopeId,
         serviceName: values.serviceName,
@@ -1825,7 +1825,7 @@ export function normalizeAdapterManagedRuntimeServices(input: {
   adapterType: string;
   runId: string;
   agent: ExecutionWorkspaceAgentRef;
-  issue: ExecutionWorkspaceIssueRef | null;
+  task: ExecutionWorkspaceTaskRef | null;
   workspace: RealizedExecutionWorkspace;
   executionWorkspaceId?: string | null;
   reports: AdapterRuntimeServiceReport[];
@@ -1865,7 +1865,7 @@ export function normalizeAdapterManagedRuntimeServices(input: {
       projectId: report.projectId ?? input.workspace.projectId,
       projectWorkspaceId: report.projectWorkspaceId ?? input.workspace.workspaceId,
       executionWorkspaceId: input.executionWorkspaceId ?? null,
-      issueId: report.issueId ?? input.issue?.id ?? null,
+      taskId: report.taskId ?? input.task?.id ?? null,
       serviceName,
       status,
       lifecycle,
@@ -1896,7 +1896,7 @@ async function startLocalRuntimeService(input: {
   leaseRunId?: string | null;
   startedByRunId?: string | null;
   agent: ExecutionWorkspaceAgentRef;
-  issue: ExecutionWorkspaceIssueRef | null;
+  task: ExecutionWorkspaceTaskRef | null;
   workspace: RealizedExecutionWorkspace;
   executionWorkspaceId?: string | null;
   adapterEnv: Record<string, string>;
@@ -1912,7 +1912,7 @@ async function startLocalRuntimeService(input: {
     service: input.service,
     workspace: input.workspace,
     agent: input.agent,
-    issue: input.issue,
+    task: input.task,
     adapterEnv: input.adapterEnv,
     scopeType: input.scopeType,
     scopeId: input.scopeId,
@@ -1936,7 +1936,7 @@ async function startLocalRuntimeService(input: {
   const templateData = buildTemplateData({
     workspace: input.workspace,
     agent: input.agent,
-    issue: input.issue,
+    task: input.task,
     adapterEnv: input.adapterEnv,
     port,
   });
@@ -1991,7 +1991,7 @@ async function startLocalRuntimeService(input: {
       projectId: input.workspace.projectId,
       projectWorkspaceId: input.workspace.workspaceId,
       executionWorkspaceId: input.executionWorkspaceId ?? null,
-      issueId: input.issue?.id ?? null,
+      taskId: input.task?.id ?? null,
       serviceName,
       status: "running",
       lifecycle,
@@ -2078,7 +2078,7 @@ async function startLocalRuntimeService(input: {
     projectId: input.workspace.projectId,
     projectWorkspaceId: input.workspace.workspaceId,
     executionWorkspaceId: input.executionWorkspaceId ?? null,
-    issueId: input.issue?.id ?? null,
+    taskId: input.task?.id ?? null,
     serviceName,
     status: "running",
     lifecycle,
@@ -2131,7 +2131,7 @@ async function startLocalRuntimeService(input: {
         projectId: record.projectId,
         projectWorkspaceId: record.projectWorkspaceId,
         executionWorkspaceId: record.executionWorkspaceId,
-        issueId: record.issueId,
+        taskId: record.taskId,
         scopeType: record.scopeType,
         scopeId: record.scopeId,
       },
@@ -2321,7 +2321,7 @@ export async function ensureRuntimeServicesForRun(input: {
   db?: Db;
   runId: string;
   agent: ExecutionWorkspaceAgentRef;
-  issue: ExecutionWorkspaceIssueRef | null;
+  task: ExecutionWorkspaceTaskRef | null;
   workspace: RealizedExecutionWorkspace;
   executionWorkspaceId?: string | null;
   config: Record<string, unknown>;
@@ -2344,7 +2344,7 @@ export async function ensureRuntimeServicesForRun(input: {
         service,
         workspace: input.workspace,
         executionWorkspaceId: input.executionWorkspaceId,
-        issue: input.issue,
+        task: input.task,
         runId: input.runId,
         agent: input.agent,
       });
@@ -2352,7 +2352,7 @@ export async function ensureRuntimeServicesForRun(input: {
         service,
         workspace: input.workspace,
         agent: input.agent,
-        issue: input.issue,
+        task: input.task,
         adapterEnv: input.adapterEnv,
         scopeType,
         scopeId,
@@ -2381,7 +2381,7 @@ export async function ensureRuntimeServicesForRun(input: {
         db: input.db,
         runId: input.runId,
         agent: input.agent,
-        issue: input.issue,
+        task: input.task,
         workspace: input.workspace,
         executionWorkspaceId: input.executionWorkspaceId,
         adapterEnv: input.adapterEnv,
@@ -2408,7 +2408,7 @@ export async function startRuntimeServicesForWorkspaceControl(input: {
   db?: Db;
   invocationId?: string;
   actor: ExecutionWorkspaceAgentRef;
-  issue: ExecutionWorkspaceIssueRef | null;
+  task: ExecutionWorkspaceTaskRef | null;
   workspace: RealizedExecutionWorkspace;
   executionWorkspaceId?: string | null;
   config: Record<string, unknown>;
@@ -2432,7 +2432,7 @@ export async function startRuntimeServicesForWorkspaceControl(input: {
       service,
       workspace: input.workspace,
       executionWorkspaceId: input.executionWorkspaceId,
-      issue: input.issue,
+      task: input.task,
       runId: invocationId,
       agent: input.actor,
     });
@@ -2440,7 +2440,7 @@ export async function startRuntimeServicesForWorkspaceControl(input: {
       service,
       workspace: input.workspace,
       agent: input.actor,
-      issue: input.issue,
+      task: input.task,
       adapterEnv: input.adapterEnv,
       scopeType,
       scopeId,
@@ -2471,7 +2471,7 @@ export async function startRuntimeServicesForWorkspaceControl(input: {
       leaseRunId: null,
       startedByRunId: null,
       agent: input.actor,
-      issue: input.issue,
+      task: input.task,
       workspace: input.workspace,
       executionWorkspaceId: input.executionWorkspaceId,
       adapterEnv: input.adapterEnv,
@@ -2653,7 +2653,7 @@ export async function reconcilePersistedRuntimeServicesOnStartup(db: Db) {
           projectId: row.projectId ?? null,
           projectWorkspaceId: row.projectWorkspaceId ?? null,
           executionWorkspaceId: row.executionWorkspaceId ?? null,
-          issueId: row.issueId ?? null,
+          taskId: row.taskId ?? null,
           serviceName: row.serviceName,
           status: "running",
           lifecycle: row.lifecycle as RuntimeServiceRecord["lifecycle"],
@@ -2735,7 +2735,7 @@ export async function restartDesiredRuntimeServicesOnStartup(db: Db) {
       const refs = await startRuntimeServicesForWorkspaceControl({
         db,
         actor: { id: null, name: "Paperclip", companyId: row.companyId },
-        issue: null,
+        task: null,
         workspace: {
           baseCwd: row.cwd,
           source: "project_primary",
@@ -2783,9 +2783,9 @@ export async function restartDesiredRuntimeServicesOnStartup(db: Db) {
       const refs = await startRuntimeServicesForWorkspaceControl({
         db,
         actor: { id: null, name: "Paperclip", companyId: row.companyId },
-        issue: row.sourceIssueId
+        task: row.sourceTaskId
           ? {
-              id: row.sourceIssueId,
+              id: row.sourceTaskId,
               identifier: null,
               title: row.name,
             }
@@ -2827,7 +2827,7 @@ export async function persistAdapterManagedRuntimeServices(input: {
   adapterType: string;
   runId: string;
   agent: ExecutionWorkspaceAgentRef;
-  issue: ExecutionWorkspaceIssueRef | null;
+  task: ExecutionWorkspaceTaskRef | null;
   workspace: RealizedExecutionWorkspace;
   executionWorkspaceId?: string | null;
   reports: AdapterRuntimeServiceReport[];
@@ -2853,7 +2853,7 @@ export async function persistAdapterManagedRuntimeServices(input: {
         projectId: ref.projectId,
         projectWorkspaceId: ref.projectWorkspaceId,
         executionWorkspaceId: ref.executionWorkspaceId,
-        issueId: ref.issueId,
+        taskId: ref.taskId,
         scopeType: ref.scopeType,
         scopeId: ref.scopeId,
         serviceName: ref.serviceName,
@@ -2882,7 +2882,7 @@ export async function persistAdapterManagedRuntimeServices(input: {
           projectId: ref.projectId,
           projectWorkspaceId: ref.projectWorkspaceId,
           executionWorkspaceId: ref.executionWorkspaceId,
-          issueId: ref.issueId,
+          taskId: ref.taskId,
           scopeType: ref.scopeType,
           scopeId: ref.scopeId,
           serviceName: ref.serviceName,

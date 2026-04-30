@@ -18,8 +18,8 @@ const mockHeartbeatService = vi.hoisted(() => ({
   wakeup: vi.fn(),
 }));
 
-const mockIssueApprovalService = vi.hoisted(() => ({
-  listIssuesForApproval: vi.fn(),
+const mockTaskApprovalService = vi.hoisted(() => ({
+  listTasksForApproval: vi.fn(),
   linkManyForApproval: vi.fn(),
 }));
 
@@ -33,7 +33,7 @@ function registerModuleMocks() {
   vi.doMock("../services/index.js", () => ({
     approvalService: () => mockApprovalService,
     heartbeatService: () => mockHeartbeatService,
-    issueApprovalService: () => mockIssueApprovalService,
+    taskApprovalService: () => mockTaskApprovalService,
     logActivity: mockLogActivity,
     secretService: () => mockSecretService,
   }));
@@ -103,12 +103,12 @@ describe("approval routes idempotent retries", () => {
     mockApprovalService.listComments.mockReset();
     mockApprovalService.addComment.mockReset();
     mockHeartbeatService.wakeup.mockReset();
-    mockIssueApprovalService.listIssuesForApproval.mockReset();
-    mockIssueApprovalService.linkManyForApproval.mockReset();
+    mockTaskApprovalService.listTasksForApproval.mockReset();
+    mockTaskApprovalService.linkManyForApproval.mockReset();
     mockSecretService.normalizeHireApprovalPayloadForPersistence.mockReset();
     mockLogActivity.mockReset();
     mockHeartbeatService.wakeup.mockResolvedValue({ id: "wake-1" });
-    mockIssueApprovalService.listIssuesForApproval.mockResolvedValue([{ id: "issue-1" }]);
+    mockTaskApprovalService.listTasksForApproval.mockResolvedValue([{ id: "task-1" }]);
     mockLogActivity.mockResolvedValue(undefined);
   });
 
@@ -138,7 +138,7 @@ describe("approval routes idempotent retries", () => {
       .send({});
 
     expect(res.status).toBe(200);
-    expect(mockIssueApprovalService.listIssuesForApproval).not.toHaveBeenCalled();
+    expect(mockTaskApprovalService.listTasksForApproval).not.toHaveBeenCalled();
     expect(mockHeartbeatService.wakeup).not.toHaveBeenCalled();
     expect(mockLogActivity).not.toHaveBeenCalled();
   });
@@ -288,7 +288,7 @@ describe("approval routes idempotent retries", () => {
     );
   });
 
-  it("lets agents create generic issue-linked board approval requests", async () => {
+  it("lets agents create generic task-linked board approval requests", async () => {
     mockApprovalService.create.mockResolvedValue({
       id: "approval-1",
       companyId: "company-1",
@@ -308,7 +308,7 @@ describe("approval routes idempotent retries", () => {
       .post("/api/companies/company-1/approvals")
       .send({
         type: "request_board_approval",
-        issueIds: ["00000000-0000-0000-0000-000000000001"],
+        taskIds: ["00000000-0000-0000-0000-000000000001"],
         payload: { title: "Approve hosting spend" },
       });
 
@@ -321,7 +321,7 @@ describe("approval routes idempotent retries", () => {
       status: "pending",
     });
     expect(mockSecretService.normalizeHireApprovalPayloadForPersistence).not.toHaveBeenCalled();
-    expect(mockIssueApprovalService.linkManyForApproval).toHaveBeenCalledWith(
+    expect(mockTaskApprovalService.linkManyForApproval).toHaveBeenCalledWith(
       "approval-1",
       ["00000000-0000-0000-0000-000000000001"],
       { agentId: "agent-1", userId: null },

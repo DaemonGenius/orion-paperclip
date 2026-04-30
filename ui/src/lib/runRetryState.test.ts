@@ -4,7 +4,7 @@ import { describeRunRetryState, formatRetryReason } from "./runRetryState";
 describe("runRetryState", () => {
   it("formats internal retry reasons for operators", () => {
     expect(formatRetryReason("transient_failure")).toBe("Transient failure");
-    expect(formatRetryReason("issue_continuation_needed")).toBe("Continuation needed");
+    expect(formatRetryReason("task_continuation_needed")).toBe("Continuation needed");
     expect(formatRetryReason("custom_reason")).toBe("custom reason");
   });
 

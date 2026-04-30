@@ -5,7 +5,7 @@ import { normalizeMarkdown } from "./normalize-markdown";
 
 /**
  * MDXEditor/Lexical plugin that intercepts paste events and normalizes
- * markdown content before the editor processes it. Fixes issues with
+ * markdown content before the editor processes it. Fixes tasks with
  * extra leading spaces when pasting from terminals or consoles.
  */
 export const pasteNormalizationPlugin = realmPlugin({

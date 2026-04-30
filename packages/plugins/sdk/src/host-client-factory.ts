@@ -158,41 +158,41 @@ export interface HostServices {
     get(params: WorkerToHostMethods["companies.get"][0]): Promise<WorkerToHostMethods["companies.get"][1]>;
   };
 
-  /** Provides `projects.list`, `projects.get`, `projects.listWorkspaces`, `projects.getPrimaryWorkspace`, `projects.getWorkspaceForIssue`. */
+  /** Provides `projects.list`, `projects.get`, `projects.listWorkspaces`, `projects.getPrimaryWorkspace`, `projects.getWorkspaceForTask`. */
   projects: {
     list(params: WorkerToHostMethods["projects.list"][0]): Promise<WorkerToHostMethods["projects.list"][1]>;
     get(params: WorkerToHostMethods["projects.get"][0]): Promise<WorkerToHostMethods["projects.get"][1]>;
     listWorkspaces(params: WorkerToHostMethods["projects.listWorkspaces"][0]): Promise<WorkerToHostMethods["projects.listWorkspaces"][1]>;
     getPrimaryWorkspace(params: WorkerToHostMethods["projects.getPrimaryWorkspace"][0]): Promise<WorkerToHostMethods["projects.getPrimaryWorkspace"][1]>;
-    getWorkspaceForIssue(params: WorkerToHostMethods["projects.getWorkspaceForIssue"][0]): Promise<WorkerToHostMethods["projects.getWorkspaceForIssue"][1]>;
+    getWorkspaceForTask(params: WorkerToHostMethods["projects.getWorkspaceForTask"][0]): Promise<WorkerToHostMethods["projects.getWorkspaceForTask"][1]>;
   };
 
-  /** Provides issue read/write, relation, checkout, wakeup, summary, comment methods. */
-  issues: {
-    list(params: WorkerToHostMethods["issues.list"][0]): Promise<WorkerToHostMethods["issues.list"][1]>;
-    get(params: WorkerToHostMethods["issues.get"][0]): Promise<WorkerToHostMethods["issues.get"][1]>;
-    create(params: WorkerToHostMethods["issues.create"][0]): Promise<WorkerToHostMethods["issues.create"][1]>;
-    update(params: WorkerToHostMethods["issues.update"][0]): Promise<WorkerToHostMethods["issues.update"][1]>;
-    getRelations(params: WorkerToHostMethods["issues.relations.get"][0]): Promise<WorkerToHostMethods["issues.relations.get"][1]>;
-    setBlockedBy(params: WorkerToHostMethods["issues.relations.setBlockedBy"][0]): Promise<WorkerToHostMethods["issues.relations.setBlockedBy"][1]>;
-    addBlockers(params: WorkerToHostMethods["issues.relations.addBlockers"][0]): Promise<WorkerToHostMethods["issues.relations.addBlockers"][1]>;
-    removeBlockers(params: WorkerToHostMethods["issues.relations.removeBlockers"][0]): Promise<WorkerToHostMethods["issues.relations.removeBlockers"][1]>;
-    assertCheckoutOwner(params: WorkerToHostMethods["issues.assertCheckoutOwner"][0]): Promise<WorkerToHostMethods["issues.assertCheckoutOwner"][1]>;
-    getSubtree(params: WorkerToHostMethods["issues.getSubtree"][0]): Promise<WorkerToHostMethods["issues.getSubtree"][1]>;
-    requestWakeup(params: WorkerToHostMethods["issues.requestWakeup"][0]): Promise<WorkerToHostMethods["issues.requestWakeup"][1]>;
-    requestWakeups(params: WorkerToHostMethods["issues.requestWakeups"][0]): Promise<WorkerToHostMethods["issues.requestWakeups"][1]>;
-    getOrchestrationSummary(params: WorkerToHostMethods["issues.summaries.getOrchestration"][0]): Promise<WorkerToHostMethods["issues.summaries.getOrchestration"][1]>;
-    listComments(params: WorkerToHostMethods["issues.listComments"][0]): Promise<WorkerToHostMethods["issues.listComments"][1]>;
-    createComment(params: WorkerToHostMethods["issues.createComment"][0]): Promise<WorkerToHostMethods["issues.createComment"][1]>;
-    createInteraction(params: WorkerToHostMethods["issues.createInteraction"][0]): Promise<WorkerToHostMethods["issues.createInteraction"][1]>;
+  /** Provides task read/write, relation, checkout, wakeup, summary, comment methods. */
+  tasks: {
+    list(params: WorkerToHostMethods["tasks.list"][0]): Promise<WorkerToHostMethods["tasks.list"][1]>;
+    get(params: WorkerToHostMethods["tasks.get"][0]): Promise<WorkerToHostMethods["tasks.get"][1]>;
+    create(params: WorkerToHostMethods["tasks.create"][0]): Promise<WorkerToHostMethods["tasks.create"][1]>;
+    update(params: WorkerToHostMethods["tasks.update"][0]): Promise<WorkerToHostMethods["tasks.update"][1]>;
+    getRelations(params: WorkerToHostMethods["tasks.relations.get"][0]): Promise<WorkerToHostMethods["tasks.relations.get"][1]>;
+    setBlockedBy(params: WorkerToHostMethods["tasks.relations.setBlockedBy"][0]): Promise<WorkerToHostMethods["tasks.relations.setBlockedBy"][1]>;
+    addBlockers(params: WorkerToHostMethods["tasks.relations.addBlockers"][0]): Promise<WorkerToHostMethods["tasks.relations.addBlockers"][1]>;
+    removeBlockers(params: WorkerToHostMethods["tasks.relations.removeBlockers"][0]): Promise<WorkerToHostMethods["tasks.relations.removeBlockers"][1]>;
+    assertCheckoutOwner(params: WorkerToHostMethods["tasks.assertCheckoutOwner"][0]): Promise<WorkerToHostMethods["tasks.assertCheckoutOwner"][1]>;
+    getSubtree(params: WorkerToHostMethods["tasks.getSubtree"][0]): Promise<WorkerToHostMethods["tasks.getSubtree"][1]>;
+    requestWakeup(params: WorkerToHostMethods["tasks.requestWakeup"][0]): Promise<WorkerToHostMethods["tasks.requestWakeup"][1]>;
+    requestWakeups(params: WorkerToHostMethods["tasks.requestWakeups"][0]): Promise<WorkerToHostMethods["tasks.requestWakeups"][1]>;
+    getOrchestrationSummary(params: WorkerToHostMethods["tasks.summaries.getOrchestration"][0]): Promise<WorkerToHostMethods["tasks.summaries.getOrchestration"][1]>;
+    listComments(params: WorkerToHostMethods["tasks.listComments"][0]): Promise<WorkerToHostMethods["tasks.listComments"][1]>;
+    createComment(params: WorkerToHostMethods["tasks.createComment"][0]): Promise<WorkerToHostMethods["tasks.createComment"][1]>;
+    createInteraction(params: WorkerToHostMethods["tasks.createInteraction"][0]): Promise<WorkerToHostMethods["tasks.createInteraction"][1]>;
   };
 
-  /** Provides `issues.documents.list`, `issues.documents.get`, `issues.documents.upsert`, `issues.documents.delete`. */
-  issueDocuments: {
-    list(params: WorkerToHostMethods["issues.documents.list"][0]): Promise<WorkerToHostMethods["issues.documents.list"][1]>;
-    get(params: WorkerToHostMethods["issues.documents.get"][0]): Promise<WorkerToHostMethods["issues.documents.get"][1]>;
-    upsert(params: WorkerToHostMethods["issues.documents.upsert"][0]): Promise<WorkerToHostMethods["issues.documents.upsert"][1]>;
-    delete(params: WorkerToHostMethods["issues.documents.delete"][0]): Promise<WorkerToHostMethods["issues.documents.delete"][1]>;
+  /** Provides `tasks.documents.list`, `tasks.documents.get`, `tasks.documents.upsert`, `tasks.documents.delete`. */
+  taskDocuments: {
+    list(params: WorkerToHostMethods["tasks.documents.list"][0]): Promise<WorkerToHostMethods["tasks.documents.list"][1]>;
+    get(params: WorkerToHostMethods["tasks.documents.get"][0]): Promise<WorkerToHostMethods["tasks.documents.get"][1]>;
+    upsert(params: WorkerToHostMethods["tasks.documents.upsert"][0]): Promise<WorkerToHostMethods["tasks.documents.upsert"][1]>;
+    delete(params: WorkerToHostMethods["tasks.documents.delete"][0]): Promise<WorkerToHostMethods["tasks.documents.delete"][1]>;
   };
 
   /** Provides `agents.list`, `agents.get`, `agents.pause`, `agents.resume`, `agents.invoke`. */
@@ -325,31 +325,31 @@ const METHOD_CAPABILITY_MAP: Record<WorkerToHostMethodName, PluginCapability | n
   "projects.get": "projects.read",
   "projects.listWorkspaces": "project.workspaces.read",
   "projects.getPrimaryWorkspace": "project.workspaces.read",
-  "projects.getWorkspaceForIssue": "project.workspaces.read",
+  "projects.getWorkspaceForTask": "project.workspaces.read",
 
-  // Issues
-  "issues.list": "issues.read",
-  "issues.get": "issues.read",
-  "issues.create": "issues.create",
-  "issues.update": "issues.update",
-  "issues.relations.get": "issue.relations.read",
-  "issues.relations.setBlockedBy": "issue.relations.write",
-  "issues.relations.addBlockers": "issue.relations.write",
-  "issues.relations.removeBlockers": "issue.relations.write",
-  "issues.assertCheckoutOwner": "issues.checkout",
-  "issues.getSubtree": "issue.subtree.read",
-  "issues.requestWakeup": "issues.wakeup",
-  "issues.requestWakeups": "issues.wakeup",
-  "issues.summaries.getOrchestration": "issues.orchestration.read",
-  "issues.listComments": "issue.comments.read",
-  "issues.createComment": "issue.comments.create",
-  "issues.createInteraction": "issue.interactions.create",
+  // Tasks
+  "tasks.list": "tasks.read",
+  "tasks.get": "tasks.read",
+  "tasks.create": "tasks.create",
+  "tasks.update": "tasks.update",
+  "tasks.relations.get": "task.relations.read",
+  "tasks.relations.setBlockedBy": "task.relations.write",
+  "tasks.relations.addBlockers": "task.relations.write",
+  "tasks.relations.removeBlockers": "task.relations.write",
+  "tasks.assertCheckoutOwner": "tasks.checkout",
+  "tasks.getSubtree": "task.subtree.read",
+  "tasks.requestWakeup": "tasks.wakeup",
+  "tasks.requestWakeups": "tasks.wakeup",
+  "tasks.summaries.getOrchestration": "tasks.orchestration.read",
+  "tasks.listComments": "task.comments.read",
+  "tasks.createComment": "task.comments.create",
+  "tasks.createInteraction": "task.interactions.create",
 
-  // Issue Documents
-  "issues.documents.list": "issue.documents.read",
-  "issues.documents.get": "issue.documents.read",
-  "issues.documents.upsert": "issue.documents.write",
-  "issues.documents.delete": "issue.documents.write",
+  // Task Documents
+  "tasks.documents.list": "task.documents.read",
+  "tasks.documents.get": "task.documents.read",
+  "tasks.documents.upsert": "task.documents.write",
+  "tasks.documents.delete": "task.documents.write",
 
   // Agents
   "agents.list": "agents.read",
@@ -527,72 +527,72 @@ export function createHostClientHandlers(
     "projects.getPrimaryWorkspace": gated("projects.getPrimaryWorkspace", async (params) => {
       return services.projects.getPrimaryWorkspace(params);
     }),
-    "projects.getWorkspaceForIssue": gated("projects.getWorkspaceForIssue", async (params) => {
-      return services.projects.getWorkspaceForIssue(params);
+    "projects.getWorkspaceForTask": gated("projects.getWorkspaceForTask", async (params) => {
+      return services.projects.getWorkspaceForTask(params);
     }),
 
-    // Issues
-    "issues.list": gated("issues.list", async (params) => {
-      return services.issues.list(params);
+    // Tasks
+    "tasks.list": gated("tasks.list", async (params) => {
+      return services.tasks.list(params);
     }),
-    "issues.get": gated("issues.get", async (params) => {
-      return services.issues.get(params);
+    "tasks.get": gated("tasks.get", async (params) => {
+      return services.tasks.get(params);
     }),
-    "issues.create": gated("issues.create", async (params) => {
-      return services.issues.create(params);
+    "tasks.create": gated("tasks.create", async (params) => {
+      return services.tasks.create(params);
     }),
-    "issues.update": gated("issues.update", async (params) => {
-      return services.issues.update(params);
+    "tasks.update": gated("tasks.update", async (params) => {
+      return services.tasks.update(params);
     }),
-    "issues.relations.get": gated("issues.relations.get", async (params) => {
-      return services.issues.getRelations(params);
+    "tasks.relations.get": gated("tasks.relations.get", async (params) => {
+      return services.tasks.getRelations(params);
     }),
-    "issues.relations.setBlockedBy": gated("issues.relations.setBlockedBy", async (params) => {
-      return services.issues.setBlockedBy(params);
+    "tasks.relations.setBlockedBy": gated("tasks.relations.setBlockedBy", async (params) => {
+      return services.tasks.setBlockedBy(params);
     }),
-    "issues.relations.addBlockers": gated("issues.relations.addBlockers", async (params) => {
-      return services.issues.addBlockers(params);
+    "tasks.relations.addBlockers": gated("tasks.relations.addBlockers", async (params) => {
+      return services.tasks.addBlockers(params);
     }),
-    "issues.relations.removeBlockers": gated("issues.relations.removeBlockers", async (params) => {
-      return services.issues.removeBlockers(params);
+    "tasks.relations.removeBlockers": gated("tasks.relations.removeBlockers", async (params) => {
+      return services.tasks.removeBlockers(params);
     }),
-    "issues.assertCheckoutOwner": gated("issues.assertCheckoutOwner", async (params) => {
-      return services.issues.assertCheckoutOwner(params);
+    "tasks.assertCheckoutOwner": gated("tasks.assertCheckoutOwner", async (params) => {
+      return services.tasks.assertCheckoutOwner(params);
     }),
-    "issues.getSubtree": gated("issues.getSubtree", async (params) => {
-      return services.issues.getSubtree(params);
+    "tasks.getSubtree": gated("tasks.getSubtree", async (params) => {
+      return services.tasks.getSubtree(params);
     }),
-    "issues.requestWakeup": gated("issues.requestWakeup", async (params) => {
-      return services.issues.requestWakeup(params);
+    "tasks.requestWakeup": gated("tasks.requestWakeup", async (params) => {
+      return services.tasks.requestWakeup(params);
     }),
-    "issues.requestWakeups": gated("issues.requestWakeups", async (params) => {
-      return services.issues.requestWakeups(params);
+    "tasks.requestWakeups": gated("tasks.requestWakeups", async (params) => {
+      return services.tasks.requestWakeups(params);
     }),
-    "issues.summaries.getOrchestration": gated("issues.summaries.getOrchestration", async (params) => {
-      return services.issues.getOrchestrationSummary(params);
+    "tasks.summaries.getOrchestration": gated("tasks.summaries.getOrchestration", async (params) => {
+      return services.tasks.getOrchestrationSummary(params);
     }),
-    "issues.listComments": gated("issues.listComments", async (params) => {
-      return services.issues.listComments(params);
+    "tasks.listComments": gated("tasks.listComments", async (params) => {
+      return services.tasks.listComments(params);
     }),
-    "issues.createComment": gated("issues.createComment", async (params) => {
-      return services.issues.createComment(params);
+    "tasks.createComment": gated("tasks.createComment", async (params) => {
+      return services.tasks.createComment(params);
     }),
-    "issues.createInteraction": gated("issues.createInteraction", async (params) => {
-      return services.issues.createInteraction(params);
+    "tasks.createInteraction": gated("tasks.createInteraction", async (params) => {
+      return services.tasks.createInteraction(params);
     }),
 
-    // Issue Documents
-    "issues.documents.list": gated("issues.documents.list", async (params) => {
-      return services.issueDocuments.list(params);
+    // Task Documents
+    "tasks.documents.list": gated("tasks.documents.list", async (params) => {
+      return services.taskDocuments.list(params);
     }),
-    "issues.documents.get": gated("issues.documents.get", async (params) => {
-      return services.issueDocuments.get(params);
+    "tasks.documents.get": gated("tasks.documents.get", async (params) => {
+      return services.taskDocuments.get(params);
     }),
-    "issues.documents.upsert": gated("issues.documents.upsert", async (params) => {
-      return services.issueDocuments.upsert(params);
+    "tasks.documents.upsert": gated("tasks.documents.upsert", async (params) => {
+      return services.taskDocuments.upsert(params);
     }),
-    "issues.documents.delete": gated("issues.documents.delete", async (params) => {
-      return services.issueDocuments.delete(params);
+    "tasks.documents.delete": gated("tasks.documents.delete", async (params) => {
+      return services.taskDocuments.delete(params);
     }),
 
     // Agents

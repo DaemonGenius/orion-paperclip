@@ -27,7 +27,7 @@ After reviewing the code and local run data, the token problem appears to have f
 
 1. **Measurement inflation on sessioned adapters.** Some token counters, especially for `codex_local`, appear to be recorded as cumulative session totals instead of per-heartbeat deltas.
 2. **Avoidable session resets.** Task sessions are intentionally reset on timer wakes and manual wakes, which destroys cache locality for common heartbeat paths.
-3. **Repeated context reacquisition.** The `paperclip` skill tells agents to re-fetch assignments, issue details, ancestors, and full comment threads on every heartbeat. The API does not currently offer efficient delta-oriented alternatives.
+3. **Repeated context reacquisition.** The `paperclip` skill tells agents to re-fetch assignments, task details, ancestors, and full comment threads on every heartbeat. The API does not currently offer efficient delta-oriented alternatives.
 4. **Large static instruction surfaces.** Agent instruction files and globally injected skills are reintroduced at startup even when most of that content is unchanged and not needed for the current task.
 
 The correct approach is:
@@ -68,7 +68,7 @@ This does **not** mean there is no real token problem. It means we need a trustw
 
 In `server/src/services/heartbeat.ts`, `shouldResetTaskSessionForWake(...)` returns `true` for:
 
-- `wakeReason === "issue_assigned"`
+- `wakeReason === "task_assigned"`
 - `wakeSource === "timer"`
 - manual on-demand wakes
 
@@ -87,15 +87,15 @@ So timer wakes are the largest heartbeat path and are mostly not resuming prior 
 The `paperclip` skill currently tells agents to do this on essentially every heartbeat:
 
 - fetch assignments
-- fetch issue details
+- fetch task details
 - fetch ancestor chain
-- fetch full issue comments
+- fetch full task comments
 
 Current API shape reinforces that pattern:
 
-- `GET /api/issues/:id/comments` returns the full thread
+- `GET /api/tasks/:id/comments` returns the full thread
 - there is no `since`, cursor, digest, or summary endpoint for heartbeat consumption
-- `GET /api/issues/:id` returns full enriched issue context, not a minimal delta payload
+- `GET /api/tasks/:id` returns full enriched task context, not a minimal delta payload
 
 This is safe but expensive. It forces the model to repeatedly consume unchanged information.
 
@@ -231,7 +231,7 @@ For `codex_local`, this also requires isolating the Codex skill home per worktre
 - resumed prompts become short and structurally stable
 - cache hit rates improve for session-preserving adapters
 
-## Phase 4: Make issue/task context incremental
+## Phase 4: Make task/task context incremental
 
 This is the biggest product change and likely the biggest real token saver after session reuse.
 
@@ -241,15 +241,15 @@ Add heartbeat-oriented endpoints and skill behavior:
 
 - `GET /api/agents/me/inbox-lite`
   - minimal assignment list
-  - issue id, identifier, status, priority, updatedAt, lastExternalCommentAt
-- `GET /api/issues/:id/heartbeat-context`
-  - compact issue state
+  - task id, identifier, status, priority, updatedAt, lastExternalCommentAt
+- `GET /api/tasks/:id/heartbeat-context`
+  - compact task state
   - parent-chain summary
   - latest execution summary
   - change markers
-- `GET /api/issues/:id/comments?after=<cursor>` or `?since=<timestamp>`
+- `GET /api/tasks/:id/comments?after=<cursor>` or `?since=<timestamp>`
   - return only new comments
-- optional `GET /api/issues/:id/context-digest`
+- optional `GET /api/tasks/:id/context-digest`
   - server-generated compact summary for heartbeat use
 
 Update the `paperclip` skill so the default pattern becomes:
@@ -346,7 +346,7 @@ We should treat this plan as successful only if we improve both efficiency and t
 Primary metrics:
 
 - normalized input tokens per successful heartbeat
-- normalized input tokens per completed issue
+- normalized input tokens per completed task
 - cache-hit ratio for sessioned adapters
 - session reuse rate by invocation source
 - fraction of heartbeats that fetch full comment threads
@@ -357,7 +357,7 @@ Guardrail metrics:
 - blocked-task rate
 - stale-session failure rate
 - manual intervention rate
-- issue reopen rate after agent completion
+- task reopen rate after agent completion
 
 Initial targets:
 

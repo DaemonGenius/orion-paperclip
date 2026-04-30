@@ -37,7 +37,7 @@ These decisions close open questions from `SPEC.md` for V1.
 | Visibility | Full visibility to board and all agents in same company |
 | Communication | Tasks + comments only (no separate chat system) |
 | Task ownership | Single assignee; atomic checkout required for `in_progress` transition |
-| Recovery | No automatic reassignment; control-plane recovery may retry lost execution continuity once, then uses explicit recovery issues or human escalation |
+| Recovery | No automatic reassignment; control-plane recovery may retry lost execution continuity once, then uses explicit recovery tasks or human escalation |
 | Agent adapters | Built-in `process` and `http` adapters |
 | Auth | Mode-dependent human auth (`local_trusted` implicit board in current code; authenticated mode uses sessions), API keys for agents |
 | Budget period | Monthly UTC calendar window |
@@ -48,8 +48,8 @@ These decisions close open questions from `SPEC.md` for V1.
 
 As of 2026-02-17, the repo already includes:
 
-- Node + TypeScript backend with REST CRUD for `agents`, `projects`, `goals`, `issues`, `activity`
-- React UI pages for dashboard/agents/projects/goals/issues lists
+- Node + TypeScript backend with REST CRUD for `agents`, `projects`, `goals`, task records implemented by the existing `tasks` API/storage model, and `activity`
+- React UI pages for dashboard/agents/projects/goals/task lists
 - PostgreSQL schema via Drizzle with embedded PostgreSQL fallback when `DATABASE_URL` is unset
 
 V1 implementation extends this baseline into a company-centric, governance-aware control plane.
@@ -188,15 +188,15 @@ Invariant: at least one root `company` level goal per company.
 
 Invariant:
 
-- project env is merged into run environment for issues in that project and overrides conflicting agent env keys before Paperclip runtime-owned keys are injected
+- project env is merged into run environment for tasks in that project and overrides conflicting agent env keys before Paperclip runtime-owned keys are injected
 
-## 7.6 `issues` (core task entity)
+## 7.6 `tasks` (core task entity; API/storage compatibility name)
 
 - `id` uuid pk
 - `company_id` uuid fk not null
 - `project_id` uuid fk `projects.id` null
 - `goal_id` uuid fk `goals.id` null
-- `parent_id` uuid fk `issues.id` null
+- `parent_id` uuid fk `tasks.id` null
 - `title` text not null
 - `description` text null
 - `status` enum: `backlog | todo | in_progress | in_review | done | blocked | cancelled`
@@ -217,11 +217,11 @@ Invariants:
 - `in_progress` requires assignee
 - terminal states: `done | cancelled`
 
-## 7.7 `issue_comments`
+## 7.7 `task_comments`
 
 - `id` uuid pk
 - `company_id` uuid fk not null
-- `issue_id` uuid fk `issues.id` not null
+- `task_id` uuid fk `tasks.id` not null
 - `author_agent_id` uuid fk `agents.id` null
 - `author_user_id` uuid fk `users.id` null
 - `body` text not null
@@ -244,7 +244,7 @@ Invariants:
 - `id` uuid pk
 - `company_id` uuid fk not null
 - `agent_id` uuid fk `agents.id` not null
-- `issue_id` uuid fk `issues.id` null
+- `task_id` uuid fk `tasks.id` null
 - `project_id` uuid fk `projects.id` null
 - `goal_id` uuid fk `goals.id` null
 - `billing_code` text null
@@ -300,10 +300,10 @@ Operational policy:
 
 - `agents(company_id, status)`
 - `agents(company_id, reports_to)`
-- `issues(company_id, status)`
-- `issues(company_id, assignee_agent_id, status)`
-- `issues(company_id, parent_id)`
-- `issues(company_id, project_id)`
+- `tasks(company_id, status)`
+- `tasks(company_id, assignee_agent_id, status)`
+- `tasks(company_id, parent_id)`
+- `tasks(company_id, project_id)`
 - `cost_events(company_id, occurred_at)`
 - `cost_events(company_id, agent_id, occurred_at)`
 - `heartbeat_runs(company_id, agent_id, started_at desc)`
@@ -311,11 +311,11 @@ Operational policy:
 - `activity_log(company_id, created_at desc)`
 - `assets(company_id, created_at desc)`
 - `assets(company_id, object_key)` unique
-- `issue_attachments(company_id, issue_id)`
+- `task_attachments(company_id, task_id)`
 - `company_secrets(company_id, name)` unique
 - `company_secret_versions(secret_id, version)` unique
 
-## 7.14 `assets` + `issue_attachments`
+## 7.14 `assets` + `task_attachments`
 
 - `assets` stores provider-backed object metadata (not inline bytes):
   - `id` uuid pk
@@ -328,14 +328,14 @@ Operational policy:
   - `original_filename` text null
   - `created_by_agent_id` uuid fk null
   - `created_by_user_id` uuid/text fk null
-- `issue_attachments` links assets to issues/comments:
+- `task_attachments` links assets to tasks/comments:
   - `id` uuid pk
   - `company_id` uuid fk not null
-  - `issue_id` uuid fk not null
+  - `task_id` uuid fk not null
   - `asset_id` uuid fk not null
-  - `issue_comment_id` uuid fk null
+  - `task_comment_id` uuid fk null
 
-## 7.15 `documents` + `document_revisions` + `issue_documents`
+## 7.15 `documents` + `document_revisions` + `task_documents`
 
 - `documents` stores editable text-first documents:
   - `id` uuid pk
@@ -356,10 +356,10 @@ Operational policy:
   - `revision_number` int not null
   - `body` text not null
   - `change_summary` text null
-- `issue_documents` links documents to issues with a stable workflow key:
+- `task_documents` links documents to tasks with a stable workflow key:
   - `id` uuid pk
   - `company_id` uuid fk not null
-  - `issue_id` uuid fk not null
+  - `task_id` uuid fk not null
   - `document_id` uuid fk not null
   - `key` text not null (`plan`, `design`, `notes`, etc.)
 
@@ -378,7 +378,7 @@ Allowed transitions:
 - `paused -> idle`
 - `* -> terminated` (board only, irreversible)
 
-## 8.2 Issue Status
+## 8.2 Task Status
 
 Allowed transitions:
 
@@ -397,9 +397,9 @@ Side effects:
 
 V1 non-terminal liveness rule:
 
-- agent-owned `todo`, `in_progress`, `in_review`, and `blocked` issues must have a live execution path, an explicit waiting path, or an explicit recovery path
-- `in_review` is healthy only when a typed execution participant, pending issue-thread interaction or approval, user owner, active run, queued wake, or explicit recovery issue owns the next action
-- a blocked chain is covered only when each unresolved leaf issue is live or explicitly waiting
+- agent-owned `todo`, `in_progress`, `in_review`, and `blocked` tasks must have a live execution path, an explicit waiting path, or an explicit recovery path
+- `in_review` is healthy only when a typed execution participant, pending task-thread interaction or approval, user owner, active run, queued wake, or explicit recovery task owns the next action
+- a blocked chain is covered only when each unresolved leaf task is live or explicitly waiting
 - when Paperclip cannot safely infer the next action, it surfaces the problem through visible blocked/recovery work instead of silently completing or reassigning work
 
 Detailed ownership, execution, blocker, active-run watchdog, crash-recovery, and non-terminal liveness semantics are documented in `doc/execution-semantics.md`.
@@ -478,30 +478,32 @@ All endpoints are under `/api` and return JSON.
 - `POST /agents/:agentId/keys` (create API key)
 - `POST /agents/:agentId/heartbeat/invoke`
 
-## 10.4 Tasks (Issues)
+## 10.4 Tasks
 
-- `GET /companies/:companyId/issues`
-- `POST /companies/:companyId/issues`
-- `GET /issues/:issueId`
-- `PATCH /issues/:issueId`
-- `GET /issues/:issueId/documents`
-- `GET /issues/:issueId/documents/:key`
-- `PUT /issues/:issueId/documents/:key`
-- `GET /issues/:issueId/documents/:key/revisions`
-- `DELETE /issues/:issueId/documents/:key`
-- `POST /issues/:issueId/checkout`
-- `POST /issues/:issueId/release`
-- `POST /issues/:issueId/admin/force-release` (board-only lock recovery)
-- `POST /issues/:issueId/comments`
-- `GET /issues/:issueId/comments`
-- `POST /companies/:companyId/issues/:issueId/attachments` (multipart upload)
-- `GET /issues/:issueId/attachments`
+The product and implementation language is **tasks**. V1 API paths and storage names use `/tasks`, `taskId`, and `tasks`.
+
+- `GET /companies/:companyId/tasks`
+- `POST /companies/:companyId/tasks`
+- `GET /tasks/:taskId`
+- `PATCH /tasks/:taskId`
+- `GET /tasks/:taskId/documents`
+- `GET /tasks/:taskId/documents/:key`
+- `PUT /tasks/:taskId/documents/:key`
+- `GET /tasks/:taskId/documents/:key/revisions`
+- `DELETE /tasks/:taskId/documents/:key`
+- `POST /tasks/:taskId/checkout`
+- `POST /tasks/:taskId/release`
+- `POST /tasks/:taskId/admin/force-release` (board-only lock recovery)
+- `POST /tasks/:taskId/comments`
+- `GET /tasks/:taskId/comments`
+- `POST /companies/:companyId/tasks/:taskId/attachments` (multipart upload)
+- `GET /tasks/:taskId/attachments`
 - `GET /attachments/:attachmentId/content`
 - `DELETE /attachments/:attachmentId`
 
 ### 10.4.1 Atomic Checkout Contract
 
-`POST /issues/:issueId/checkout` request:
+`POST /tasks/:taskId/checkout` request:
 
 ```json
 {
@@ -516,7 +518,7 @@ Server behavior:
 2. if updated row count is 0, return `409` with current owner/status
 3. successful checkout sets `assignee_agent_id`, `status = in_progress`, and `started_at`
 
-`POST /issues/:issueId/admin/force-release` is an operator recovery endpoint for stale harness locks. It requires board access to the issue company, clears checkout and execution run lock fields, and may clear the agent assignee when `clearAssignee=true` is passed. The route must write an `issue.admin_force_release` activity log entry containing the previous checkout and execution run IDs.
+`POST /tasks/:taskId/admin/force-release` is an operator recovery endpoint for stale harness locks. It requires board access to the task company, clears checkout and execution run lock fields, and may clear the agent assignee when `clearAssignee=true` is passed. The route must write a `task.admin_force_release` activity log entry containing the previous checkout and execution run IDs.
 
 ## 10.5 Projects
 
@@ -549,7 +551,7 @@ Server behavior:
 Dashboard payload must include:
 
 - active/running/paused/error agent counts
-- open/in-progress/blocked/done issue counts
+- open/in-progress/blocked/done task counts
 - month-to-date spend and budget utilization
 - pending approvals count
 
@@ -690,7 +692,7 @@ Board may override by raising budget or explicitly resuming agent.
 ```json
 {
   "agentId": "uuid",
-  "issueId": "uuid",
+  "taskId": "uuid",
   "provider": "openai",
   "model": "gpt-5",
   "inputTokens": 1234,
@@ -770,7 +772,7 @@ Required UX behaviors:
 
 ## 17.1 Unit Tests
 
-- state transition guards (agent, issue, approval)
+- state transition guards (agent, task, approval)
 - budget enforcement rules
 - adapter invocation/cancel semantics
 
@@ -808,7 +810,7 @@ A release candidate is blocked unless these pass:
 ## Milestone 2: Task and Governance Semantics
 
 - implement atomic checkout endpoint
-- implement issue comments and lifecycle guards
+- implement task comments and lifecycle guards
 - implement approvals table and hire/strategy workflows
 
 ## Milestone 3: Heartbeat and Adapter Runtime
@@ -878,7 +880,7 @@ Export/import behavior in V1:
 - export emits a clean vendor-neutral markdown package plus `.paperclip.yaml`
 - projects and starter tasks are opt-in export content rather than default package content
 - recurring `TASK.md` entries use `recurring: true` in the base package and Paperclip routine fidelity in `.paperclip.yaml`
-- Paperclip imports recurring task packages as routines instead of downgrading them to one-time issues
+- Paperclip imports recurring task packages as routines instead of downgrading them to one-time tasks
 - export strips environment-specific paths (`cwd`, local instruction file paths, inline prompt duplication) while preserving portable project repo/workspace metadata such as `repoUrl`, refs, and workspace-policy references keyed in `.paperclip.yaml`
 - export never includes secret values; env inputs are reported as portable declarations instead
 - import supports target modes:

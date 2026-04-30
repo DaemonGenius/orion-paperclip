@@ -14,9 +14,9 @@ import {
   heartbeatRunEvents,
   heartbeatRuns,
   instanceSettings,
-  issueComments,
-  issueDocuments,
-  issues,
+  taskComments,
+  taskDocuments,
+  tasks,
 } from "@paperclipai/db";
 import { readPaperclipSkillSyncPreference } from "@paperclipai/adapter-utils/server-utils";
 import { claudeConfigDir, parseClaudeStreamJson } from "@paperclipai/adapter-claude-local/server";
@@ -66,13 +66,13 @@ const DEFAULT_INSTANCE_SETTINGS_SINGLETON_KEY = "default";
 const FEEDBACK_EXPORT_BACKEND_NOT_CONFIGURED = "Feedback export backend is not configured";
 
 type FeedbackTraceRow = typeof feedbackExports.$inferSelect & {
-  issueIdentifier: string | null;
-  issueTitle: string;
+  taskIdentifier: string | null;
+  taskTitle: string;
 };
 
 type PendingFeedbackExportRow = typeof feedbackExports.$inferSelect;
 
-type IssueFeedbackContext = {
+type TaskFeedbackContext = {
   id: string;
   companyId: string;
   projectId: string | null;
@@ -94,7 +94,7 @@ type FeedbackTargetRecord = {
   documentKey: string | null;
   documentTitle: string | null;
   revisionNumber: number | null;
-  issuePath: string | null;
+  taskPath: string | null;
   targetPath: string | null;
 };
 
@@ -160,11 +160,11 @@ function normalizeInstanceGeneralSettings(raw: unknown) {
   };
 }
 
-function buildIssuePath(identifier: string | null) {
+function buildTaskPath(identifier: string | null) {
   if (!identifier) return null;
   const prefix = identifier.split("-")[0]?.trim();
   if (!prefix) return null;
-  return `/${prefix}/issues/${identifier}`;
+  return `/${prefix}/tasks/${identifier}`;
 }
 
 function buildTargetSummary(input: {
@@ -747,10 +747,10 @@ function mapTraceRow(row: FeedbackTraceRow, includePayload: boolean): FeedbackTr
     id: row.id,
     companyId: row.companyId,
     feedbackVoteId: row.feedbackVoteId,
-    issueId: row.issueId,
+    taskId: row.taskId,
     projectId: row.projectId ?? null,
-    issueIdentifier: row.issueIdentifier,
-    issueTitle: row.issueTitle,
+    taskIdentifier: row.taskIdentifier,
+    taskTitle: row.taskTitle,
     authorUserId: row.authorUserId,
     targetType: row.targetType as FeedbackTargetType,
     targetId: row.targetId,
@@ -783,33 +783,33 @@ function mapTraceRow(row: FeedbackTraceRow, includePayload: boolean): FeedbackTr
 
 async function resolveFeedbackTarget(
   db: Pick<Db, "select">,
-  issue: IssueFeedbackContext,
+  task: TaskFeedbackContext,
   targetType: FeedbackTargetType,
   targetId: string,
 ): Promise<ResolvedFeedbackTarget> {
-  const issuePath = buildIssuePath(issue.identifier);
+  const taskPath = buildTaskPath(task.identifier);
 
-  if (targetType === "issue_comment") {
+  if (targetType === "task_comment") {
     const targetComment = await db
       .select({
-        id: issueComments.id,
-        issueId: issueComments.issueId,
-        companyId: issueComments.companyId,
-        authorAgentId: issueComments.authorAgentId,
-        authorUserId: issueComments.authorUserId,
-        createdByRunId: issueComments.createdByRunId,
-        body: issueComments.body,
-        createdAt: issueComments.createdAt,
+        id: taskComments.id,
+        taskId: taskComments.taskId,
+        companyId: taskComments.companyId,
+        authorAgentId: taskComments.authorAgentId,
+        authorUserId: taskComments.authorUserId,
+        createdByRunId: taskComments.createdByRunId,
+        body: taskComments.body,
+        createdAt: taskComments.createdAt,
       })
-      .from(issueComments)
-      .where(eq(issueComments.id, targetId))
+      .from(taskComments)
+      .where(eq(taskComments.id, targetId))
       .then((rows) => rows[0] ?? null);
 
-    if (!targetComment || targetComment.issueId !== issue.id || targetComment.companyId !== issue.companyId) {
+    if (!targetComment || targetComment.taskId !== task.id || targetComment.companyId !== task.companyId) {
       throw notFound("Feedback target not found");
     }
     if (!targetComment.authorAgentId) {
-      throw unprocessable("Feedback voting is only available on agent-authored issue comments");
+      throw unprocessable("Feedback voting is only available on agent-authored task comments");
     }
 
     const record: ResolvedFeedbackTarget = {
@@ -825,8 +825,8 @@ async function resolveFeedbackTarget(
       documentKey: null,
       documentTitle: null,
       revisionNumber: null,
-      issuePath,
-      targetPath: issuePath ? `${issuePath}#comment-${targetComment.id}` : null,
+      taskPath,
+      targetPath: taskPath ? `${taskPath}#comment-${targetComment.id}` : null,
       payloadTarget: {
         type: targetType,
         id: targetComment.id,
@@ -834,14 +834,14 @@ async function resolveFeedbackTarget(
         authorAgentId: targetComment.authorAgentId,
         authorUserId: targetComment.authorUserId,
         createdByRunId: targetComment.createdByRunId ?? null,
-        issuePath,
-        targetPath: issuePath ? `${issuePath}#comment-${targetComment.id}` : null,
+        taskPath,
+        targetPath: taskPath ? `${taskPath}#comment-${targetComment.id}` : null,
       },
     };
     return record;
   }
 
-  if (targetType === "issue_document_revision") {
+  if (targetType === "task_document_revision") {
     const targetRevision = await db
       .select({
         id: documentRevisions.id,
@@ -853,17 +853,17 @@ async function resolveFeedbackTarget(
         createdByUserId: documentRevisions.createdByUserId,
         createdByRunId: documentRevisions.createdByRunId,
         createdAt: documentRevisions.createdAt,
-        issueId: issueDocuments.issueId,
-        key: issueDocuments.key,
+        taskId: taskDocuments.taskId,
+        key: taskDocuments.key,
         title: documents.title,
       })
       .from(documentRevisions)
       .innerJoin(documents, eq(documentRevisions.documentId, documents.id))
-      .innerJoin(issueDocuments, eq(issueDocuments.documentId, documents.id))
+      .innerJoin(taskDocuments, eq(taskDocuments.documentId, documents.id))
       .where(eq(documentRevisions.id, targetId))
-      .then((rows) => rows.find((row) => row.issueId === issue.id) ?? null);
+      .then((rows) => rows.find((row) => row.taskId === task.id) ?? null);
 
-    if (!targetRevision || targetRevision.companyId !== issue.companyId) {
+    if (!targetRevision || targetRevision.companyId !== task.companyId) {
       throw notFound("Feedback target not found");
     }
     if (!targetRevision.createdByAgentId) {
@@ -883,8 +883,8 @@ async function resolveFeedbackTarget(
       documentKey: targetRevision.key,
       documentTitle: targetRevision.title ?? null,
       revisionNumber: targetRevision.revisionNumber,
-      issuePath,
-      targetPath: issuePath ? `${issuePath}#document-${encodeURIComponent(targetRevision.key)}` : null,
+      taskPath,
+      targetPath: taskPath ? `${taskPath}#document-${encodeURIComponent(targetRevision.key)}` : null,
       payloadTarget: {
         type: targetType,
         id: targetRevision.id,
@@ -896,8 +896,8 @@ async function resolveFeedbackTarget(
         authorAgentId: targetRevision.createdByAgentId,
         authorUserId: targetRevision.createdByUserId,
         createdByRunId: targetRevision.createdByRunId ?? null,
-        issuePath,
-        targetPath: issuePath ? `${issuePath}#document-${encodeURIComponent(targetRevision.key)}` : null,
+        taskPath,
+        targetPath: taskPath ? `${taskPath}#document-${encodeURIComponent(targetRevision.key)}` : null,
       },
     };
     return record;
@@ -906,22 +906,22 @@ async function resolveFeedbackTarget(
   throw unprocessable("Unsupported feedback target type");
 }
 
-async function listIssueContextItems(
+async function listTaskContextItems(
   db: Pick<Db, "select">,
-  issue: IssueFeedbackContext,
+  task: TaskFeedbackContext,
 ) {
   const [commentRows, revisionRows] = await Promise.all([
     db
       .select({
-        targetId: issueComments.id,
-        body: issueComments.body,
-        createdAt: issueComments.createdAt,
-        authorAgentId: issueComments.authorAgentId,
-        authorUserId: issueComments.authorUserId,
-        createdByRunId: issueComments.createdByRunId,
+        targetId: taskComments.id,
+        body: taskComments.body,
+        createdAt: taskComments.createdAt,
+        authorAgentId: taskComments.authorAgentId,
+        authorUserId: taskComments.authorUserId,
+        createdByRunId: taskComments.createdByRunId,
       })
-      .from(issueComments)
-      .where(and(eq(issueComments.companyId, issue.companyId), eq(issueComments.issueId, issue.id))),
+      .from(taskComments)
+      .where(and(eq(taskComments.companyId, task.companyId), eq(taskComments.taskId, task.id))),
     db
       .select({
         targetId: documentRevisions.id,
@@ -931,21 +931,21 @@ async function listIssueContextItems(
         authorUserId: documentRevisions.createdByUserId,
         createdByRunId: documentRevisions.createdByRunId,
         documentId: documentRevisions.documentId,
-        documentKey: issueDocuments.key,
+        documentKey: taskDocuments.key,
         documentTitle: documents.title,
         revisionNumber: documentRevisions.revisionNumber,
       })
       .from(documentRevisions)
       .innerJoin(documents, eq(documentRevisions.documentId, documents.id))
-      .innerJoin(issueDocuments, eq(issueDocuments.documentId, documents.id))
-      .where(and(eq(documentRevisions.companyId, issue.companyId), eq(issueDocuments.issueId, issue.id))),
+      .innerJoin(taskDocuments, eq(taskDocuments.documentId, documents.id))
+      .where(and(eq(documentRevisions.companyId, task.companyId), eq(taskDocuments.taskId, task.id))),
   ]);
 
-  const issuePath = buildIssuePath(issue.identifier);
+  const taskPath = buildTaskPath(task.identifier);
 
   const items: FeedbackTargetRecord[] = [
     ...commentRows.map((row) => ({
-      targetType: "issue_comment" as const,
+      targetType: "task_comment" as const,
       targetId: row.targetId,
       label: "Comment",
       body: row.body,
@@ -957,11 +957,11 @@ async function listIssueContextItems(
       documentKey: null,
       documentTitle: null,
       revisionNumber: null,
-      issuePath,
-      targetPath: issuePath ? `${issuePath}#comment-${row.targetId}` : null,
+      taskPath,
+      targetPath: taskPath ? `${taskPath}#comment-${row.targetId}` : null,
     })),
     ...revisionRows.map((row) => ({
-      targetType: "issue_document_revision" as const,
+      targetType: "task_document_revision" as const,
       targetId: row.targetId,
       label: `${row.documentKey} rev ${row.revisionNumber}`,
       body: row.body,
@@ -973,8 +973,8 @@ async function listIssueContextItems(
       documentKey: row.documentKey,
       documentTitle: row.documentTitle ?? null,
       revisionNumber: row.revisionNumber,
-      issuePath,
-      targetPath: issuePath ? `${issuePath}#document-${encodeURIComponent(row.documentKey)}` : null,
+      taskPath,
+      targetPath: taskPath ? `${taskPath}#document-${encodeURIComponent(row.documentKey)}` : null,
     })),
   ];
 
@@ -985,13 +985,13 @@ async function listIssueContextItems(
   });
 }
 
-async function buildIssueContext(
+async function buildTaskContext(
   db: Pick<Db, "select">,
-  issue: IssueFeedbackContext,
+  task: TaskFeedbackContext,
   target: ResolvedFeedbackTarget,
   state: ReturnType<typeof createFeedbackRedactionState>,
 ) {
-  const items = await listIssueContextItems(db, issue);
+  const items = await listTaskContextItems(db, task);
   const targetIndex = items.findIndex((item) => item.targetType === target.targetType && item.targetId === target.targetId);
   const before = targetIndex >= 0
     ? items.slice(Math.max(0, targetIndex - FEEDBACK_CONTEXT_WINDOW), targetIndex)
@@ -1004,14 +1004,14 @@ async function buildIssueContext(
   const serializedItems = [...before, ...after].map((item, index) => {
     const relation = index < before.length ? "before" : "after";
     if (remainingChars <= 0) {
-      state.omittedFields.add("bundle.issueContext.items");
+      state.omittedFields.add("bundle.taskContext.items");
       return null;
     }
     const maxChars = Math.min(MAX_CONTEXT_ITEM_BODY_CHARS, remainingChars);
     const body = sanitizeFeedbackText(
       item.body,
       state,
-      `bundle.issueContext.items.${index}.body`,
+      `bundle.taskContext.items.${index}.body`,
       maxChars,
     );
     remainingChars -= body.length;
@@ -1033,17 +1033,17 @@ async function buildIssueContext(
     };
   }).filter((item): item is NonNullable<typeof item> => item !== null);
 
-  const descriptionExcerpt = issue.description
-    ? sanitizeFeedbackText(issue.description, state, "bundle.issueContext.issue.description", MAX_DESCRIPTION_CHARS)
+  const descriptionExcerpt = task.description
+    ? sanitizeFeedbackText(task.description, state, "bundle.taskContext.task.description", MAX_DESCRIPTION_CHARS)
     : null;
 
   return {
-    issue: {
-      id: issue.id,
-      identifier: issue.identifier,
-      title: issue.title,
-      projectId: issue.projectId,
-      path: buildIssuePath(issue.identifier),
+    task: {
+      id: task.id,
+      identifier: task.identifier,
+      title: task.title,
+      projectId: task.projectId,
+      path: buildTaskPath(task.identifier),
       descriptionExcerpt: descriptionExcerpt ? truncateExcerpt(descriptionExcerpt, MAX_DESCRIPTION_CHARS) : null,
     },
     items: serializedItems,
@@ -1303,7 +1303,7 @@ async function buildAgentContext(
 async function buildPayloadArtifacts(
   db: Pick<Db, "select">,
   input: {
-    issue: IssueFeedbackContext;
+    task: TaskFeedbackContext;
     target: ResolvedFeedbackTarget;
     voteId: string;
     vote: FeedbackVoteValue;
@@ -1390,9 +1390,9 @@ async function buildPayloadArtifacts(
   }
 
   const exportId = buildExportId(input.voteId, input.now);
-  const [issueContext, agentContext] = await Promise.all([
-    buildIssueContext(db, input.issue, input.target, state),
-    buildAgentContext(db, input.issue.companyId, input.target.authorAgentId, input.target.createdByRunId, state),
+  const [taskContext, agentContext] = await Promise.all([
+    buildTaskContext(db, input.task, input.target, state),
+    buildAgentContext(db, input.task.companyId, input.target.authorAgentId, input.target.createdByRunId, state),
   ]);
 
   const payloadSnapshot = {
@@ -1401,7 +1401,7 @@ async function buildPayloadArtifacts(
     exportEligible: true,
     bundle: {
       primaryContent,
-      issueContext,
+      taskContext,
       agentContext,
     },
   };
@@ -1603,9 +1603,9 @@ async function buildFeedbackTraceBundleFromRow(
       exportId: trace.exportId,
       companyId: trace.companyId,
       feedbackVoteId: trace.feedbackVoteId,
-      issueId: trace.issueId,
-      issueIdentifier: trace.issueIdentifier,
-      issueTitle: trace.issueTitle,
+      taskId: trace.taskId,
+      taskIdentifier: trace.taskIdentifier,
+      taskTitle: trace.taskTitle,
       projectId: trace.projectId,
       authorUserId: trace.authorUserId,
       targetType: trace.targetType,
@@ -1640,8 +1640,8 @@ async function buildFeedbackTraceBundleFromRow(
     traceId: trace.id,
     exportId: trace.exportId,
     companyId: trace.companyId,
-    issueId: trace.issueId,
-    issueIdentifier: trace.issueIdentifier,
+    taskId: trace.taskId,
+    taskIdentifier: trace.taskIdentifier,
     adapterType,
     captureStatus,
     notes,
@@ -1671,15 +1671,15 @@ async function buildFeedbackTraceBundleFromRow(
 
 export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
   return {
-    listIssueVotesForUser: async (issueId: string, authorUserId: string) =>
+    listTaskVotesForUser: async (taskId: string, authorUserId: string) =>
       db
         .select()
         .from(feedbackVotes)
-        .where(and(eq(feedbackVotes.issueId, issueId), eq(feedbackVotes.authorUserId, authorUserId))),
+        .where(and(eq(feedbackVotes.taskId, taskId), eq(feedbackVotes.authorUserId, authorUserId))),
 
     listFeedbackTraces: async (input: {
       companyId: string;
-      issueId?: string;
+      taskId?: string;
       projectId?: string;
       targetType?: FeedbackTargetType;
       vote?: FeedbackVoteValue;
@@ -1690,7 +1690,7 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
       includePayload?: boolean;
     }) => {
       const filters = [eq(feedbackExports.companyId, input.companyId)];
-      if (input.issueId) filters.push(eq(feedbackExports.issueId, input.issueId));
+      if (input.taskId) filters.push(eq(feedbackExports.taskId, input.taskId));
       if (input.projectId) filters.push(eq(feedbackExports.projectId, input.projectId));
       if (input.targetType) filters.push(eq(feedbackExports.targetType, input.targetType));
       if (input.vote) filters.push(eq(feedbackExports.vote, input.vote));
@@ -1702,11 +1702,11 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
       const rows = await db
         .select({
           ...feedbackExportColumns,
-          issueIdentifier: issues.identifier,
-          issueTitle: issues.title,
+          taskIdentifier: tasks.identifier,
+          taskTitle: tasks.title,
         })
         .from(feedbackExports)
-        .innerJoin(issues, eq(feedbackExports.issueId, issues.id))
+        .innerJoin(tasks, eq(feedbackExports.taskId, tasks.id))
         .where(and(...filters))
         .orderBy(desc(feedbackExports.createdAt));
 
@@ -1717,11 +1717,11 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
       const row = await db
         .select({
           ...feedbackExportColumns,
-          issueIdentifier: issues.identifier,
-          issueTitle: issues.title,
+          taskIdentifier: tasks.identifier,
+          taskTitle: tasks.title,
         })
         .from(feedbackExports)
-        .innerJoin(issues, eq(feedbackExports.issueId, issues.id))
+        .innerJoin(tasks, eq(feedbackExports.taskId, tasks.id))
         .where(eq(feedbackExports.id, traceId))
         .then((rows) => rows[0] ?? null);
       return row ? mapTraceRow(row, includePayload) : null;
@@ -1731,11 +1731,11 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
       const row = await db
         .select({
           ...feedbackExportColumns,
-          issueIdentifier: issues.identifier,
-          issueTitle: issues.title,
+          taskIdentifier: tasks.identifier,
+          taskTitle: tasks.title,
         })
         .from(feedbackExports)
-        .innerJoin(issues, eq(feedbackExports.issueId, issues.id))
+        .innerJoin(tasks, eq(feedbackExports.taskId, tasks.id))
         .where(eq(feedbackExports.id, traceId))
         .then((rows) => rows[0] ?? null);
       return row ? buildFeedbackTraceBundleFromRow(db, row) : null;
@@ -1802,11 +1802,11 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
       const rows = await db
         .select({
           ...feedbackExportColumns,
-          issueIdentifier: issues.identifier,
-          issueTitle: issues.title,
+          taskIdentifier: tasks.identifier,
+          taskTitle: tasks.title,
         })
         .from(feedbackExports)
-        .innerJoin(issues, eq(feedbackExports.issueId, issues.id))
+        .innerJoin(tasks, eq(feedbackExports.taskId, tasks.id))
         .where(and(...filters))
         .orderBy(asc(feedbackExports.createdAt), asc(feedbackExports.id))
         .limit(limit);
@@ -1857,8 +1857,8 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
       };
     },
 
-    saveIssueVote: async (input: {
-      issueId: string;
+    saveTaskVote: async (input: {
+      taskId: string;
       targetType: FeedbackTargetType;
       targetId: string;
       vote: FeedbackVoteValue;
@@ -1867,21 +1867,21 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
       allowSharing?: boolean;
     }) =>
       db.transaction(async (tx) => {
-        const issue = await tx
+        const task = await tx
           .select({
-            id: issues.id,
-            companyId: issues.companyId,
-            projectId: issues.projectId,
-            identifier: issues.identifier,
-            title: issues.title,
-            description: issues.description,
+            id: tasks.id,
+            companyId: tasks.companyId,
+            projectId: tasks.projectId,
+            identifier: tasks.identifier,
+            title: tasks.title,
+            description: tasks.description,
           })
-          .from(issues)
-          .where(eq(issues.id, input.issueId))
+          .from(tasks)
+          .where(eq(tasks.id, input.taskId))
           .then((rows) => rows[0] ?? null);
-        if (!issue) throw notFound("Issue not found");
+        if (!task) throw notFound("Task not found");
 
-        const target = await resolveFeedbackTarget(tx, issue, input.targetType, input.targetId);
+        const target = await resolveFeedbackTarget(tx, task, input.targetType, input.targetId);
 
         const existingCompany = await tx
           .select({
@@ -1889,7 +1889,7 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
             feedbackDataSharingTermsVersion: companies.feedbackDataSharingTermsVersion,
           })
           .from(companies)
-          .where(eq(companies.id, issue.companyId))
+          .where(eq(companies.id, task.companyId))
           .then((rows) => rows[0] ?? null);
         if (!existingCompany) throw notFound("Company not found");
 
@@ -1912,7 +1912,7 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
               feedbackDataSharingTermsVersion: consentVersion,
               updatedAt: now,
             })
-            .where(eq(companies.id, issue.companyId));
+            .where(eq(companies.id, task.companyId));
         }
 
         const existingInstanceSettings = await tx
@@ -1968,8 +1968,8 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
         const [savedVote] = await tx
           .insert(feedbackVotes)
           .values({
-            companyId: issue.companyId,
-            issueId: issue.id,
+            companyId: task.companyId,
+            taskId: task.id,
             targetType: input.targetType,
             targetId: input.targetId,
             authorUserId: input.authorUserId,
@@ -2001,7 +2001,7 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
           .returning();
 
         const artifacts = await buildPayloadArtifacts(tx, {
-          issue,
+          task,
           target,
           voteId: savedVote.id,
           vote: input.vote,
@@ -2023,10 +2023,10 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
         const [savedTrace] = await tx
           .insert(feedbackExports)
           .values({
-            companyId: issue.companyId,
+            companyId: task.companyId,
             feedbackVoteId: savedVote.id,
-            issueId: issue.id,
-            projectId: issue.projectId,
+            taskId: task.id,
+            projectId: task.projectId,
             authorUserId: input.authorUserId,
             targetType: input.targetType,
             targetId: input.targetId,
@@ -2047,8 +2047,8 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
           .onConflictDoUpdate({
             target: [feedbackExports.feedbackVoteId],
             set: {
-              issueId: issue.id,
-              projectId: issue.projectId,
+              taskId: task.id,
+              projectId: task.projectId,
               authorUserId: input.authorUserId,
               targetType: input.targetType,
               targetId: input.targetId,

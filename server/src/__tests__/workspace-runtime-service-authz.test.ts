@@ -5,7 +5,7 @@ import {
   companies,
   createDb,
   executionWorkspaces,
-  issues,
+  tasks,
   projectWorkspaces,
   projects,
 } from "@paperclipai/db";
@@ -37,7 +37,7 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
   }, 20_000);
 
   afterEach(async () => {
-    await db.delete(issues);
+    await db.delete(tasks);
     await db.delete(executionWorkspaces);
     await db.delete(projectWorkspaces);
     await db.delete(projects);
@@ -54,7 +54,7 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `PAP-${companyId.slice(0, 8)}`,
+      taskPrefix: `PAP-${companyId.slice(0, 8)}`,
       requireBoardApprovalForNewAgents: false,
     });
     return companyId;
@@ -149,12 +149,12 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
     })).resolves.toBeUndefined();
   });
 
-  it("allows agents with a non-terminal assigned issue in the target project workspace", async () => {
+  it("allows agents with a non-terminal assigned task in the target project workspace", async () => {
     const companyId = await seedCompany();
     const { projectId, projectWorkspaceId } = await seedProjectWorkspace(companyId);
     const agentId = await seedAgent(companyId, { name: "Engineer" });
 
-    await db.insert(issues).values({
+    await db.insert(tasks).values({
       id: randomUUID(),
       companyId,
       projectId,
@@ -185,7 +185,7 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
     const managerId = await seedAgent(companyId, { role: "cto", name: "Manager" });
     const reportId = await seedAgent(companyId, { reportsTo: managerId, name: "Report" });
 
-    await db.insert(issues).values({
+    await db.insert(tasks).values({
       id: randomUUID(),
       companyId,
       projectId,
@@ -217,13 +217,13 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
     const assignedAgentId = await seedAgent(companyId, { name: "Assigned" });
     const unrelatedAgentId = await seedAgent(companyId, { name: "Unrelated" });
 
-    await db.insert(issues).values({
+    await db.insert(tasks).values({
       id: randomUUID(),
       companyId,
       projectId,
       projectWorkspaceId,
       executionWorkspaceId,
-      title: "Assigned issue",
+      title: "Assigned task",
       status: "todo",
       priority: "medium",
       assigneeAgentId: assignedAgentId,
@@ -245,17 +245,17 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
     });
   });
 
-  it("rejects completed workspace assignments so stale issues do not keep access alive", async () => {
+  it("rejects completed workspace assignments so stale tasks do not keep access alive", async () => {
     const companyId = await seedCompany();
     const { projectId, projectWorkspaceId } = await seedProjectWorkspace(companyId);
     const agentId = await seedAgent(companyId, { name: "Engineer" });
 
-    await db.insert(issues).values({
+    await db.insert(tasks).values({
       id: randomUUID(),
       companyId,
       projectId,
       projectWorkspaceId,
-      title: "Completed issue",
+      title: "Completed task",
       status: "done",
       priority: "medium",
       assigneeAgentId: agentId,

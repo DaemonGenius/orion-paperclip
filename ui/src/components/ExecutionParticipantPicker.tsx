@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Agent, Issue } from "@paperclipai/shared";
+import type { Agent, Task } from "@paperclipai/shared";
 import { useQuery } from "@tanstack/react-query";
 import { accessApi } from "../api/access";
 import { formatAssigneeUserLabel } from "../lib/assignees";
@@ -9,7 +9,7 @@ import { sortAgentsByRecency, getRecentAssigneeIds } from "../lib/recent-assigne
 import {
   buildExecutionPolicy,
   stageParticipantValues,
-} from "../lib/issue-execution-policy";
+} from "../lib/task-execution-policy";
 import { cn } from "../lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { User, Eye, ShieldCheck } from "lucide-react";
@@ -18,7 +18,7 @@ import { AgentIcon } from "./AgentIconPicker";
 type StageType = "review" | "approval";
 
 interface ExecutionParticipantPickerProps {
-  issue: Issue;
+  task: Task;
   stageType: StageType;
   agents: Agent[];
   currentUserId: string | null;
@@ -26,7 +26,7 @@ interface ExecutionParticipantPickerProps {
 }
 
 export function ExecutionParticipantPicker({
-  issue,
+  task,
   stageType,
   agents,
   currentUserId,
@@ -35,13 +35,13 @@ export function ExecutionParticipantPicker({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
-  const reviewerValues = stageParticipantValues(issue.executionPolicy, "review");
-  const approverValues = stageParticipantValues(issue.executionPolicy, "approval");
+  const reviewerValues = stageParticipantValues(task.executionPolicy, "review");
+  const approverValues = stageParticipantValues(task.executionPolicy, "approval");
   const values = stageType === "review" ? reviewerValues : approverValues;
   const { data: companyMembers } = useQuery({
-    queryKey: queryKeys.access.companyUserDirectory(issue.companyId),
-    queryFn: () => accessApi.listUserDirectory(issue.companyId),
-    enabled: !!issue.companyId,
+    queryKey: queryKeys.access.companyUserDirectory(task.companyId),
+    queryFn: () => accessApi.listUserDirectory(task.companyId),
+    enabled: !!task.companyId,
   });
 
   const sortedAgents = sortAgentsByRecency(
@@ -53,13 +53,13 @@ export function ExecutionParticipantPicker({
     [companyMembers?.users],
   );
   const otherUserOptions = useMemo(
-    () => buildCompanyUserInlineOptions(companyMembers?.users, { excludeUserIds: [currentUserId, issue.createdByUserId] }),
-    [companyMembers?.users, currentUserId, issue.createdByUserId],
+    () => buildCompanyUserInlineOptions(companyMembers?.users, { excludeUserIds: [currentUserId, task.createdByUserId] }),
+    [companyMembers?.users, currentUserId, task.createdByUserId],
   );
 
   const userLabel = (userId: string | null | undefined) =>
     formatAssigneeUserLabel(userId, currentUserId, userLabelMap);
-  const creatorUserLabel = userLabel(issue.createdByUserId);
+  const creatorUserLabel = userLabel(task.createdByUserId);
 
   const agentName = (id: string) => {
     const agent = agents.find((a) => a.id === id);
@@ -75,7 +75,7 @@ export function ExecutionParticipantPicker({
   const updatePolicy = (nextValues: string[]) => {
     onUpdate({
       executionPolicy: buildExecutionPolicy({
-        existingPolicy: issue.executionPolicy ?? null,
+        existingPolicy: task.executionPolicy ?? null,
         reviewerValues: stageType === "review" ? nextValues : reviewerValues,
         approverValues: stageType === "approval" ? nextValues : approverValues,
       }),
@@ -143,13 +143,13 @@ export function ExecutionParticipantPicker({
               Assign to me
             </button>
           )}
-          {issue.createdByUserId && issue.createdByUserId !== currentUserId && (
+          {task.createdByUserId && task.createdByUserId !== currentUserId && (
             <button
               className={cn(
                 "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
-                values.includes(`user:${issue.createdByUserId}`) && "bg-accent",
+                values.includes(`user:${task.createdByUserId}`) && "bg-accent",
               )}
-              onClick={() => toggle(`user:${issue.createdByUserId}`)}
+              onClick={() => toggle(`user:${task.createdByUserId}`)}
             >
               <User className="h-3 w-3 shrink-0 text-muted-foreground" />
               {creatorUserLabel ?? "Requester"}

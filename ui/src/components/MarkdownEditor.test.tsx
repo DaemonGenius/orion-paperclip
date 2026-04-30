@@ -526,7 +526,7 @@ describe("MarkdownEditor", () => {
   });
 
   it("still rejects slash commands once spaces are typed", () => {
-    expect(findMentionMatch("/open issue", "/open issue".length)).toBeNull();
+    expect(findMentionMatch("/open task", "/open task".length)).toBeNull();
   });
 
   it("does not treat Enter as skill autocomplete accept", () => {

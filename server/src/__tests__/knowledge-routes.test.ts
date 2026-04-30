@@ -11,7 +11,7 @@ import {
   createDb,
   externalObjectRefs,
   getEmbeddedPostgresTestSupport,
-  issues,
+  tasks,
   knowledgeProposals,
   projects,
   syncConflicts,
@@ -76,7 +76,7 @@ describeEmbeddedPostgres("knowledge routes", () => {
       .insert(companies)
       .values({
         name: "Genesis",
-        issuePrefix: `K${suffix}`,
+        taskPrefix: `K${suffix}`,
         requireBoardApprovalForNewAgents: false,
       })
       .returning();
@@ -217,8 +217,8 @@ describeEmbeddedPostgres("knowledge routes", () => {
         ])
         .returning();
 
-      const [importedIssue, manualIssue] = await db
-        .insert(issues)
+      const [importedTask, manualTask] = await db
+        .insert(tasks)
         .values([
           {
             companyId,
@@ -300,7 +300,7 @@ describeEmbeddedPostgres("knowledge routes", () => {
       expect(response.body).toMatchObject({
         clearedRefs: 4,
         removedMirrorFiles: 1,
-        deletedImportedIssues: 1,
+        deletedImportedTasks: 1,
         deletedImportedProjects: 1,
         deletedKnowledgeProposals: 1,
         deletedSyncConflicts: 1,
@@ -317,8 +317,8 @@ describeEmbeddedPostgres("knowledge routes", () => {
       expect(await db.select().from(syncConflicts)).toHaveLength(0);
       expect(await db.select().from(knowledgeProposals)).toHaveLength(0);
       expect(await db.select().from(companyExternalAppBindings)).toHaveLength(1);
-      expect(await db.select().from(issues).where(eq(issues.id, importedIssue!.id))).toHaveLength(0);
-      expect(await db.select().from(issues).where(eq(issues.id, manualIssue!.id))).toHaveLength(1);
+      expect(await db.select().from(tasks).where(eq(tasks.id, importedTask!.id))).toHaveLength(0);
+      expect(await db.select().from(tasks).where(eq(tasks.id, manualTask!.id))).toHaveLength(1);
       expect(await db.select().from(projects).where(eq(projects.id, importedProject!.id))).toHaveLength(0);
       expect(await db.select().from(projects).where(eq(projects.id, mixedProject!.id))).toHaveLength(1);
     } finally {

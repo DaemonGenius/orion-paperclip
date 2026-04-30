@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ExecutionWorkspace, Issue, Project, ProjectWorkspace, WorkspaceRuntimeService } from "@paperclipai/shared";
+import type { ExecutionWorkspace, Task, Project, ProjectWorkspace, WorkspaceRuntimeService } from "@paperclipai/shared";
 import { buildProjectWorkspaceSummaries } from "./project-workspaces-tab";
 
 function createProjectWorkspace(overrides: Partial<ProjectWorkspace>): ProjectWorkspace {
@@ -28,15 +28,15 @@ function createProjectWorkspace(overrides: Partial<ProjectWorkspace>): ProjectWo
   };
 }
 
-function createIssue(overrides: Partial<Issue>): Issue {
+function createTask(overrides: Partial<Task>): Task {
   return {
-    id: overrides.id ?? "issue-1",
+    id: overrides.id ?? "task-1",
     companyId: overrides.companyId ?? "company-1",
     projectId: overrides.projectId ?? "project-1",
     projectWorkspaceId: overrides.projectWorkspaceId ?? null,
     goalId: overrides.goalId ?? null,
     parentId: overrides.parentId ?? null,
-    title: overrides.title ?? "Issue",
+    title: overrides.title ?? "Task",
     description: overrides.description ?? null,
     status: overrides.status ?? "todo",
     priority: overrides.priority ?? "medium",
@@ -48,7 +48,7 @@ function createIssue(overrides: Partial<Issue>): Issue {
     executionLockedAt: overrides.executionLockedAt ?? null,
     createdByAgentId: overrides.createdByAgentId ?? null,
     createdByUserId: overrides.createdByUserId ?? null,
-    issueNumber: overrides.issueNumber ?? null,
+    taskNumber: overrides.taskNumber ?? null,
     identifier: overrides.identifier ?? null,
     requestDepth: overrides.requestDepth ?? 0,
     billingCode: overrides.billingCode ?? null,
@@ -62,7 +62,7 @@ function createIssue(overrides: Partial<Issue>): Issue {
     hiddenAt: overrides.hiddenAt ?? null,
     createdAt: overrides.createdAt ?? new Date("2026-03-20T00:00:00Z"),
     updatedAt: overrides.updatedAt ?? new Date("2026-03-20T00:00:00Z"),
-  } as Issue;
+  } as Task;
 }
 
 function createExecutionWorkspace(overrides: Partial<ExecutionWorkspace>): ExecutionWorkspace {
@@ -71,7 +71,7 @@ function createExecutionWorkspace(overrides: Partial<ExecutionWorkspace>): Execu
     companyId: overrides.companyId ?? "company-1",
     projectId: overrides.projectId ?? "project-1",
     projectWorkspaceId: overrides.projectWorkspaceId ?? "workspace-default",
-    sourceIssueId: overrides.sourceIssueId ?? null,
+    sourceTaskId: overrides.sourceTaskId ?? null,
     mode: overrides.mode ?? "isolated_workspace",
     strategyType: overrides.strategyType ?? "git_worktree",
     name: overrides.name ?? "PAP-893",
@@ -103,7 +103,7 @@ function createRuntimeService(overrides: Partial<WorkspaceRuntimeService> = {}):
     projectId: overrides.projectId ?? "project-1",
     projectWorkspaceId: overrides.projectWorkspaceId ?? null,
     executionWorkspaceId: overrides.executionWorkspaceId ?? null,
-    issueId: overrides.issueId ?? null,
+    taskId: overrides.taskId ?? null,
     scopeType: overrides.scopeType ?? "execution_workspace",
     scopeId: overrides.scopeId ?? null,
     serviceName: overrides.serviceName ?? "preview",
@@ -146,29 +146,29 @@ describe("buildProjectWorkspaceSummaries", () => {
     primaryWorkspace,
   } satisfies Pick<Project, "workspaces" | "primaryWorkspace">;
 
-  it("groups isolated execution workspace issues ahead of shared non-primary workspace issues", () => {
+  it("groups isolated execution workspace tasks ahead of shared non-primary workspace tasks", () => {
     const summaries = buildProjectWorkspaceSummaries({
       project,
-      issues: [
-        createIssue({
-          id: "issue-primary",
+      tasks: [
+        createTask({
+          id: "task-primary",
           projectWorkspaceId: primaryWorkspace.id,
           updatedAt: new Date("2026-03-26T08:00:00Z"),
         }),
-        createIssue({
-          id: "issue-feature-older",
+        createTask({
+          id: "task-feature-older",
           projectWorkspaceId: featureWorkspace.id,
           identifier: "PAP-800",
           updatedAt: new Date("2026-03-25T10:00:00Z"),
         }),
-        createIssue({
-          id: "issue-feature-newer",
+        createTask({
+          id: "task-feature-newer",
           projectWorkspaceId: featureWorkspace.id,
           identifier: "PAP-801",
           updatedAt: new Date("2026-03-25T11:00:00Z"),
         }),
-        createIssue({
-          id: "issue-exec",
+        createTask({
+          id: "task-exec",
           projectWorkspaceId: primaryWorkspace.id,
           executionWorkspaceId: "exec-1",
           identifier: "PAP-893",
@@ -193,7 +193,7 @@ describe("buildProjectWorkspaceSummaries", () => {
       branchName: "PAP-893-workspaces-tab",
       executionWorkspaceId: "exec-1",
     });
-    expect(summaries[0]?.issues.map((issue) => issue.id)).toEqual(["issue-exec"]);
+    expect(summaries[0]?.tasks.map((task) => task.id)).toEqual(["task-exec"]);
 
     expect(summaries[1]).toMatchObject({
       key: "project:workspace-feature",
@@ -202,19 +202,19 @@ describe("buildProjectWorkspaceSummaries", () => {
       branchName: "feature/workspaces",
       projectWorkspaceId: "workspace-feature",
     });
-    expect(summaries[1]?.issues.map((issue) => issue.id)).toEqual([
-      "issue-feature-newer",
-      "issue-feature-older",
+    expect(summaries[1]?.tasks.map((task) => task.id)).toEqual([
+      "task-feature-newer",
+      "task-feature-older",
     ]);
     expect(summaries[2]?.key).toBe("project:workspace-default");
   });
 
-  it("does not duplicate non-primary workspace issues when an execution workspace owns them", () => {
+  it("does not duplicate non-primary workspace tasks when an execution workspace owns them", () => {
     const summaries = buildProjectWorkspaceSummaries({
       project,
-      issues: [
-        createIssue({
-          id: "issue-exec-derived",
+      tasks: [
+        createTask({
+          id: "task-exec-derived",
           projectWorkspaceId: featureWorkspace.id,
           executionWorkspaceId: "exec-2",
           updatedAt: new Date("2026-03-26T12:00:00Z"),
@@ -234,12 +234,12 @@ describe("buildProjectWorkspaceSummaries", () => {
     expect(summaries[1]?.key).toBe("project:workspace-default");
   });
 
-  it("excludes issues that only use the default shared workspace", () => {
+  it("excludes tasks that only use the default shared workspace", () => {
     const summaries = buildProjectWorkspaceSummaries({
       project,
-      issues: [
-        createIssue({
-          id: "issue-default-shared",
+      tasks: [
+        createTask({
+          id: "task-default-shared",
           projectWorkspaceId: primaryWorkspace.id,
           executionWorkspaceId: "exec-shared-default",
           updatedAt: new Date("2026-03-26T12:00:00Z"),
@@ -265,14 +265,14 @@ describe("buildProjectWorkspaceSummaries", () => {
   it("sorts workspaces with running services first and marks live service urls", () => {
     const summaries = buildProjectWorkspaceSummaries({
       project,
-      issues: [
-        createIssue({
-          id: "issue-stopped",
+      tasks: [
+        createTask({
+          id: "task-stopped",
           executionWorkspaceId: "exec-stopped",
           updatedAt: new Date("2026-03-27T12:00:00Z"),
         }),
-        createIssue({
-          id: "issue-live",
+        createTask({
+          id: "task-live",
           executionWorkspaceId: "exec-live",
           updatedAt: new Date("2026-03-25T12:00:00Z"),
         }),

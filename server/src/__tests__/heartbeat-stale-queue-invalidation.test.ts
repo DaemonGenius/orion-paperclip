@@ -13,11 +13,11 @@ import {
   documents,
   heartbeatRunEvents,
   heartbeatRuns,
-  issueComments,
-  issueDocuments,
-  issueRelations,
-  issueTreeHolds,
-  issues,
+  taskComments,
+  taskDocuments,
+  taskRelations,
+  taskTreeHolds,
+  tasks,
 } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
@@ -58,13 +58,13 @@ if (!embeddedPostgresSupport.supported) {
   );
 }
 
-async function ensureIssueRelationsTable(db: ReturnType<typeof createDb>) {
+async function ensureTaskRelationsTable(db: ReturnType<typeof createDb>) {
   await db.execute(sql.raw(`
-    CREATE TABLE IF NOT EXISTS "issue_relations" (
+    CREATE TABLE IF NOT EXISTS "task_relations" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "company_id" uuid NOT NULL,
-      "issue_id" uuid NOT NULL,
-      "related_issue_id" uuid NOT NULL,
+      "task_id" uuid NOT NULL,
+      "related_task_id" uuid NOT NULL,
       "type" text NOT NULL,
       "created_by_agent_id" uuid,
       "created_by_user_id" text,
@@ -103,7 +103,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-heartbeat-stale-queue-");
     db = createDb(tempDb.connectionString);
     heartbeat = heartbeatService(db);
-    await ensureIssueRelationsTable(db);
+    await ensureTaskRelationsTable(db);
   }, 20_000);
 
   afterEach(async () => {
@@ -134,13 +134,13 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
     await db.delete(companySkills);
-    await db.delete(issueComments);
-    await db.delete(issueDocuments);
+    await db.delete(taskComments);
+    await db.delete(taskDocuments);
     await db.delete(documentRevisions);
     await db.delete(documents);
-    await db.delete(issueRelations);
-    await db.delete(issueTreeHolds);
-    await db.delete(issues);
+    await db.delete(taskRelations);
+    await db.delete(taskTreeHolds);
+    await db.delete(tasks);
     await db.delete(heartbeatRunEvents);
     await db.delete(activityLog);
     await db.delete(heartbeatRuns);
@@ -160,7 +160,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      taskPrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(agents).values({
@@ -185,7 +185,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   async function seedQueuedRun(input: {
     companyId: string;
     agentId: string;
-    issueId: string;
+    taskId: string;
     wakeReason: string;
     contextExtras?: Record<string, unknown>;
     invocationSource?: "assignment" | "automation";
@@ -199,7 +199,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
       source: input.invocationSource ?? "assignment",
       triggerDetail: "system",
       reason: input.wakeReason,
-      payload: { issueId: input.issueId },
+      payload: { taskId: input.taskId },
       status: "queued",
     });
     await db.insert(heartbeatRuns).values({
@@ -211,7 +211,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
       status: "queued",
       wakeupRequestId,
       contextSnapshot: {
-        issueId: input.issueId,
+        taskId: input.taskId,
         wakeReason: input.wakeReason,
         ...(input.contextExtras ?? {}),
       },
@@ -223,7 +223,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     return { runId, wakeupRequestId };
   }
 
-  it("cancels queued runs when the issue assignee changes before the run starts", async () => {
+  it("cancels queued runs when the task assignee changes before the run starts", async () => {
     const { companyId, agentId } = await seedCompanyAndAgent({ agentName: "OriginalCoder" });
     const replacementAgentId = randomUUID();
     await db.insert(agents).values({
@@ -243,9 +243,9 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
       permissions: {},
     });
 
-    const issueId = randomUUID();
-    await db.insert(issues).values({
-      id: issueId,
+    const taskId = randomUUID();
+    await db.insert(tasks).values({
+      id: taskId,
       companyId,
       title: "Reassigned task",
       status: "in_progress",
@@ -256,8 +256,8 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     const { runId, wakeupRequestId } = await seedQueuedRun({
       companyId,
       agentId,
-      issueId,
-      wakeReason: "issue_assigned",
+      taskId,
+      wakeReason: "task_assigned",
     });
 
     await heartbeat.resumeQueuedRuns();
@@ -289,18 +289,18 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     ]);
 
     expect(run?.status).toBe("cancelled");
-    expect(run?.errorCode).toBe("issue_assignee_changed");
-    expect(run?.resultJson).toMatchObject({ stopReason: "issue_assignee_changed" });
+    expect(run?.errorCode).toBe("task_assignee_changed");
+    expect(run?.resultJson).toMatchObject({ stopReason: "task_assignee_changed" });
     expect(wakeup?.status).toBe("skipped");
     expect(wakeup?.error).toContain("assignee changed");
     expect(mockAdapterExecute).not.toHaveBeenCalled();
   });
 
-  it("cancels queued runs when the issue reaches a terminal status before the run starts", async () => {
+  it("cancels queued runs when the task reaches a terminal status before the run starts", async () => {
     const { companyId, agentId } = await seedCompanyAndAgent();
-    const issueId = randomUUID();
-    await db.insert(issues).values({
-      id: issueId,
+    const taskId = randomUUID();
+    await db.insert(tasks).values({
+      id: taskId,
       companyId,
       title: "Already-completed task",
       status: "done",
@@ -311,8 +311,8 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     const { runId, wakeupRequestId } = await seedQueuedRun({
       companyId,
       agentId,
-      issueId,
-      wakeReason: "issue_assigned",
+      taskId,
+      wakeReason: "task_assigned",
     });
 
     await heartbeat.resumeQueuedRuns();
@@ -340,7 +340,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     ]);
 
     expect(run?.status).toBe("cancelled");
-    expect(run?.errorCode).toBe("issue_terminal_status");
+    expect(run?.errorCode).toBe("task_terminal_status");
     expect(wakeup?.status).toBe("skipped");
     expect(mockAdapterExecute).not.toHaveBeenCalled();
   });
@@ -360,9 +360,9 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
       permissions: {},
     });
 
-    const issueId = randomUUID();
-    await db.insert(issues).values({
-      id: issueId,
+    const taskId = randomUUID();
+    await db.insert(tasks).values({
+      id: taskId,
       companyId,
       title: "In-review task now owned by reviewer",
       status: "in_review",
@@ -385,8 +385,8 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     const { runId, wakeupRequestId } = await seedQueuedRun({
       companyId,
       agentId,
-      issueId,
-      wakeReason: "issue_assigned",
+      taskId,
+      wakeReason: "task_assigned",
     });
 
     await heartbeat.resumeQueuedRuns();
@@ -418,14 +418,14 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     ]);
 
     expect(run?.status).toBe("cancelled");
-    expect(run?.errorCode).toBe("issue_review_participant_changed");
-    expect(run?.resultJson).toMatchObject({ stopReason: "issue_review_participant_changed" });
+    expect(run?.errorCode).toBe("task_review_participant_changed");
+    expect(run?.resultJson).toMatchObject({ stopReason: "task_review_participant_changed" });
     expect(wakeup?.status).toBe("skipped");
     expect(wakeup?.error).toContain("in-review participant changed");
     expect(mockAdapterExecute).not.toHaveBeenCalled();
   });
 
-  it("still runs comment-driven wakes on in_review issues even when the agent is no longer the current participant", async () => {
+  it("still runs comment-driven wakes on in_review tasks even when the agent is no longer the current participant", async () => {
     const { companyId, agentId } = await seedCompanyAndAgent();
     const otherAgentId = randomUUID();
     await db.insert(agents).values({
@@ -440,10 +440,10 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
       permissions: {},
     });
 
-    const issueId = randomUUID();
+    const taskId = randomUUID();
     const commentId = randomUUID();
-    await db.insert(issues).values({
-      id: issueId,
+    await db.insert(tasks).values({
+      id: taskId,
       companyId,
       title: "In-review task with comment feedback",
       status: "in_review",
@@ -462,10 +462,10 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
         lastDecisionOutcome: null,
       },
     });
-    await db.insert(issueComments).values({
+    await db.insert(taskComments).values({
       id: commentId,
       companyId,
-      issueId,
+      taskId,
       authorAgentId: otherAgentId,
       body: "Review feedback comment",
     });
@@ -473,13 +473,13 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     const { runId } = await seedQueuedRun({
       companyId,
       agentId,
-      issueId,
-      wakeReason: "issue_commented",
+      taskId,
+      wakeReason: "task_commented",
       invocationSource: "automation",
       contextExtras: {
         commentId,
         wakeCommentId: commentId,
-        source: "issue.comment",
+        source: "task.comment",
       },
     });
 
@@ -503,11 +503,11 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     expect(run?.errorCode).toBeNull();
   });
 
-  it("baseline: runs queued runs when the issue is in_progress with the same assignee", async () => {
+  it("baseline: runs queued runs when the task is in_progress with the same assignee", async () => {
     const { companyId, agentId } = await seedCompanyAndAgent();
-    const issueId = randomUUID();
-    await db.insert(issues).values({
-      id: issueId,
+    const taskId = randomUUID();
+    await db.insert(tasks).values({
+      id: taskId,
       companyId,
       title: "Still actionable",
       status: "in_progress",
@@ -518,8 +518,8 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     const { runId } = await seedQueuedRun({
       companyId,
       agentId,
-      issueId,
-      wakeReason: "issue_assigned",
+      taskId,
+      wakeReason: "task_assigned",
     });
 
     await heartbeat.resumeQueuedRuns();

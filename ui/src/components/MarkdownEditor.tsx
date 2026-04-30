@@ -740,7 +740,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
         continue;
       }
 
-      if (parsed.kind === "user" || parsed.kind === "issue") {
+      if (parsed.kind === "user" || parsed.kind === "task") {
         applyMentionChipDecoration(link, parsed);
         continue;
       }
@@ -849,7 +849,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
 
   const selectMention = useCallback(
     (option: AutocompleteOption) => {
-      // Read from ref to avoid stale-closure issues (selectionchange can
+      // Read from ref to avoid stale-closure tasks (selectionchange can
       // update state between the last render and this callback firing).
       const state = mentionStateRef.current;
       if (!state) return false;

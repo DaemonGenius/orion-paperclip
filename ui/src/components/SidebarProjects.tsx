@@ -74,7 +74,7 @@ function SortableProjectItem({
     >
       <div className="flex flex-col gap-0.5">
         <NavLink
-          to={`/projects/${routeRef}/issues`}
+          to={`/projects/${routeRef}/tasks`}
           state={SIDEBAR_SCROLL_RESET_STATE}
           onClick={(e) => {
             if (isDragging) {
@@ -224,7 +224,7 @@ export function SidebarProjects() {
                   key={project.id}
                   activeProjectRef={activeProjectRef}
                   companyId={selectedCompanyId}
-                  companyPrefix={selectedCompany?.issuePrefix ?? null}
+                  companyPrefix={selectedCompany?.taskPrefix ?? null}
                   isMobile={isMobile}
                   project={project}
                   projectSidebarSlots={projectSidebarSlots}

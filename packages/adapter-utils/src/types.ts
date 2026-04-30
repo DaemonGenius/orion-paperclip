@@ -47,7 +47,7 @@ export interface AdapterRuntimeServiceReport {
   id?: string | null;
   projectId?: string | null;
   projectWorkspaceId?: string | null;
-  issueId?: string | null;
+  taskId?: string | null;
   scopeType?: "project_workspace" | "execution_workspace" | "run" | "agent";
   scopeId?: string | null;
   serviceName: string;

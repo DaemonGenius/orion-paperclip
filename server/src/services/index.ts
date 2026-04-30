@@ -6,23 +6,23 @@ export { agentInstructionsService, syncInstructionsBundleConfigFromFilePath } fr
 export { assetService } from "./assets.js";
 export { documentService, extractLegacyPlanBody } from "./documents.js";
 export {
-  ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY,
+  TASK_CONTINUATION_SUMMARY_DOCUMENT_KEY,
   buildContinuationSummaryMarkdown,
-  getIssueContinuationSummaryDocument,
-  refreshIssueContinuationSummary,
-} from "./issue-continuation-summary.js";
+  getTaskContinuationSummaryDocument,
+  refreshTaskContinuationSummary,
+} from "./task-continuation-summary.js";
 export { projectService } from "./projects.js";
 export {
-  clampIssueListLimit,
-  ISSUE_LIST_DEFAULT_LIMIT,
-  ISSUE_LIST_MAX_LIMIT,
-  issueService,
-  type IssueFilters,
-} from "./issues.js";
-export { issueThreadInteractionService } from "./issue-thread-interactions.js";
-export { issueTreeControlService } from "./issue-tree-control.js";
-export { issueApprovalService } from "./issue-approvals.js";
-export { issueReferenceService } from "./issue-references.js";
+  clampTaskListLimit,
+  TASK_LIST_DEFAULT_LIMIT,
+  TASK_LIST_MAX_LIMIT,
+  taskService,
+  type TaskFilters,
+} from "./tasks.js";
+export { taskThreadInteractionService } from "./task-thread-interactions.js";
+export { taskTreeControlService } from "./task-tree-control.js";
+export { taskApprovalService } from "./task-approvals.js";
+export { taskReferenceService } from "./task-references.js";
 export { goalService } from "./goals.js";
 export { activityService, type ActivityFilters } from "./activity.js";
 export { approvalService } from "./approvals.js";
@@ -34,7 +34,7 @@ export { routineService } from "./routines.js";
 export { costService } from "./costs.js";
 export { financeService } from "./finance.js";
 export { heartbeatService } from "./heartbeat.js";
-export { classifyIssueGraphLiveness, type IssueLivenessFinding } from "./recovery/index.js";
+export { classifyTaskGraphLiveness, type TaskLivenessFinding } from "./recovery/index.js";
 export { dashboardService } from "./dashboard.js";
 export { sidebarBadgeService } from "./sidebar-badges.js";
 export { sidebarPreferenceService } from "./sidebar-preferences.js";

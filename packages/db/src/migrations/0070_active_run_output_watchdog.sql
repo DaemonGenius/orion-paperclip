@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS "heartbeat_run_watchdog_decisions" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "company_id" uuid NOT NULL,
   "run_id" uuid NOT NULL,
-  "evaluation_issue_id" uuid,
+  "evaluation_task_id" uuid,
   "decision" text NOT NULL,
   "snoozed_until" timestamp with time zone,
   "reason" text,
@@ -39,7 +39,7 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "heartbeat_run_watchdog_decisions" ADD CONSTRAINT "heartbeat_run_watchdog_decisions_evaluation_issue_id_issues_id_fk" FOREIGN KEY ("evaluation_issue_id") REFERENCES "public"."issues"("id") ON DELETE set null ON UPDATE no action;
+ ALTER TABLE "heartbeat_run_watchdog_decisions" ADD CONSTRAINT "heartbeat_run_watchdog_decisions_evaluation_task_id_tasks_id_fk" FOREIGN KEY ("evaluation_task_id") REFERENCES "public"."tasks"("id") ON DELETE set null ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -62,8 +62,8 @@ CREATE INDEX IF NOT EXISTS "heartbeat_run_watchdog_decisions_company_run_created
 CREATE INDEX IF NOT EXISTS "heartbeat_run_watchdog_decisions_company_run_snooze_idx"
   ON "heartbeat_run_watchdog_decisions" USING btree ("company_id","run_id","snoozed_until");
 --> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "issues_active_stale_run_evaluation_uq"
-  ON "issues" USING btree ("company_id","origin_kind","origin_id")
+CREATE UNIQUE INDEX IF NOT EXISTS "tasks_active_stale_run_evaluation_uq"
+  ON "tasks" USING btree ("company_id","origin_kind","origin_id")
   WHERE "origin_kind" = 'stale_active_run_evaluation'
     AND "origin_id" IS NOT NULL
     AND "hidden_at" IS NULL

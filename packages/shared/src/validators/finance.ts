@@ -3,7 +3,7 @@ import { AGENT_ADAPTER_TYPES, FINANCE_DIRECTIONS, FINANCE_EVENT_KINDS, FINANCE_U
 
 export const createFinanceEventSchema = z.object({
   agentId: z.string().uuid().optional().nullable(),
-  issueId: z.string().uuid().optional().nullable(),
+  taskId: z.string().uuid().optional().nullable(),
   projectId: z.string().uuid().optional().nullable(),
   goalId: z.string().uuid().optional().nullable(),
   heartbeatRunId: z.string().uuid().optional().nullable(),

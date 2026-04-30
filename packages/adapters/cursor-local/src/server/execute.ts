@@ -235,7 +235,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   env.PAPERCLIP_RUN_ID = runId;
   const wakeTaskId =
     (typeof context.taskId === "string" && context.taskId.trim().length > 0 && context.taskId.trim()) ||
-    (typeof context.issueId === "string" && context.issueId.trim().length > 0 && context.issueId.trim()) ||
+    (typeof context.taskId === "string" && context.taskId.trim().length > 0 && context.taskId.trim()) ||
     null;
   const wakeReason =
     typeof context.wakeReason === "string" && context.wakeReason.trim().length > 0
@@ -253,8 +253,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     typeof context.approvalStatus === "string" && context.approvalStatus.trim().length > 0
       ? context.approvalStatus.trim()
       : null;
-  const linkedIssueIds = Array.isArray(context.issueIds)
-    ? context.issueIds.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+  const linkedTaskIds = Array.isArray(context.taskIds)
+    ? context.taskIds.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
     : [];
   const wakePayloadJson = stringifyPaperclipWakePayload(context.paperclipWake);
   if (wakeTaskId) {
@@ -272,8 +272,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   if (approvalStatus) {
     env.PAPERCLIP_APPROVAL_STATUS = approvalStatus;
   }
-  if (linkedIssueIds.length > 0) {
-    env.PAPERCLIP_LINKED_ISSUE_IDS = linkedIssueIds.join(",");
+  if (linkedTaskIds.length > 0) {
+    env.PAPERCLIP_LINKED_TASK_IDS = linkedTaskIds.join(",");
   }
   if (wakePayloadJson) {
     env.PAPERCLIP_WAKE_PAYLOAD_JSON = wakePayloadJson;

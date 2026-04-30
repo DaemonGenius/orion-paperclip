@@ -40,9 +40,9 @@ export function ApprovalDetail() {
     enabled: !!approvalId,
   });
 
-  const { data: linkedIssues } = useQuery({
-    queryKey: queryKeys.approvals.issues(approvalId!),
-    queryFn: () => approvalsApi.listIssues(approvalId!),
+  const { data: linkedTasks } = useQuery({
+    queryKey: queryKeys.approvals.tasks(approvalId!),
+    queryFn: () => approvalsApi.listTasks(approvalId!),
     enabled: !!approvalId,
   });
 
@@ -74,7 +74,7 @@ export function ApprovalDetail() {
     if (!approvalId) return;
     queryClient.invalidateQueries({ queryKey: queryKeys.approvals.detail(approvalId) });
     queryClient.invalidateQueries({ queryKey: queryKeys.approvals.comments(approvalId) });
-    queryClient.invalidateQueries({ queryKey: queryKeys.approvals.issues(approvalId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.approvals.tasks(approvalId) });
     if (approval?.companyId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.approvals.list(approval.companyId) });
       queryClient.invalidateQueries({
@@ -150,15 +150,15 @@ export function ApprovalDetail() {
   const isBudgetApproval = approval.type === "budget_override_required";
   const TypeIcon = typeIcon[approval.type] ?? defaultTypeIcon;
   const showApprovedBanner = searchParams.get("resolved") === "approved" && approval.status === "approved";
-  const primaryLinkedIssue = linkedIssues?.[0] ?? null;
+  const primaryLinkedTask = linkedTasks?.[0] ?? null;
   const resolvedCta =
-    primaryLinkedIssue
+    primaryLinkedTask
       ? {
           label:
-            (linkedIssues?.length ?? 0) > 1
-              ? "Review linked issues"
-              : "Review linked issue",
-          to: `/issues/${primaryLinkedIssue.identifier ?? primaryLinkedIssue.id}`,
+            (linkedTasks?.length ?? 0) > 1
+              ? "Review linked tasks"
+              : "Review linked task",
+          to: `/tasks/${primaryLinkedTask.identifier ?? primaryLinkedTask.id}`,
         }
       : linkedAgentId
         ? {
@@ -183,7 +183,7 @@ export function ApprovalDetail() {
               <div>
                 <p className="text-sm text-green-800 dark:text-green-100 font-medium">Approval confirmed</p>
                 <p className="text-xs text-green-700 dark:text-green-200/90">
-                  Requesting agent was notified to review this approval and linked issues.
+                  Requesting agent was notified to review this approval and linked tasks.
                 </p>
               </div>
             </div>
@@ -238,25 +238,25 @@ export function ApprovalDetail() {
           )}
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
-        {linkedIssues && linkedIssues.length > 0 && (
+        {linkedTasks && linkedTasks.length > 0 && (
           <div className="pt-2 border-t border-border/60">
-            <p className="text-xs text-muted-foreground mb-1.5">Linked Issues</p>
+            <p className="text-xs text-muted-foreground mb-1.5">Linked Tasks</p>
             <div className="space-y-1.5">
-              {linkedIssues.map((issue) => (
+              {linkedTasks.map((task) => (
                 <Link
-                  key={issue.id}
-                  to={`/issues/${issue.identifier ?? issue.id}`}
+                  key={task.id}
+                  to={`/tasks/${task.identifier ?? task.id}`}
                   className="block text-xs rounded border border-border/70 px-2 py-1.5 hover:bg-accent/20"
                 >
                   <span className="font-mono text-muted-foreground mr-2">
-                    {issue.identifier ?? issue.id.slice(0, 8)}
+                    {task.identifier ?? task.id.slice(0, 8)}
                   </span>
-                  <span>{issue.title}</span>
+                  <span>{task.title}</span>
                 </Link>
               ))}
             </div>
             <p className="text-[11px] text-muted-foreground mt-2">
-              Linked issues remain open until the requesting agent follows up and closes them.
+              Linked tasks remain open until the requesting agent follows up and closes them.
             </p>
           </div>
         )}

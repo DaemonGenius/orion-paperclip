@@ -433,7 +433,7 @@ Example uses:
 - budgets
 - approval policies
 - project execution workspace policies
-- issue/task Paperclip-only metadata
+- task/task Paperclip-only metadata
 
 Rules:
 
@@ -537,7 +537,7 @@ Paperclip can map this spec to its runtime model like this:
   - `TEAM.md` -> importable org subtree
   - `AGENTS.md` -> agent identity and instructions
   - `PROJECT.md` -> starter project definition
-  - `TASK.md` -> starter issue/task definition, or recurring task template when `recurring: true`
+  - `TASK.md` -> starter task/task definition, or recurring task template when `recurring: true`
   - `SKILL.md` -> imported skill package
   - `sources[]` -> provenance and pinned upstream refs
 - Paperclip extension:

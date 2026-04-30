@@ -20,7 +20,7 @@ function createRuntimeService(overrides: Partial<WorkspaceRuntimeService> = {}):
     projectId: overrides.projectId ?? "project-1",
     projectWorkspaceId: overrides.projectWorkspaceId ?? "workspace-1",
     executionWorkspaceId: overrides.executionWorkspaceId ?? null,
-    issueId: overrides.issueId ?? null,
+    taskId: overrides.taskId ?? null,
     scopeType: overrides.scopeType ?? "project_workspace",
     scopeId: overrides.scopeId ?? "workspace-1",
     serviceName: overrides.serviceName ?? "web",

@@ -14,11 +14,11 @@ type SurfaceStatus = {
   routeKeys: string[];
   capabilities: string[];
   summary: null | {
-    rootIssueId: string;
-    childIssueId: string | null;
-    blockerIssueId: string | null;
+    rootTaskId: string;
+    childTaskId: string | null;
+    blockerTaskId: string | null;
     billingCode: string;
-    subtreeIssueIds: string[];
+    subtreeTaskIds: string[];
     wakeupQueued: boolean;
   };
 };
@@ -75,10 +75,10 @@ export function DashboardWidget({ context }: PluginWidgetProps) {
   );
 }
 
-export function IssuePanel({ context }: PluginDetailTabProps) {
+export function TaskPanel({ context }: PluginDetailTabProps) {
   const { data, loading, error, refresh } = usePluginData<SurfaceStatus>("surface-status", {
     companyId: context.companyId,
-    issueId: context.entityId,
+    taskId: context.entityId,
   });
   const initialize = usePluginAction("initialize-smoke");
 
@@ -93,7 +93,7 @@ export function IssuePanel({ context }: PluginDetailTabProps) {
         <button
           style={buttonStyle}
           onClick={async () => {
-            await initialize({ companyId: context.companyId, issueId: context.entityId });
+            await initialize({ companyId: context.companyId, taskId: context.entityId });
             refresh();
           }}
         >
@@ -103,14 +103,14 @@ export function IssuePanel({ context }: PluginDetailTabProps) {
       <SurfaceRows data={data} />
       {data.summary ? (
         <div style={{ display: "grid", gap: 4 }}>
-          <div style={rowStyle}><span>Child</span><code>{data.summary.childIssueId ?? "none"}</code></div>
-          <div style={rowStyle}><span>Blocker</span><code>{data.summary.blockerIssueId ?? "none"}</code></div>
+          <div style={rowStyle}><span>Child</span><code>{data.summary.childTaskId ?? "none"}</code></div>
+          <div style={rowStyle}><span>Blocker</span><code>{data.summary.blockerTaskId ?? "none"}</code></div>
           <div style={rowStyle}><span>Billing</span><code>{data.summary.billingCode}</code></div>
-          <div style={rowStyle}><span>Subtree</span><strong>{data.summary.subtreeIssueIds.length}</strong></div>
+          <div style={rowStyle}><span>Subtree</span><strong>{data.summary.subtreeTaskIds.length}</strong></div>
           <div style={rowStyle}><span>Wakeup</span><strong>{data.summary.wakeupQueued ? "queued" : "not queued"}</strong></div>
         </div>
       ) : (
-        <div>No smoke run recorded for this issue.</div>
+        <div>No smoke run recorded for this task.</div>
       )}
     </div>
   );

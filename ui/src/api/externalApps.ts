@@ -5,6 +5,20 @@ import type {
 } from "@paperclipai/shared";
 import { api } from "./client";
 
+export interface ExternalAppRepository {
+  provider: "github" | "bitbucket";
+  host: string;
+  owner: string;
+  name: string;
+  fullName: string;
+  cloneUrl: string;
+  defaultBranch: string | null;
+  private: boolean;
+  archived: boolean;
+  description: string | null;
+  updatedAt: string | null;
+}
+
 export const externalAppsApi = {
   list: (companyId: string) =>
     api.get<CompanyExternalAppBinding[]>(`/companies/${companyId}/external-apps`),
@@ -32,6 +46,10 @@ export const externalAppsApi = {
       `/external-apps/${bindingId}/test`,
       {},
     ),
+  repositories: (bindingId: string, query?: string) => {
+    const params = query?.trim() ? `?q=${encodeURIComponent(query.trim())}` : "";
+    return api.get<{ repositories: ExternalAppRepository[] }>(`/external-apps/${bindingId}/repositories${params}`);
+  },
   remove: (bindingId: string) =>
     api.delete<{ ok: true; binding: CompanyExternalAppBinding | null }>(`/external-apps/${bindingId}`),
 };

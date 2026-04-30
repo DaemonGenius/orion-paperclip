@@ -33,6 +33,21 @@ export const projectsApi = {
       projectPath(projectId, companyId, `/workspaces/${encodeURIComponent(workspaceId)}`),
       data,
     ),
+  connectRepository: (projectId: string, data: Record<string, unknown>, companyId?: string) =>
+    api.post<{ project: Project; workspace: ProjectWorkspace; operation: Record<string, unknown> }>(
+      projectPath(projectId, companyId, "/repository/connect"),
+      data,
+    ),
+  verifyRepository: (projectId: string, companyId?: string) =>
+    api.post<{ workspace: ProjectWorkspace; operation: Record<string, unknown> }>(
+      projectPath(projectId, companyId, "/repository/verify"),
+      {},
+    ),
+  fetchRepository: (projectId: string, companyId?: string) =>
+    api.post<{ workspace: ProjectWorkspace; operation: Record<string, unknown> }>(
+      projectPath(projectId, companyId, "/repository/fetch"),
+      {},
+    ),
   controlWorkspaceRuntimeServices: (
     projectId: string,
     workspaceId: string,

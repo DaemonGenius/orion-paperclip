@@ -32,7 +32,7 @@ export function buildOnboardingProjectPayload(goalId: string | null) {
   };
 }
 
-export function buildOnboardingIssuePayload(input: {
+export function buildOnboardingTaskPayload(input: {
   title: string;
   description: string;
   assigneeAgentId: string;

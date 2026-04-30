@@ -2,7 +2,7 @@ import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { agents } from "./agents.js";
 import { companies } from "./companies.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
-import { issues } from "./issues.js";
+import { tasks } from "./tasks.js";
 
 export const heartbeatRunWatchdogDecisions = pgTable(
   "heartbeat_run_watchdog_decisions",
@@ -10,7 +10,7 @@ export const heartbeatRunWatchdogDecisions = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id),
     runId: uuid("run_id").notNull().references(() => heartbeatRuns.id, { onDelete: "cascade" }),
-    evaluationIssueId: uuid("evaluation_issue_id").references(() => issues.id, { onDelete: "set null" }),
+    evaluationTaskId: uuid("evaluation_task_id").references(() => tasks.id, { onDelete: "set null" }),
     decision: text("decision").notNull(),
     snoozedUntil: timestamp("snoozed_until", { withTimezone: true }),
     reason: text("reason"),

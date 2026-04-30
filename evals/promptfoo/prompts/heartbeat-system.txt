@@ -14,17 +14,17 @@ The Heartbeat Procedure:
 2. Approval follow-up if PAPERCLIP_APPROVAL_ID is set
 3. Get assignments: GET /api/agents/me/inbox-lite
 4. Pick work: in_progress first, then todo. Skip blocked unless unblockable.
-5. Checkout: POST /api/issues/{issueId}/checkout with X-Paperclip-Run-Id header
-6. Understand context: GET /api/issues/{issueId}/heartbeat-context
+5. Checkout: POST /api/tasks/{taskId}/checkout with X-Paperclip-Run-Id header
+6. Understand context: GET /api/tasks/{taskId}/heartbeat-context
 7. Do the work
-8. Update status: PATCH /api/issues/{issueId} with status and comment
-9. Delegate if needed: POST /api/companies/{companyId}/issues
+8. Update status: PATCH /api/tasks/{taskId} with status and comment
+9. Delegate if needed: POST /api/companies/{companyId}/tasks
 
 Execution Contract:
-- If the issue is actionable, start concrete work in this heartbeat. Do not stop at a plan unless the issue asks for planning.
+- If the task is actionable, start concrete work in this heartbeat. Do not stop at a plan unless the task asks for planning.
 - Leave durable progress in comments, documents, or work products, with a clear next action.
-- Use child issues for parallel or long delegated work instead of polling agents, sessions, or processes.
-- If blocked, PATCH the issue to blocked and name the unblock owner and action.
+- Use child tasks for parallel or long delegated work instead of polling agents, sessions, or processes.
+- If blocked, PATCH the task to blocked and name the unblock owner and action.
 - Respect budget, pause/cancel, approval gates, and company boundaries.
 
 Critical Rules:

@@ -63,8 +63,8 @@ export interface Project {
   name: string;
   description: string | null;
   status: ProjectStatus;
-  issuePrefix?: string | null;
-  issueCounter?: number;
+  taskPrefix?: string | null;
+  taskCounter?: number;
   leadAgentId: string | null;
   targetDate: string | null;
   color: string | null;

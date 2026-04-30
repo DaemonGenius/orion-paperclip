@@ -6,7 +6,7 @@ export const portabilityIncludeSchema = z
     company: z.boolean().optional(),
     agents: z.boolean().optional(),
     projects: z.boolean().optional(),
-    issues: z.boolean().optional(),
+    tasks: z.boolean().optional(),
     skills: z.boolean().optional(),
   })
   .partial();
@@ -112,7 +112,7 @@ export const portabilityProjectManifestEntrySchema = z.object({
   metadata: z.record(z.unknown()).nullable(),
 });
 
-export const portabilityIssueRoutineTriggerManifestEntrySchema = z.object({
+export const portabilityTaskRoutineTriggerManifestEntrySchema = z.object({
   kind: z.string().min(1),
   label: z.string().nullable(),
   enabled: z.boolean(),
@@ -122,14 +122,14 @@ export const portabilityIssueRoutineTriggerManifestEntrySchema = z.object({
   replayWindowSec: z.number().int().nullable(),
 });
 
-export const portabilityIssueRoutineManifestEntrySchema = z.object({
+export const portabilityTaskRoutineManifestEntrySchema = z.object({
   concurrencyPolicy: z.string().nullable(),
   catchUpPolicy: z.string().nullable(),
   variables: z.array(routineVariableSchema).nullable().optional(),
-  triggers: z.array(portabilityIssueRoutineTriggerManifestEntrySchema).default([]),
+  triggers: z.array(portabilityTaskRoutineTriggerManifestEntrySchema).default([]),
 });
 
-export const portabilityIssueManifestEntrySchema = z.object({
+export const portabilityTaskManifestEntrySchema = z.object({
   slug: z.string().min(1),
   identifier: z.string().min(1).nullable(),
   title: z.string().min(1),
@@ -139,7 +139,7 @@ export const portabilityIssueManifestEntrySchema = z.object({
   assigneeAgentSlug: z.string().min(1).nullable(),
   description: z.string().nullable(),
   recurring: z.boolean().default(false),
-  routine: portabilityIssueRoutineManifestEntrySchema.nullable(),
+  routine: portabilityTaskRoutineManifestEntrySchema.nullable(),
   legacyRecurrence: z.record(z.unknown()).nullable(),
   status: z.string().nullable(),
   priority: z.string().nullable(),
@@ -163,7 +163,7 @@ export const portabilityManifestSchema = z.object({
     company: z.boolean(),
     agents: z.boolean(),
     projects: z.boolean(),
-    issues: z.boolean(),
+    tasks: z.boolean(),
     skills: z.boolean(),
   }),
   company: portabilityCompanyManifestEntrySchema.nullable(),
@@ -171,7 +171,7 @@ export const portabilityManifestSchema = z.object({
   agents: z.array(portabilityAgentManifestEntrySchema),
   skills: z.array(portabilitySkillManifestEntrySchema).default([]),
   projects: z.array(portabilityProjectManifestEntrySchema).default([]),
-  issues: z.array(portabilityIssueManifestEntrySchema).default([]),
+  tasks: z.array(portabilityTaskManifestEntrySchema).default([]),
   envInputs: z.array(portabilityEnvInputSchema).default([]),
 });
 
@@ -210,8 +210,8 @@ export const companyPortabilityExportSchema = z.object({
   agents: z.array(z.string().min(1)).optional(),
   skills: z.array(z.string().min(1)).optional(),
   projects: z.array(z.string().min(1)).optional(),
-  issues: z.array(z.string().min(1)).optional(),
-  projectIssues: z.array(z.string().min(1)).optional(),
+  tasks: z.array(z.string().min(1)).optional(),
+  projectTasks: z.array(z.string().min(1)).optional(),
   selectedFiles: z.array(z.string().min(1)).optional(),
   expandReferencedSkills: z.boolean().optional(),
   sidebarOrder: portabilitySidebarOrderSchema.partial().optional(),

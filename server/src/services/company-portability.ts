@@ -21,9 +21,9 @@ import type {
   CompanyPortabilityPreviewResult,
   CompanyPortabilityProjectManifestEntry,
   CompanyPortabilityProjectWorkspaceManifestEntry,
-  CompanyPortabilityIssueRoutineManifestEntry,
-  CompanyPortabilityIssueRoutineTriggerManifestEntry,
-  CompanyPortabilityIssueManifestEntry,
+  CompanyPortabilityTaskRoutineManifestEntry,
+  CompanyPortabilityTaskRoutineTriggerManifestEntry,
+  CompanyPortabilityTaskManifestEntry,
   CompanyPortabilitySidebarOrder,
   CompanyPortabilitySkillManifestEntry,
   CompanySkill,
@@ -32,8 +32,8 @@ import type {
 } from "@paperclipai/shared";
 import {
   AGENT_DEFAULT_MAX_CONCURRENT_RUNS,
-  ISSUE_PRIORITIES,
-  ISSUE_STATUSES,
+  TASK_PRIORITIES,
+  TASK_STATUSES,
   PROJECT_STATUSES,
   ROUTINE_CATCH_UP_POLICIES,
   ROUTINE_CONCURRENCY_POLICIES,
@@ -62,7 +62,7 @@ import { renderOrgChartPng, type OrgNode } from "../routes/org-chart-svg.js";
 import { companySkillService } from "./company-skills.js";
 import { companyService } from "./companies.js";
 import { validateCron } from "./cron.js";
-import { issueService } from "./issues.js";
+import { taskService } from "./tasks.js";
 import { projectService } from "./projects.js";
 import { routineService } from "./routines.js";
 import { secretService } from "./secrets.js";
@@ -116,7 +116,7 @@ const DEFAULT_INCLUDE: CompanyPortabilityInclude = {
   company: true,
   agents: true,
   projects: false,
-  issues: false,
+  tasks: false,
   skills: false,
 };
 
@@ -142,7 +142,7 @@ function classifyPortableFileKind(pathValue: string): CompanyPortabilityExportPr
   if (normalized.startsWith("agents/")) return "agent";
   if (normalized.startsWith("skills/")) return "skill";
   if (normalized.startsWith("projects/")) return "project";
-  if (normalized.startsWith("tasks/")) return "issue";
+  if (normalized.startsWith("tasks/")) return "task";
   return "other";
 }
 
@@ -247,14 +247,14 @@ function deriveLocalExportNamespace(skill: CompanySkill, slug: string) {
 function derivePrimarySkillExportDir(
   skill: CompanySkill,
   slug: string,
-  companyIssuePrefix: string | null | undefined,
+  companyTaskPrefix: string | null | undefined,
 ) {
   const normalizedKey = normalizeSkillKey(skill.key);
   const keySegments = normalizedKey?.split("/") ?? [];
   const primaryNamespace = keySegments[0] ?? null;
 
   if (primaryNamespace === "company") {
-    const companySegment = normalizeExportPathSegment(companyIssuePrefix, true)
+    const companySegment = normalizeExportPathSegment(companyTaskPrefix, true)
       ?? normalizeExportPathSegment(keySegments[1], true)
       ?? "company";
     return `skills/company/${companySegment}/${slug}`;
@@ -296,9 +296,9 @@ function appendSkillExportDirSuffix(packageDir: string, suffix: string) {
 function deriveSkillExportDirCandidates(
   skill: CompanySkill,
   slug: string,
-  companyIssuePrefix: string | null | undefined,
+  companyTaskPrefix: string | null | undefined,
 ) {
-  const primaryDir = derivePrimarySkillExportDir(skill, slug, companyIssuePrefix);
+  const primaryDir = derivePrimarySkillExportDir(skill, slug, companyTaskPrefix);
   const metadata = isPlainRecord(skill.metadata) ? skill.metadata : null;
   const sourceKind = readSkillSourceKind(skill);
   const suffixes = new Set<string>();
@@ -339,13 +339,13 @@ function deriveSkillExportDirCandidates(
   return [primaryDir, ...Array.from(suffixes, (suffix) => appendSkillExportDirSuffix(primaryDir, suffix))];
 }
 
-function buildSkillExportDirMap(skills: CompanySkill[], companyIssuePrefix: string | null | undefined) {
+function buildSkillExportDirMap(skills: CompanySkill[], companyTaskPrefix: string | null | undefined) {
   const usedDirs = new Set<string>();
   const keyToDir = new Map<string, string>();
   const orderedSkills = [...skills].sort((left, right) => left.key.localeCompare(right.key));
   for (const skill of orderedSkills) {
     const slug = normalizeSkillSlug(skill.slug) ?? "skill";
-    const candidates = deriveSkillExportDirCandidates(skill, slug, companyIssuePrefix);
+    const candidates = deriveSkillExportDirCandidates(skill, slug, companyTaskPrefix);
 
     let packageDir = candidates.find((candidate) => !usedDirs.has(candidate)) ?? null;
     if (!packageDir) {
@@ -527,7 +527,7 @@ type ProjectLike = {
   metadata?: Record<string, unknown> | null;
 };
 
-type IssueLike = {
+type TaskLike = {
   id: string;
   identifier: string | null;
   title: string;
@@ -644,7 +644,7 @@ function asInteger(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) ? value : null;
 }
 
-function normalizeRoutineTriggerExtension(value: unknown): CompanyPortabilityIssueRoutineTriggerManifestEntry | null {
+function normalizeRoutineTriggerExtension(value: unknown): CompanyPortabilityTaskRoutineTriggerManifestEntry | null {
   if (!isPlainRecord(value)) return null;
   const kind = asString(value.kind);
   if (!kind) return null;
@@ -682,12 +682,12 @@ function normalizeRoutineVariableExtension(value: unknown): RoutineVariable | nu
   };
 }
 
-function normalizeRoutineExtension(value: unknown): CompanyPortabilityIssueRoutineManifestEntry | null {
+function normalizeRoutineExtension(value: unknown): CompanyPortabilityTaskRoutineManifestEntry | null {
   if (!isPlainRecord(value)) return null;
   const triggers = Array.isArray(value.triggers)
     ? value.triggers
       .map((entry) => normalizeRoutineTriggerExtension(entry))
-      .filter((entry): entry is CompanyPortabilityIssueRoutineTriggerManifestEntry => entry !== null)
+      .filter((entry): entry is CompanyPortabilityTaskRoutineTriggerManifestEntry => entry !== null)
     : [];
   const variables = Array.isArray(value.variables)
     ? value.variables
@@ -703,7 +703,7 @@ function normalizeRoutineExtension(value: unknown): CompanyPortabilityIssueRouti
   return stripEmptyValues(routine) ? routine : null;
 }
 
-function buildRoutineManifestFromLiveRoutine(routine: RoutineLike): CompanyPortabilityIssueRoutineManifestEntry {
+function buildRoutineManifestFromLiveRoutine(routine: RoutineLike): CompanyPortabilityTaskRoutineManifestEntry {
   return {
     concurrencyPolicy: routine.concurrencyPolicy,
     catchUpPolicy: routine.catchUpPolicy,
@@ -1051,24 +1051,24 @@ function normalizeCronList(values: string[]) {
 }
 
 function buildLegacyRoutineTriggerFromRecurrence(
-  issue: Pick<CompanyPortabilityIssueManifestEntry, "slug" | "legacyRecurrence">,
+  task: Pick<CompanyPortabilityTaskManifestEntry, "slug" | "legacyRecurrence">,
   scheduleValue: unknown,
 ) {
   const warnings: string[] = [];
   const errors: string[] = [];
-  if (!issue.legacyRecurrence || !isPlainRecord(issue.legacyRecurrence)) {
+  if (!task.legacyRecurrence || !isPlainRecord(task.legacyRecurrence)) {
     return { trigger: null, warnings, errors };
   }
 
   const schedule = isPlainRecord(scheduleValue) ? scheduleValue : null;
-  const frequency = asString(issue.legacyRecurrence.frequency);
-  const interval = asInteger(issue.legacyRecurrence.interval) ?? 1;
+  const frequency = asString(task.legacyRecurrence.frequency);
+  const interval = asInteger(task.legacyRecurrence.interval) ?? 1;
   if (!frequency) {
-    errors.push(`Recurring task ${issue.slug} uses legacy recurrence without frequency; add .paperclip.yaml routines.${issue.slug}.triggers.`);
+    errors.push(`Recurring task ${task.slug} uses legacy recurrence without frequency; add .paperclip.yaml routines.${task.slug}.triggers.`);
     return { trigger: null, warnings, errors };
   }
   if (interval < 1) {
-    errors.push(`Recurring task ${issue.slug} uses legacy recurrence with an invalid interval; add .paperclip.yaml routines.${issue.slug}.triggers.`);
+    errors.push(`Recurring task ${task.slug} uses legacy recurrence with an invalid interval; add .paperclip.yaml routines.${task.slug}.triggers.`);
     return { trigger: null, warnings, errors };
   }
 
@@ -1076,20 +1076,20 @@ function buildLegacyRoutineTriggerFromRecurrence(
   const startsAt = asString(schedule?.startsAt);
   const zonedStartsAt = startsAt ? readZonedDateParts(startsAt, timezone) : null;
   if (startsAt && !zonedStartsAt) {
-    errors.push(`Recurring task ${issue.slug} has an invalid legacy startsAt/timezone combination; add .paperclip.yaml routines.${issue.slug}.triggers.`);
+    errors.push(`Recurring task ${task.slug} has an invalid legacy startsAt/timezone combination; add .paperclip.yaml routines.${task.slug}.triggers.`);
     return { trigger: null, warnings, errors };
   }
 
-  const time = isPlainRecord(issue.legacyRecurrence.time) ? issue.legacyRecurrence.time : null;
+  const time = isPlainRecord(task.legacyRecurrence.time) ? task.legacyRecurrence.time : null;
   const hour = asInteger(time?.hour) ?? zonedStartsAt?.hour ?? 0;
   const minute = asInteger(time?.minute) ?? zonedStartsAt?.minute ?? 0;
   if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-    errors.push(`Recurring task ${issue.slug} uses legacy recurrence with an invalid time; add .paperclip.yaml routines.${issue.slug}.triggers.`);
+    errors.push(`Recurring task ${task.slug} uses legacy recurrence with an invalid time; add .paperclip.yaml routines.${task.slug}.triggers.`);
     return { trigger: null, warnings, errors };
   }
 
-  if (issue.legacyRecurrence.until != null || issue.legacyRecurrence.count != null) {
-    warnings.push(`Recurring task ${issue.slug} uses legacy recurrence end bounds; Paperclip will import the routine trigger without those limits.`);
+  if (task.legacyRecurrence.until != null || task.legacyRecurrence.count != null) {
+    warnings.push(`Recurring task ${task.slug} uses legacy recurrence end bounds; Paperclip will import the routine trigger without those limits.`);
   }
 
   let cronExpression: string | null = null;
@@ -1102,19 +1102,19 @@ function buildLegacyRoutineTriggerFromRecurrence(
         : `*/${interval}`;
     cronExpression = `${minute} ${hourField} * * *`;
   } else if (frequency === "daily") {
-    if (Array.isArray(issue.legacyRecurrence.weekdays) || Array.isArray(issue.legacyRecurrence.monthDays) || Array.isArray(issue.legacyRecurrence.months)) {
-      errors.push(`Recurring task ${issue.slug} uses unsupported legacy daily recurrence constraints; add .paperclip.yaml routines.${issue.slug}.triggers.`);
+    if (Array.isArray(task.legacyRecurrence.weekdays) || Array.isArray(task.legacyRecurrence.monthDays) || Array.isArray(task.legacyRecurrence.months)) {
+      errors.push(`Recurring task ${task.slug} uses unsupported legacy daily recurrence constraints; add .paperclip.yaml routines.${task.slug}.triggers.`);
       return { trigger: null, warnings, errors };
     }
     const dayField = interval === 1 ? "*" : `*/${interval}`;
     cronExpression = `${minute} ${hour} ${dayField} * *`;
   } else if (frequency === "weekly") {
     if (interval !== 1) {
-      errors.push(`Recurring task ${issue.slug} uses legacy weekly recurrence with interval > 1; add .paperclip.yaml routines.${issue.slug}.triggers.`);
+      errors.push(`Recurring task ${task.slug} uses legacy weekly recurrence with interval > 1; add .paperclip.yaml routines.${task.slug}.triggers.`);
       return { trigger: null, warnings, errors };
     }
-    const weekdays = Array.isArray(issue.legacyRecurrence.weekdays)
-      ? issue.legacyRecurrence.weekdays
+    const weekdays = Array.isArray(task.legacyRecurrence.weekdays)
+      ? task.legacyRecurrence.weekdays
         .map((entry) => asString(entry))
         .filter((entry): entry is string => Boolean(entry))
       : [];
@@ -1125,21 +1125,21 @@ function buildLegacyRoutineTriggerFromRecurrence(
       cronWeekdays.push(zonedStartsAt.weekday);
     }
     if (cronWeekdays.length === 0) {
-      errors.push(`Recurring task ${issue.slug} uses legacy weekly recurrence without weekdays; add .paperclip.yaml routines.${issue.slug}.triggers.`);
+      errors.push(`Recurring task ${task.slug} uses legacy weekly recurrence without weekdays; add .paperclip.yaml routines.${task.slug}.triggers.`);
       return { trigger: null, warnings, errors };
     }
     cronExpression = `${minute} ${hour} * * ${normalizeCronList(cronWeekdays)}`;
   } else if (frequency === "monthly") {
     if (interval !== 1) {
-      errors.push(`Recurring task ${issue.slug} uses legacy monthly recurrence with interval > 1; add .paperclip.yaml routines.${issue.slug}.triggers.`);
+      errors.push(`Recurring task ${task.slug} uses legacy monthly recurrence with interval > 1; add .paperclip.yaml routines.${task.slug}.triggers.`);
       return { trigger: null, warnings, errors };
     }
-    if (Array.isArray(issue.legacyRecurrence.ordinalWeekdays) && issue.legacyRecurrence.ordinalWeekdays.length > 0) {
-      errors.push(`Recurring task ${issue.slug} uses legacy ordinal monthly recurrence; add .paperclip.yaml routines.${issue.slug}.triggers.`);
+    if (Array.isArray(task.legacyRecurrence.ordinalWeekdays) && task.legacyRecurrence.ordinalWeekdays.length > 0) {
+      errors.push(`Recurring task ${task.slug} uses legacy ordinal monthly recurrence; add .paperclip.yaml routines.${task.slug}.triggers.`);
       return { trigger: null, warnings, errors };
     }
-    const monthDays = Array.isArray(issue.legacyRecurrence.monthDays)
-      ? issue.legacyRecurrence.monthDays
+    const monthDays = Array.isArray(task.legacyRecurrence.monthDays)
+      ? task.legacyRecurrence.monthDays
         .map((entry) => asInteger(entry))
         .filter((entry): entry is number => entry != null && entry >= 1 && entry <= 31)
       : [];
@@ -1147,11 +1147,11 @@ function buildLegacyRoutineTriggerFromRecurrence(
       monthDays.push(zonedStartsAt.day);
     }
     if (monthDays.length === 0) {
-      errors.push(`Recurring task ${issue.slug} uses legacy monthly recurrence without monthDays; add .paperclip.yaml routines.${issue.slug}.triggers.`);
+      errors.push(`Recurring task ${task.slug} uses legacy monthly recurrence without monthDays; add .paperclip.yaml routines.${task.slug}.triggers.`);
       return { trigger: null, warnings, errors };
     }
-    const months = Array.isArray(issue.legacyRecurrence.months)
-      ? issue.legacyRecurrence.months
+    const months = Array.isArray(task.legacyRecurrence.months)
+      ? task.legacyRecurrence.months
         .map((entry) => asInteger(entry))
         .filter((entry): entry is number => entry != null && entry >= 1 && entry <= 12)
       : [];
@@ -1159,19 +1159,19 @@ function buildLegacyRoutineTriggerFromRecurrence(
     cronExpression = `${minute} ${hour} ${normalizeCronList(monthDays.map(String))} ${monthField} *`;
   } else if (frequency === "yearly") {
     if (interval !== 1) {
-      errors.push(`Recurring task ${issue.slug} uses legacy yearly recurrence with interval > 1; add .paperclip.yaml routines.${issue.slug}.triggers.`);
+      errors.push(`Recurring task ${task.slug} uses legacy yearly recurrence with interval > 1; add .paperclip.yaml routines.${task.slug}.triggers.`);
       return { trigger: null, warnings, errors };
     }
-    const months = Array.isArray(issue.legacyRecurrence.months)
-      ? issue.legacyRecurrence.months
+    const months = Array.isArray(task.legacyRecurrence.months)
+      ? task.legacyRecurrence.months
         .map((entry) => asInteger(entry))
         .filter((entry): entry is number => entry != null && entry >= 1 && entry <= 12)
       : [];
     if (months.length === 0 && zonedStartsAt?.month) {
       months.push(zonedStartsAt.month);
     }
-    const monthDays = Array.isArray(issue.legacyRecurrence.monthDays)
-      ? issue.legacyRecurrence.monthDays
+    const monthDays = Array.isArray(task.legacyRecurrence.monthDays)
+      ? task.legacyRecurrence.monthDays
         .map((entry) => asInteger(entry))
         .filter((entry): entry is number => entry != null && entry >= 1 && entry <= 31)
       : [];
@@ -1179,12 +1179,12 @@ function buildLegacyRoutineTriggerFromRecurrence(
       monthDays.push(zonedStartsAt.day);
     }
     if (months.length === 0 || monthDays.length === 0) {
-      errors.push(`Recurring task ${issue.slug} uses legacy yearly recurrence without month/monthDay anchors; add .paperclip.yaml routines.${issue.slug}.triggers.`);
+      errors.push(`Recurring task ${task.slug} uses legacy yearly recurrence without month/monthDay anchors; add .paperclip.yaml routines.${task.slug}.triggers.`);
       return { trigger: null, warnings, errors };
     }
     cronExpression = `${minute} ${hour} ${normalizeCronList(monthDays.map(String))} ${normalizeCronList(months.map(String))} *`;
   } else {
-    errors.push(`Recurring task ${issue.slug} uses unsupported legacy recurrence frequency "${frequency}"; add .paperclip.yaml routines.${issue.slug}.triggers.`);
+    errors.push(`Recurring task ${task.slug} uses unsupported legacy recurrence frequency "${frequency}"; add .paperclip.yaml routines.${task.slug}.triggers.`);
     return { trigger: null, warnings, errors };
   }
 
@@ -1197,66 +1197,66 @@ function buildLegacyRoutineTriggerFromRecurrence(
       timezone,
       signingMode: null,
       replayWindowSec: null,
-    } satisfies CompanyPortabilityIssueRoutineTriggerManifestEntry,
+    } satisfies CompanyPortabilityTaskRoutineTriggerManifestEntry,
     warnings,
     errors,
   };
 }
 
 function resolvePortableRoutineDefinition(
-  issue: Pick<CompanyPortabilityIssueManifestEntry, "slug" | "recurring" | "routine" | "legacyRecurrence">,
+  task: Pick<CompanyPortabilityTaskManifestEntry, "slug" | "recurring" | "routine" | "legacyRecurrence">,
   scheduleValue: unknown,
 ) {
   const warnings: string[] = [];
   const errors: string[] = [];
-  if (!issue.recurring) {
+  if (!task.recurring) {
     return { routine: null, warnings, errors };
   }
 
-  const routine = issue.routine
+  const routine = task.routine
     ? {
-      concurrencyPolicy: issue.routine.concurrencyPolicy,
-      catchUpPolicy: issue.routine.catchUpPolicy,
-      variables: issue.routine.variables ?? null,
-      triggers: [...issue.routine.triggers],
+      concurrencyPolicy: task.routine.concurrencyPolicy,
+      catchUpPolicy: task.routine.catchUpPolicy,
+      variables: task.routine.variables ?? null,
+      triggers: [...task.routine.triggers],
     }
     : {
       concurrencyPolicy: null,
       catchUpPolicy: null,
       variables: null,
-      triggers: [] as CompanyPortabilityIssueRoutineTriggerManifestEntry[],
+      triggers: [] as CompanyPortabilityTaskRoutineTriggerManifestEntry[],
     };
 
   if (routine.concurrencyPolicy && !ROUTINE_CONCURRENCY_POLICIES.includes(routine.concurrencyPolicy as any)) {
-    errors.push(`Recurring task ${issue.slug} uses unsupported routine concurrencyPolicy "${routine.concurrencyPolicy}".`);
+    errors.push(`Recurring task ${task.slug} uses unsupported routine concurrencyPolicy "${routine.concurrencyPolicy}".`);
   }
   if (routine.catchUpPolicy && !ROUTINE_CATCH_UP_POLICIES.includes(routine.catchUpPolicy as any)) {
-    errors.push(`Recurring task ${issue.slug} uses unsupported routine catchUpPolicy "${routine.catchUpPolicy}".`);
+    errors.push(`Recurring task ${task.slug} uses unsupported routine catchUpPolicy "${routine.catchUpPolicy}".`);
   }
 
   for (const trigger of routine.triggers) {
     if (!ROUTINE_TRIGGER_KINDS.includes(trigger.kind as any)) {
-      errors.push(`Recurring task ${issue.slug} uses unsupported trigger kind "${trigger.kind}".`);
+      errors.push(`Recurring task ${task.slug} uses unsupported trigger kind "${trigger.kind}".`);
       continue;
     }
     if (trigger.kind === "schedule") {
       if (!trigger.cronExpression || !trigger.timezone) {
-        errors.push(`Recurring task ${issue.slug} has a schedule trigger missing cronExpression/timezone.`);
+        errors.push(`Recurring task ${task.slug} has a schedule trigger missing cronExpression/timezone.`);
         continue;
       }
       const cronError = validateCron(trigger.cronExpression);
       if (cronError) {
-        errors.push(`Recurring task ${issue.slug} has an invalid schedule trigger: ${cronError}`);
+        errors.push(`Recurring task ${task.slug} has an invalid schedule trigger: ${cronError}`);
       }
       continue;
     }
     if (trigger.kind === "webhook" && trigger.signingMode && !ROUTINE_TRIGGER_SIGNING_MODES.includes(trigger.signingMode as any)) {
-      errors.push(`Recurring task ${issue.slug} uses unsupported webhook signingMode "${trigger.signingMode}".`);
+      errors.push(`Recurring task ${task.slug} uses unsupported webhook signingMode "${trigger.signingMode}".`);
     }
   }
 
-  if (routine.triggers.length === 0 && issue.legacyRecurrence) {
-    const migrated = buildLegacyRoutineTriggerFromRecurrence(issue, scheduleValue);
+  if (routine.triggers.length === 0 && task.legacyRecurrence) {
+    const migrated = buildLegacyRoutineTriggerFromRecurrence(task, scheduleValue);
     warnings.push(...migrated.warnings);
     errors.push(...migrated.errors);
     if (migrated.trigger) {
@@ -1316,7 +1316,7 @@ function normalizeInclude(input?: Partial<CompanyPortabilityInclude>): CompanyPo
     company: input?.company ?? DEFAULT_INCLUDE.company,
     agents: input?.agents ?? DEFAULT_INCLUDE.agents,
     projects: input?.projects ?? DEFAULT_INCLUDE.projects,
-    issues: input?.issues ?? DEFAULT_INCLUDE.issues,
+    tasks: input?.tasks ?? DEFAULT_INCLUDE.tasks,
     skills: input?.skills ?? DEFAULT_INCLUDE.skills,
   };
 }
@@ -1939,7 +1939,7 @@ function applySelectedFilesToSource(source: ResolvedSource, selectedFiles?: stri
     company: filtered.manifest.company !== null,
     agents: filtered.manifest.agents.length > 0,
     projects: filtered.manifest.projects.length > 0,
-    issues: filtered.manifest.issues.length > 0,
+    tasks: filtered.manifest.tasks.length > 0,
     skills: filtered.manifest.skills.length > 0,
   };
 
@@ -2419,7 +2419,7 @@ function buildManifestFromPackageFiles(
       company: true,
       agents: true,
       projects: projectPaths.length > 0,
-      issues: taskPaths.length > 0,
+      tasks: taskPaths.length > 0,
       skills: skillPaths.length > 0,
     },
     company: {
@@ -2449,7 +2449,7 @@ function buildManifestFromPackageFiles(
     agents: [],
     skills: [],
     projects: [],
-    issues: [],
+    tasks: [],
     envInputs: [],
   };
 
@@ -2657,7 +2657,7 @@ function buildManifestFromPackageFiles(
       asBoolean(frontmatter.recurring) === true
       || routineExtension !== null
       || legacyRecurrence !== null;
-    manifest.issues.push({
+    manifest.tasks.push({
       slug,
       identifier: asString(extension.identifier),
       title: asString(frontmatter.name) ?? asString(frontmatter.title) ?? slug,
@@ -2760,7 +2760,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
   const instructions = agentInstructionsService();
   const access = accessService(db);
   const projects = projectService(db);
-  const issues = issueService(db);
+  const tasks = taskService(db);
   const companySkills = companySkillService(db);
   const secrets = secretService(db);
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
@@ -2953,10 +2953,10 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       ...input.include,
       agents: input.agents && input.agents.length > 0 ? true : input.include?.agents,
       projects: input.projects && input.projects.length > 0 ? true : input.include?.projects,
-      issues:
-        (input.issues && input.issues.length > 0) || (input.projectIssues && input.projectIssues.length > 0)
+      tasks:
+        (input.tasks && input.tasks.length > 0) || (input.projectTasks && input.projectTasks.length > 0)
           ? true
-          : input.include?.issues,
+          : input.include?.tasks,
       skills: input.skills && input.skills.length > 0 ? true : input.include?.skills,
     });
     const company = await companies.getById(companyId);
@@ -3020,11 +3020,11 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     }
 
     const projectsSvc = projectService(db);
-    const issuesSvc = issueService(db);
+    const tasksSvc = taskService(db);
     const routinesSvc = routineService(db);
-    const allProjectsRaw = include.projects || include.issues ? await projectsSvc.list(companyId) : [];
+    const allProjectsRaw = include.projects || include.tasks ? await projectsSvc.list(companyId) : [];
     const allProjects = allProjectsRaw.filter((project) => !project.archivedAt);
-    const allRoutines = include.issues ? await routinesSvc.list(companyId) : [];
+    const allRoutines = include.tasks ? await routinesSvc.list(companyId) : [];
     const projectById = new Map(allProjects.map((project) => [project.id, project]));
     const projectByReference = new Map<string, typeof allProjects[number]>();
     for (const project of allProjects) {
@@ -3043,19 +3043,19 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       selectedProjects.set(match.id, match);
     }
 
-    const selectedIssues = new Map<string, Awaited<ReturnType<typeof issuesSvc.getById>>>();
+    const selectedTasks = new Map<string, Awaited<ReturnType<typeof tasksSvc.getById>>>();
     const selectedRoutines = new Map<string, typeof allRoutines[number]>();
     const routineById = new Map(allRoutines.map((routine) => [routine.id, routine]));
-    const resolveIssueBySelector = async (selector: string) => {
+    const resolveTaskBySelector = async (selector: string) => {
       const trimmed = selector.trim();
       if (!trimmed) return null;
       return trimmed.includes("-")
-        ? issuesSvc.getByIdentifier(trimmed)
-        : issuesSvc.getById(trimmed);
+        ? tasksSvc.getByIdentifier(trimmed)
+        : tasksSvc.getById(trimmed);
     };
-    for (const selector of input.issues ?? []) {
-      const issue = await resolveIssueBySelector(selector);
-      if (!issue || issue.companyId !== companyId) {
+    for (const selector of input.tasks ?? []) {
+      const task = await resolveTaskBySelector(selector);
+      if (!task || task.companyId !== companyId) {
         const routine = routineById.get(selector.trim());
         if (routine) {
           selectedRoutines.set(routine.id, routine);
@@ -3065,26 +3065,26 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
           }
           continue;
         }
-        warnings.push(`Issue selector "${selector}" was not found and was skipped.`);
+        warnings.push(`Task selector "${selector}" was not found and was skipped.`);
         continue;
       }
-      selectedIssues.set(issue.id, issue);
-      if (issue.projectId) {
-        const parentProject = projectById.get(issue.projectId);
+      selectedTasks.set(task.id, task);
+      if (task.projectId) {
+        const parentProject = projectById.get(task.projectId);
         if (parentProject) selectedProjects.set(parentProject.id, parentProject);
       }
     }
 
-    for (const selector of input.projectIssues ?? []) {
+    for (const selector of input.projectTasks ?? []) {
       const match = projectByReference.get(selector) ?? projectByReference.get(normalizeProjectSelector(selector));
       if (!match) {
-        warnings.push(`Project-issues selector "${selector}" was not found and was skipped.`);
+        warnings.push(`Project-tasks selector "${selector}" was not found and was skipped.`);
         continue;
       }
       selectedProjects.set(match.id, match);
-      const projectIssues = await issuesSvc.list(companyId, { projectId: match.id });
-      for (const issue of projectIssues) {
-        selectedIssues.set(issue.id, issue);
+      const projectTasks = await tasksSvc.list(companyId, { projectId: match.id });
+      for (const task of projectTasks) {
+        selectedTasks.set(task.id, task);
       }
       for (const routine of allRoutines.filter((entry) => entry.projectId === match.id)) {
         selectedRoutines.set(routine.id, routine);
@@ -3097,12 +3097,12 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       }
     }
 
-    if (include.issues && selectedIssues.size === 0) {
-      const allIssues = await issuesSvc.list(companyId);
-      for (const issue of allIssues) {
-        selectedIssues.set(issue.id, issue);
-        if (issue.projectId) {
-          const parentProject = projectById.get(issue.projectId);
+    if (include.tasks && selectedTasks.size === 0) {
+      const allTasks = await tasksSvc.list(companyId);
+      for (const task of allTasks) {
+        selectedTasks.set(task.id, task);
+        if (task.projectId) {
+          const parentProject = projectById.get(task.projectId);
           if (parentProject) selectedProjects.set(parentProject.id, parentProject);
         }
       }
@@ -3119,8 +3119,8 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
 
     const selectedProjectRows = Array.from(selectedProjects.values())
       .sort((left, right) => left.name.localeCompare(right.name));
-    const selectedIssueRows = Array.from(selectedIssues.values())
-      .filter((issue): issue is NonNullable<typeof issue> => issue != null)
+    const selectedTaskRows = Array.from(selectedTasks.values())
+      .filter((task): task is NonNullable<typeof task> => task != null)
       .sort((left, right) => (left.identifier ?? left.title).localeCompare(right.identifier ?? right.title));
     const selectedRoutineSummaries = Array.from(selectedRoutines.values())
       .sort((left, right) => left.title.localeCompare(right.title));
@@ -3128,12 +3128,12 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       await Promise.all(selectedRoutineSummaries.map((routine) => routinesSvc.getDetail(routine.id)))
     ).filter((routine): routine is RoutineLike => routine !== null);
 
-    const taskSlugByIssueId = new Map<string, string>();
+    const taskSlugByTaskId = new Map<string, string>();
     const taskSlugByRoutineId = new Map<string, string>();
     const usedTaskSlugs = new Set<string>();
-    for (const issue of selectedIssueRows) {
-      const baseSlug = normalizeAgentUrlKey(issue.identifier ?? issue.title) ?? "task";
-      taskSlugByIssueId.set(issue.id, uniqueSlug(baseSlug, usedTaskSlugs));
+    for (const task of selectedTaskRows) {
+      const baseSlug = normalizeAgentUrlKey(task.identifier ?? task.title) ?? "task";
+      taskSlugByTaskId.set(task.id, uniqueSlug(baseSlug, usedTaskSlugs));
     }
     for (const routine of selectedRoutineRows) {
       const baseSlug = normalizeAgentUrlKey(routine.title) ?? "task";
@@ -3220,7 +3220,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     const selectedSkillRows = Array.from(selectedSkills.values())
       .sort((left, right) => left.key.localeCompare(right.key));
 
-    const skillExportDirs = buildSkillExportDirMap(selectedSkillRows, company.issuePrefix);
+    const skillExportDirs = buildSkillExportDirMap(selectedSkillRows, company.taskPrefix);
     for (const skill of selectedSkillRows) {
       const packageDir = skillExportDirs.get(skill.key) ?? `skills/${normalizeSkillSlug(skill.slug) ?? "skill"}`;
       if (shouldReferenceSkillOnExport(skill, Boolean(input.expandReferencedSkills))) {
@@ -3363,44 +3363,44 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       paperclipProjectsOut[slug] = isPlainRecord(extension) ? extension : {};
     }
 
-    for (const issue of selectedIssueRows) {
-      const taskSlug = taskSlugByIssueId.get(issue.id)!;
-      const projectSlug = issue.projectId ? (projectSlugById.get(issue.projectId) ?? null) : null;
+    for (const task of selectedTaskRows) {
+      const taskSlug = taskSlugByTaskId.get(task.id)!;
+      const projectSlug = task.projectId ? (projectSlugById.get(task.projectId) ?? null) : null;
       // All tasks go in top-level tasks/ folder, never nested under projects/
       const taskPath = `tasks/${taskSlug}/TASK.md`;
-      const assigneeSlug = issue.assigneeAgentId ? (idToSlug.get(issue.assigneeAgentId) ?? null) : null;
-      const projectWorkspaceKey = issue.projectId && issue.projectWorkspaceId
-        ? projectWorkspaceKeyByProjectId.get(issue.projectId)?.get(issue.projectWorkspaceId) ?? null
+      const assigneeSlug = task.assigneeAgentId ? (idToSlug.get(task.assigneeAgentId) ?? null) : null;
+      const projectWorkspaceKey = task.projectId && task.projectWorkspaceId
+        ? projectWorkspaceKeyByProjectId.get(task.projectId)?.get(task.projectWorkspaceId) ?? null
         : null;
-      if (issue.projectWorkspaceId && !projectWorkspaceKey) {
-        const aggregateKey = `${issue.projectId ?? "no-project"}:${issue.projectWorkspaceId}`;
+      if (task.projectWorkspaceId && !projectWorkspaceKey) {
+        const aggregateKey = `${task.projectId ?? "no-project"}:${task.projectWorkspaceId}`;
         const existing = unportableTaskWorkspaceRefs.get(aggregateKey);
         if (existing) {
           existing.taskSlugs.push(taskSlug);
         } else {
           unportableTaskWorkspaceRefs.set(aggregateKey, {
-            workspaceId: issue.projectWorkspaceId,
+            workspaceId: task.projectWorkspaceId,
             taskSlugs: [taskSlug],
           });
         }
       }
       files[taskPath] = buildMarkdown(
         {
-          name: issue.title,
+          name: task.title,
           project: projectSlug,
           assignee: assigneeSlug,
         },
-        issue.description ?? "",
+        task.description ?? "",
       );
       const extension = stripEmptyValues({
-        identifier: issue.identifier,
-        status: issue.status,
-        priority: issue.priority,
-        labelIds: issue.labelIds ?? undefined,
-        billingCode: issue.billingCode ?? null,
+        identifier: task.identifier,
+        status: task.status,
+        priority: task.priority,
+        labelIds: task.labelIds ?? undefined,
+        billingCode: task.billingCode ?? null,
         projectWorkspaceKey: projectWorkspaceKey ?? undefined,
-        executionWorkspaceSettings: issue.executionWorkspaceSettings ?? undefined,
-        assigneeAdapterOverrides: issue.assigneeAdapterOverrides ?? undefined,
+        executionWorkspaceSettings: task.executionWorkspaceSettings ?? undefined,
+        assigneeAdapterOverrides: task.assigneeAdapterOverrides ?? undefined,
       });
       paperclipTasksOut[taskSlug] = isPlainRecord(extension) ? extension : {};
     }
@@ -3491,7 +3491,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       company: resolved.manifest.company !== null,
       agents: resolved.manifest.agents.length > 0,
       projects: resolved.manifest.projects.length > 0,
-      issues: resolved.manifest.issues.length > 0,
+      tasks: resolved.manifest.tasks.length > 0,
       skills: resolved.manifest.skills.length > 0,
     };
     resolved.manifest.envInputs = dedupeEnvInputs(envInputs);
@@ -3525,7 +3525,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       company: resolved.manifest.company !== null,
       agents: resolved.manifest.agents.length > 0,
       projects: resolved.manifest.projects.length > 0,
-      issues: resolved.manifest.issues.length > 0,
+      tasks: resolved.manifest.tasks.length > 0,
       skills: resolved.manifest.skills.length > 0,
     };
     resolved.manifest.envInputs = dedupeEnvInputs(envInputs);
@@ -3548,14 +3548,14 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       ...input,
       include: {
         ...input.include,
-        issues:
-          input.include?.issues
-          ?? Boolean((input.issues && input.issues.length > 0) || (input.projectIssues && input.projectIssues.length > 0))
+        tasks:
+          input.include?.tasks
+          ?? Boolean((input.tasks && input.tasks.length > 0) || (input.projectTasks && input.projectTasks.length > 0))
           ?? false,
       },
     };
-    if (previewInput.include && previewInput.include.issues === undefined) {
-      previewInput.include.issues = false;
+    if (previewInput.include && previewInput.include.tasks === undefined) {
+      previewInput.include.tasks = false;
     }
     const exported = await exportBundle(companyId, previewInput);
     return {
@@ -3571,7 +3571,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         agents: exported.manifest.agents.length,
         skills: exported.manifest.skills.length,
         projects: exported.manifest.projects.length,
-        issues: exported.manifest.issues.length,
+        tasks: exported.manifest.tasks.length,
       },
     };
   }
@@ -3588,7 +3588,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       company: requestedInclude.company && manifest.company !== null,
       agents: requestedInclude.agents && manifest.agents.length > 0,
       projects: requestedInclude.projects && manifest.projects.length > 0,
-      issues: requestedInclude.issues && manifest.issues.length > 0,
+      tasks: requestedInclude.tasks && manifest.tasks.length > 0,
       skills: requestedInclude.skills && manifest.skills.length > 0,
     };
     const collisionStrategy = input.collisionStrategy ?? DEFAULT_COLLISION_STRATEGY;
@@ -3663,34 +3663,34 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       }
     }
 
-    if (include.issues) {
+    if (include.tasks) {
       const projectBySlug = new Map(manifest.projects.map((project) => [project.slug, project]));
-      for (const issue of manifest.issues) {
-        const markdown = readPortableTextFile(source.files, ensureMarkdownPath(issue.path));
+      for (const task of manifest.tasks) {
+        const markdown = readPortableTextFile(source.files, ensureMarkdownPath(task.path));
         if (typeof markdown !== "string") {
-          errors.push(`Missing markdown file for task ${issue.slug}: ${issue.path}`);
+          errors.push(`Missing markdown file for task ${task.slug}: ${task.path}`);
           continue;
         }
         const parsed = parseFrontmatterMarkdown(markdown);
         if (parsed.frontmatter.kind && parsed.frontmatter.kind !== "task") {
-          warnings.push(`Task markdown ${issue.path} does not declare kind: task in frontmatter.`);
+          warnings.push(`Task markdown ${task.path} does not declare kind: task in frontmatter.`);
         }
-        if (issue.projectWorkspaceKey) {
-          const project = issue.projectSlug ? projectBySlug.get(issue.projectSlug) ?? null : null;
+        if (task.projectWorkspaceKey) {
+          const project = task.projectSlug ? projectBySlug.get(task.projectSlug) ?? null : null;
           if (!project) {
-            warnings.push(`Task ${issue.slug} references workspace key ${issue.projectWorkspaceKey}, but its project is not present in the package.`);
-          } else if (!project.workspaces.some((workspace) => workspace.key === issue.projectWorkspaceKey)) {
-            warnings.push(`Task ${issue.slug} references missing project workspace key ${issue.projectWorkspaceKey}.`);
+            warnings.push(`Task ${task.slug} references workspace key ${task.projectWorkspaceKey}, but its project is not present in the package.`);
+          } else if (!project.workspaces.some((workspace) => workspace.key === task.projectWorkspaceKey)) {
+            warnings.push(`Task ${task.slug} references missing project workspace key ${task.projectWorkspaceKey}.`);
           }
         }
-        if (issue.recurring) {
-          if (!issue.projectSlug) {
-            errors.push(`Recurring task ${issue.slug} must declare a project to import as a routine.`);
+        if (task.recurring) {
+          if (!task.projectSlug) {
+            errors.push(`Recurring task ${task.slug} must declare a project to import as a routine.`);
           }
-          if (!issue.assigneeAgentSlug) {
-            errors.push(`Recurring task ${issue.slug} must declare an assignee to import as a routine.`);
+          if (!task.assigneeAgentSlug) {
+            errors.push(`Recurring task ${task.slug} must declare an assignee to import as a routine.`);
           }
-          const resolvedRoutine = resolvePortableRoutineDefinition(issue, parsed.frontmatter.schedule);
+          const resolvedRoutine = resolvePortableRoutineDefinition(task, parsed.frontmatter.schedule);
           warnings.push(...resolvedRoutine.warnings);
           errors.push(...resolvedRoutine.errors);
         }
@@ -3722,7 +3722,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     const existingSlugToAgent = new Map<string, { id: string; name: string }>();
     const existingSlugs = new Set<string>();
     const projectPlans: CompanyPortabilityPreviewResult["plan"]["projectPlans"] = [];
-    const issuePlans: CompanyPortabilityPreviewResult["plan"]["issuePlans"] = [];
+    const taskPlans: CompanyPortabilityPreviewResult["plan"]["taskPlans"] = [];
     const existingProjectSlugToProject = new Map<string, { id: string; name: string }>();
     const existingProjectSlugs = new Set<string>();
 
@@ -3861,7 +3861,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
           pp.plannedName = override;
         }
       }
-      for (const ip of issuePlans) {
+      for (const ip of taskPlans) {
         const override = input.nameOverrides[ip.slug];
         if (override) {
           ip.plannedTitle = override;
@@ -3883,13 +3883,13 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       }
     }
 
-    if (include.issues) {
-      for (const manifestIssue of manifest.issues) {
-        issuePlans.push({
-          slug: manifestIssue.slug,
+    if (include.tasks) {
+      for (const manifestTask of manifest.tasks) {
+        taskPlans.push({
+          slug: manifestTask.slug,
           action: "create",
-          plannedTitle: manifestIssue.title,
-          reason: manifestIssue.recurring ? "Recurring task will be imported as a routine." : null,
+          plannedTitle: manifestTask.title,
+          reason: manifestTask.recurring ? "Recurring task will be imported as a routine." : null,
         });
       }
     }
@@ -3908,7 +3908,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
             : "none",
         agentPlans,
         projectPlans,
-        issuePlans,
+        taskPlans,
       },
       manifest,
       files: source.files,
@@ -4380,38 +4380,38 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       }
     }
 
-    if (include.issues) {
+    if (include.tasks) {
       const routines = routineService(db);
-      for (const manifestIssue of sourceManifest.issues) {
-        const markdownRaw = readPortableTextFile(plan.source.files, manifestIssue.path);
+      for (const manifestTask of sourceManifest.tasks) {
+        const markdownRaw = readPortableTextFile(plan.source.files, manifestTask.path);
         const parsed = markdownRaw ? parseFrontmatterMarkdown(markdownRaw) : null;
-        const description = parsed?.body || manifestIssue.description || null;
+        const description = parsed?.body || manifestTask.description || null;
         const assigneeAgentId = resolveImportedAssigneeAgentId(
-          manifestIssue.assigneeAgentSlug,
+          manifestTask.assigneeAgentSlug,
           importedSlugToAgentId,
           existingSlugToAgentId,
           agentStatusById,
           warnings,
-          `Task ${manifestIssue.slug}`,
+          `Task ${manifestTask.slug}`,
         );
-        const projectId = manifestIssue.projectSlug
-          ? importedSlugToProjectId.get(manifestIssue.projectSlug)
-            ?? existingProjectSlugToId.get(manifestIssue.projectSlug)
+        const projectId = manifestTask.projectSlug
+          ? importedSlugToProjectId.get(manifestTask.projectSlug)
+            ?? existingProjectSlugToId.get(manifestTask.projectSlug)
             ?? null
           : null;
-        const projectWorkspaceId = manifestIssue.projectSlug && manifestIssue.projectWorkspaceKey
-          ? importedProjectWorkspaceIdByProjectSlug.get(manifestIssue.projectSlug)?.get(manifestIssue.projectWorkspaceKey) ?? null
+        const projectWorkspaceId = manifestTask.projectSlug && manifestTask.projectWorkspaceKey
+          ? importedProjectWorkspaceIdByProjectSlug.get(manifestTask.projectSlug)?.get(manifestTask.projectWorkspaceKey) ?? null
           : null;
-        if (manifestIssue.projectWorkspaceKey && !projectWorkspaceId) {
-          warnings.push(`Task ${manifestIssue.slug} references workspace key ${manifestIssue.projectWorkspaceKey}, but that workspace was not imported.`);
+        if (manifestTask.projectWorkspaceKey && !projectWorkspaceId) {
+          warnings.push(`Task ${manifestTask.slug} references workspace key ${manifestTask.projectWorkspaceKey}, but that workspace was not imported.`);
         }
-        if (manifestIssue.recurring) {
+        if (manifestTask.recurring) {
           if (!projectId) {
-            throw unprocessable(`Recurring task ${manifestIssue.slug} is missing the project required to create a routine.`);
+            throw unprocessable(`Recurring task ${manifestTask.slug} is missing the project required to create a routine.`);
           }
-          const resolvedRoutine = resolvePortableRoutineDefinition(manifestIssue, parsed?.frontmatter.schedule);
+          const resolvedRoutine = resolvePortableRoutineDefinition(manifestTask, parsed?.frontmatter.schedule);
           if (resolvedRoutine.errors.length > 0) {
-            throw unprocessable(`Recurring task ${manifestIssue.slug} could not be imported as a routine: ${resolvedRoutine.errors.join("; ")}`);
+            throw unprocessable(`Recurring task ${manifestTask.slug} could not be imported as a routine: ${resolvedRoutine.errors.join("; ")}`);
           }
           warnings.push(...resolvedRoutine.warnings);
           const routineDefinition = resolvedRoutine.routine ?? {
@@ -4423,15 +4423,15 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
           const createdRoutine = await routines.create(targetCompany.id, {
             projectId,
             goalId: null,
-            parentIssueId: null,
-            title: manifestIssue.title,
+            parentTaskId: null,
+            title: manifestTask.title,
             description,
             assigneeAgentId,
-            priority: manifestIssue.priority && ISSUE_PRIORITIES.includes(manifestIssue.priority as any)
-              ? manifestIssue.priority as typeof ISSUE_PRIORITIES[number]
+            priority: manifestTask.priority && TASK_PRIORITIES.includes(manifestTask.priority as any)
+              ? manifestTask.priority as typeof TASK_PRIORITIES[number]
               : "medium",
-            status: manifestIssue.status && ROUTINE_STATUSES.includes(manifestIssue.status as any)
-              ? manifestIssue.status as typeof ROUTINE_STATUSES[number]
+            status: manifestTask.status && ROUTINE_STATUSES.includes(manifestTask.status as any)
+              ? manifestTask.status as typeof ROUTINE_STATUSES[number]
               : "active",
             concurrencyPolicy:
               routineDefinition.concurrencyPolicy && ROUTINE_CONCURRENCY_POLICIES.includes(routineDefinition.concurrencyPolicy as any)
@@ -4487,27 +4487,27 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
           }
           continue;
         }
-        let issueStatus = manifestIssue.status && ISSUE_STATUSES.includes(manifestIssue.status as any)
-          ? manifestIssue.status as typeof ISSUE_STATUSES[number]
+        let taskStatus = manifestTask.status && TASK_STATUSES.includes(manifestTask.status as any)
+          ? manifestTask.status as typeof TASK_STATUSES[number]
           : "backlog";
-        if (!assigneeAgentId && issueStatus === "in_progress") {
-          warnings.push(`Task ${manifestIssue.slug} was downgraded to todo because its assignee could not be imported as assignable work.`);
-          issueStatus = "todo";
+        if (!assigneeAgentId && taskStatus === "in_progress") {
+          warnings.push(`Task ${manifestTask.slug} was downgraded to todo because its assignee could not be imported as assignable work.`);
+          taskStatus = "todo";
         }
-        await issues.create(targetCompany.id, {
+        await tasks.create(targetCompany.id, {
           projectId,
           projectWorkspaceId,
-          title: manifestIssue.title,
+          title: manifestTask.title,
           description,
           assigneeAgentId,
-          status: issueStatus,
-          priority: manifestIssue.priority && ISSUE_PRIORITIES.includes(manifestIssue.priority as any)
-            ? manifestIssue.priority as typeof ISSUE_PRIORITIES[number]
+          status: taskStatus,
+          priority: manifestTask.priority && TASK_PRIORITIES.includes(manifestTask.priority as any)
+            ? manifestTask.priority as typeof TASK_PRIORITIES[number]
             : "medium",
-          billingCode: manifestIssue.billingCode,
-          assigneeAdapterOverrides: manifestIssue.assigneeAdapterOverrides,
-          executionWorkspaceSettings: manifestIssue.executionWorkspaceSettings,
-          labelIds: manifestIssue.labelIds ?? [],
+          billingCode: manifestTask.billingCode,
+          assigneeAdapterOverrides: manifestTask.assigneeAdapterOverrides,
+          executionWorkspaceSettings: manifestTask.executionWorkspaceSettings,
+          labelIds: manifestTask.labelIds ?? [],
         });
       }
     }

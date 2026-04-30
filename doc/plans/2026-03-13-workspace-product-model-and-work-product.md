@@ -11,14 +11,14 @@ Today, Paperclip already has the beginnings of this model:
 
 - `projects` can carry execution workspace policy
 - `project_workspaces` already exist as a durable project-scoped object
-- issues can carry execution workspace settings
-- runtime services can be attached to a workspace or issue
+- tasks can carry execution workspace settings
+- runtime services can be attached to a workspace or task
 
 What is missing is a clear product model and UI that make these capabilities understandable and operable.
 
 The main product risk is overloading one concept to do too much:
 
-- making subissues do the job of branches or PRs
+- making subtasks do the job of branches or PRs
 - making projects too infrastructure-heavy
 - making workspaces so hidden that users cannot form a mental model
 - making Paperclip feel like a code review tool instead of a control plane
@@ -29,7 +29,7 @@ The main product risk is overloading one concept to do too much:
 2. Make workspace behavior understandable for both git and non-git projects.
 3. Support three real workflows without forcing one:
    - shared workspace / direct-edit workflows
-   - isolated issue workspace workflows
+   - isolated task workspace workflows
    - long-lived branch or operator integration workflows
 4. Provide a first-class place to see the outputs of work:
    - previews
@@ -44,7 +44,7 @@ The main product risk is overloading one concept to do too much:
 ## Non-Goals
 
 - Turning Paperclip into a full code review product
-- Requiring every issue to have its own branch or PR
+- Requiring every task to have its own branch or PR
 - Requiring every project to configure code/workspace automation
 - Making workspaces a top-level global navigation primitive in V1
 - Requiring a local filesystem path or local git checkout to use workspace-aware execution
@@ -81,7 +81,7 @@ It should not be a top-level sidebar item in the main app. It should live under 
 
 ### 3. Execution workspace is a first-class runtime object
 
-An `execution workspace` is where a specific run or issue actually executes.
+An `execution workspace` is where a specific run or task actually executes.
 
 Examples:
 
@@ -97,19 +97,19 @@ This object must be recorded explicitly so that Paperclip can:
 - attach previews and runtime services
 - link PRs and branches
 - decide cleanup behavior
-- support reuse across multiple related issues
+- support reuse across multiple related tasks
 
-### 4. PRs are work product, not the core issue model
+### 4. PRs are work product, not the core task model
 
 A PR is an output of work, not the planning unit.
 
 Paperclip should treat PRs as a type of work product linked back to:
 
-- the issue
+- the task
 - the execution workspace
 - optionally the project workspace
 
-Git-specific automation should live under workspace policy, not under the core issue abstraction.
+Git-specific automation should live under workspace policy, not under the core task abstraction.
 
 ### 5. Existing users must upgrade automatically
 
@@ -120,7 +120,7 @@ The product should default existing installs into a sensible compatibility mode:
 - existing projects without workspace configuration continue to work unchanged
 - existing `project_workspaces` become the durable `project workspace` objects
 - existing project execution workspace policy is mapped forward rather than discarded
-- issues without explicit workspace fields continue to inherit current behavior
+- tasks without explicit workspace fields continue to inherit current behavior
 
 This migration should feel additive, not like a mandatory re-onboarding flow.
 
@@ -142,9 +142,9 @@ The model therefore must be portable:
 - `runtime services` may be tracked by provider reference and URL rather than a host process
 - work product harvesting must handle externally owned previews and PRs
 
-### 7. Subissues remain planning and ownership structure
+### 7. Subtasks remain planning and ownership structure
 
-Subissues are for decomposition and parallel ownership.
+Subtasks are for decomposition and parallel ownership.
 
 They are not the same thing as:
 
@@ -161,8 +161,8 @@ Use these terms consistently in product copy:
 
 - `Project`: planning container
 - `Project workspace`: durable configured codebase/root
-- `Execution workspace`: actual runtime workspace used for issue execution
-- `Isolated issue workspace`: user-facing term for an issue-specific derived workspace
+- `Execution workspace`: actual runtime workspace used for task execution
+- `Isolated task workspace`: user-facing term for an task-specific derived workspace
 - `Work product`: previews, PRs, branches, commits, artifacts, docs
 - `Runtime service`: a process or service Paperclip owns or tracks for a workspace
 
@@ -183,7 +183,7 @@ Existing object. No fundamental change in role.
 
 - can exist without code/workspace configuration
 - can have zero or more project workspaces
-- can define execution defaults that new issues inherit
+- can define execution defaults that new tasks inherit
 
 ### Proposed fields
 
@@ -213,7 +213,7 @@ This separates:
 
 from:
 
-- "what temporary execution environment did this issue run in?"
+- "what temporary execution environment did this task run in?"
 
 That keeps the model simple for solo users while still supporting advanced automation.
 It also lets cloud-hosted Paperclip deployments point at codebases and remotes without pretending the Paperclip host has direct filesystem access.
@@ -251,7 +251,7 @@ It also lets cloud-hosted Paperclip deployments point at codebases and remotes w
 
 ## 3. Project Execution Workspace Policy
 
-Project-level defaults for how issues execute.
+Project-level defaults for how tasks execute.
 
 This is the main operator-facing configuration surface.
 
@@ -260,11 +260,11 @@ This is the main operator-facing configuration surface.
 This lets Paperclip support:
 
 - direct editing in a shared workspace
-- isolated workspaces for issue parallelism
+- isolated workspaces for task parallelism
 - long-lived integration branch workflows
 - remote cloud-agent execution that returns a branch or PR
 
-without forcing every issue or agent to expose low-level runtime configuration.
+without forcing every task or agent to expose low-level runtime configuration.
 
 ### Proposed fields
 
@@ -274,7 +274,7 @@ without forcing every issue or agent to expose low-level runtime configuration.
   - `isolated_workspace`
   - `operator_branch`
   - `adapter_default`
-- `allowIssueOverride: boolean`
+- `allowTaskOverride: boolean`
 - `defaultProjectWorkspaceId: uuid | null`
 - `workspaceStrategy`
   - `type`
@@ -307,30 +307,30 @@ without forcing every issue or agent to expose low-level runtime configuration.
 - `cleanupPolicy`
   - `mode`
     - `manual`
-    - `when_issue_terminal`
+    - `when_task_terminal`
     - `when_pr_closed`
     - `retention_window`
   - `retentionHours`
   - `keepWhilePreviewHealthy`
   - `keepWhileOpenPrExists`
 
-## 4. Issue Workspace Binding
+## 4. Task Workspace Binding
 
-Issue-level selection of execution behavior.
+Task-level selection of execution behavior.
 
 This should remain lightweight in the normal case and only surface richer controls when relevant.
 
 ### Motivation
 
-Not every issue in a code project should create a new derived workspace.
+Not every task in a code project should create a new derived workspace.
 
 Examples:
 
 - a tiny fix can run in the shared workspace
-- three related issues may intentionally share one integration branch
+- three related tasks may intentionally share one integration branch
 - a solo operator may be working directly on `master`
 
-### Proposed fields on `issues`
+### Proposed fields on `tasks`
 
 - `projectWorkspaceId: uuid | null`
 - `executionWorkspacePreference`
@@ -341,14 +341,14 @@ Examples:
   - `reuse_existing`
 - `preferredExecutionWorkspaceId: uuid | null`
 - `executionWorkspaceSettings`
-  - keep advanced per-issue override fields here
+  - keep advanced per-task override fields here
 
 ### Rules
 
 - if the project has no workspace automation, these fields may all be null
-- if the project has one primary workspace, issue creation should default to it silently
+- if the project has one primary workspace, task creation should default to it silently
 - `reuse_existing` is advanced-only and should target active execution workspaces, not the whole workspace universe
-- existing issues without these fields should behave as `inherit` during migration
+- existing tasks without these fields should behave as `inherit` during migration
 
 ## 5. Execution Workspace
 
@@ -377,7 +377,7 @@ Without an explicit `execution workspace` record, Paperclip has nowhere stable t
 - `companyId`
 - `projectId`
 - `projectWorkspaceId`
-- `sourceIssueId`
+- `sourceTaskId`
 - `mode`
   - `shared_workspace`
   - `isolated_workspace`
@@ -416,27 +416,27 @@ Without an explicit `execution workspace` record, Paperclip has nowhere stable t
 
 ### Notes
 
-- `sourceIssueId` is the issue that originally caused the workspace to be created, not necessarily the only issue linked to it later.
-- multiple issues may link to the same execution workspace in a long-lived branch workflow.
+- `sourceTaskId` is the task that originally caused the workspace to be created, not necessarily the only task linked to it later.
+- multiple tasks may link to the same execution workspace in a long-lived branch workflow.
 - `cwd` may be null for remote execution workspaces; provider identity and work product links still make the object useful.
 
-## 6. Issue-to-Execution Workspace Link
+## 6. Task-to-Execution Workspace Link
 
-An issue may need to link to one or more execution workspaces over time.
+An task may need to link to one or more execution workspaces over time.
 
 Examples:
 
-- an issue begins in a shared workspace and later moves to an isolated one
+- an task begins in a shared workspace and later moves to an isolated one
 - a failed attempt is archived and a new workspace is created
-- several issues intentionally share one operator branch workspace
+- several tasks intentionally share one operator branch workspace
 
 ### Proposed object
 
-`issue_execution_workspaces`
+`task_execution_workspaces`
 
 ### Proposed fields
 
-- `issueId`
+- `taskId`
 - `executionWorkspaceId`
 - `relationType`
   - `current`
@@ -447,7 +447,7 @@ Examples:
 
 ### UI simplification
 
-Most issues should only show one current workspace in the main UI. Historical links belong in advanced/history views.
+Most tasks should only show one current workspace in the main UI. Historical links belong in advanced/history views.
 
 ## 7. Work Product
 
@@ -463,18 +463,18 @@ Paperclip needs a single place to show:
 - "here is the commit"
 - "here is the artifact/report/doc"
 
-without turning issues into a raw dump of adapter details.
+without turning tasks into a raw dump of adapter details.
 
 ### Proposed new object
 
-`issue_work_products`
+`task_work_products`
 
 ### Proposed fields
 
 - `id`
 - `companyId`
 - `projectId`
-- `issueId`
+- `taskId`
 - `executionWorkspaceId`
 - `runtimeServiceId`
 - `type`
@@ -544,10 +544,10 @@ That would make the whole product feel infra-heavy, even for companies that do n
 - Agents
 - Goals
 - Projects
-- Issues
+- Tasks
 - Approvals
 
-Workspaces and work product should be surfaced through project and issue detail views.
+Workspaces and work product should be surfaced through project and task detail views.
 
 ## 2. Project Detail
 
@@ -556,7 +556,7 @@ Add a project sub-navigation that keeps planning first and code second.
 ### Tabs
 
 - `Overview`
-- `Issues`
+- `Tasks`
 - `Code`
 - `Activity`
 
@@ -571,18 +571,18 @@ Planning-first summary:
 - project status
 - goals
 - lead
-- issue counts
+- task counts
 - top-level progress
 - latest major work product summaries
 
-### `Issues` tab
+### `Tasks` tab
 
-- default to top-level issues only
-- show parent issue rollups:
+- default to top-level tasks only
+- show parent task rollups:
   - child count
   - `x/y` done
   - active preview/PR badges
-- optional toggle: `Show subissues`
+- optional toggle: `Show subtasks`
 
 ### `Code` tab
 
@@ -600,7 +600,7 @@ Card/list columns:
 - default ref
 - primary/default badge
 - active execution workspaces count
-- active issue count
+- active task count
 - active preview count
 - hosting type / provider when remote-managed
 
@@ -616,13 +616,13 @@ Actions:
 Fields:
 
 - `Enable workspace automation`
-- `Default issue execution mode`
+- `Default task execution mode`
   - `Shared workspace`
   - `Isolated workspace`
   - `Operator branch`
   - `Adapter default`
 - `Default codebase`
-- `Allow issue override`
+- `Allow task override`
 
 #### Section: `Provisioning`
 
@@ -670,7 +670,7 @@ Fields:
 
 - `Cleanup mode`
   - `Manual`
-  - `When issue is terminal`
+  - `When task is terminal`
   - `When PR closes`
   - `After retention window`
 - `Retention window`
@@ -705,9 +705,9 @@ Entry point: `Project > Code > Add workspace`
 - if source type is remote-managed, show provider/reference fields and hide local-path-only configuration
 - for simple solo users, this can be one path field and one save button
 
-## 4. Issue Create Flow
+## 4. Task Create Flow
 
-Issue creation should stay simple by default.
+Task creation should stay simple by default.
 
 ### Default behavior
 
@@ -754,11 +754,11 @@ not:
 
 ### Migration rule
 
-For existing users, issue creation should continue to look the same until a project explicitly enables richer workspace behavior.
+For existing users, task creation should continue to look the same until a project explicitly enables richer workspace behavior.
 
-## 5. Issue Detail
+## 5. Task Detail
 
-Issue detail should expose workspace and work product clearly, but without becoming a code host UI.
+Task detail should expose workspace and work product clearly, but without becoming a code host UI.
 
 ### Header chips
 
@@ -773,7 +773,7 @@ Show compact summary chips near the title/status area:
 ### Tabs
 
 - `Comments`
-- `Subissues`
+- `Subtasks`
 - `Work Product`
 - `Activity`
 
@@ -796,7 +796,7 @@ Fields:
 - branch
 - base ref
 - last used
-- linked issues count
+- linked tasks count
 - cleanup status
 
 Actions:
@@ -841,15 +841,15 @@ Actions:
 
 ## 6. Execution Workspace Detail
 
-This can be reached from a project code tab or an issue work product tab.
+This can be reached from a project code tab or an task work product tab.
 
 It does not need to be in the main sidebar.
 
 ### Sections
 
 - identity
-- source issue
-- linked issues
+- source task
+- linked tasks
 - branch/ref
 - provider/session identity
 - active runtime services
@@ -868,7 +868,7 @@ Inbox should surface actionable work product events, not every implementation de
 
 ### Show inbox items for
 
-- issue assigned or updated
+- task assigned or updated
 - PR needs board review
 - PR opened or marked ready
 - preview unhealthy
@@ -884,25 +884,25 @@ Inbox should surface actionable work product events, not every implementation de
 
 ### Display style
 
-If the inbox item is about a preview or PR, show issue context with it:
+If the inbox item is about a preview or PR, show task context with it:
 
-- issue identifier and title
-- parent issue if this is a subissue
+- task identifier and title
+- parent task if this is a subtask
 - workspace name if relevant
 
-## 8. Issues List and Kanban
+## 8. Tasks List and Kanban
 
 Keep list and board planning-first.
 
 ### Default behavior
 
-- show top-level issues by default
-- show parent rollups for subissues
+- show top-level tasks by default
+- show parent rollups for subtasks
 - do not flatten every child execution detail into the main board
 
 ### Row/card adornments
 
-For issues with linked work product, show compact badges:
+For tasks with linked work product, show compact badges:
 
 - `1 PR`
 - `2 previews`
@@ -925,8 +925,8 @@ Migration must be silent-by-default and compatibility-preserving.
 Existing users should not be forced to:
 
 - create new workspace objects by hand before they can keep working
-- re-tag old issues
-- learn new workspace concepts before basic issue flows continue to function
+- re-tag old tasks
+- learn new workspace concepts before basic task flows continue to function
 
 ## 2. Existing project migration
 
@@ -937,13 +937,13 @@ On upgrade:
 - existing project execution workspace policy is mapped into the new `Project Execution Workspace Policy` surface
 - projects with no execution workspace policy stay in compatible/shared mode
 
-## 3. Existing issue migration
+## 3. Existing task migration
 
 On upgrade:
 
-- existing issues default to `executionWorkspacePreference=inherit`
-- if an issue already has execution workspace settings, map them forward directly
-- if an issue has no explicit workspace data, preserve existing behavior and do not force a user-visible choice
+- existing tasks default to `executionWorkspacePreference=inherit`
+- if an task already has execution workspace settings, map them forward directly
+- if an task has no explicit workspace data, preserve existing behavior and do not force a user-visible choice
 
 ## 4. Existing run/runtime migration
 
@@ -1019,7 +1019,7 @@ Agents may still use `in_review`, but cleanup behavior must be governed by polic
 
 ### Keep an execution workspace alive while any of these are true
 
-- a linked issue is non-terminal
+- a linked task is non-terminal
 - a linked PR is open
 - a linked preview/runtime service is active
 - the workspace is still within retention window
@@ -1028,7 +1028,7 @@ Agents may still use `in_review`, but cleanup behavior must be governed by polic
 
 Archived or idle workspaces should be hidden from default lists before they are hard-cleaned up.
 
-## 2. Multiple issues may intentionally share one execution workspace
+## 2. Multiple tasks may intentionally share one execution workspace
 
 This is how Paperclip supports:
 
@@ -1036,9 +1036,9 @@ This is how Paperclip supports:
 - operator integration branches
 - related features batched into one PR
 
-This is the key reason not to force 1 issue = 1 workspace = 1 PR.
+This is the key reason not to force 1 task = 1 workspace = 1 PR.
 
-## 3. Isolated issue workspaces remain opt-in
+## 3. Isolated task workspaces remain opt-in
 
 Even in a git-heavy project, isolated workspaces should be optional.
 
@@ -1053,7 +1053,7 @@ Examples where shared mode is valid:
 
 PR automation decisions should be made at the project/workspace policy layer.
 
-The issue should only:
+The task should only:
 
 - surface the resulting PR
 - route approvals/review requests
@@ -1061,7 +1061,7 @@ The issue should only:
 
 ## 5. Work product is the user-facing unifier
 
-Previews, PRs, commits, and artifacts should all be discoverable through one consistent issue-level affordance.
+Previews, PRs, commits, and artifacts should all be discoverable through one consistent task-level affordance.
 
 That keeps Paperclip focused on coordination and visibility instead of splitting outputs across many hidden subsystems.
 
@@ -1072,20 +1072,20 @@ That keeps Paperclip focused on coordination and visibility instead of splitting
 1. Surface `Project > Code` tab
 2. Show existing project workspaces there
 3. Re-enable project-level execution workspace policy with revised copy
-4. Keep issue creation simple with inherited defaults
+4. Keep task creation simple with inherited defaults
 
 ## Phase 2: Add explicit execution workspace record
 
 1. Add `execution_workspaces`
-2. Link runs, issues, previews, and PRs to it
+2. Link runs, tasks, previews, and PRs to it
 3. Add simple execution workspace detail page
 4. Make `cwd` optional and ensure provider-managed remote workspaces are supported from day one
 
 ## Phase 3: Add work product model
 
-1. Add `issue_work_products`
+1. Add `task_work_products`
 2. Ingest PRs, previews, branches, commits
-3. Add issue `Work Product` tab
+3. Add task `Work Product` tab
 4. Add inbox items for actionable work product state changes
 5. Support remote agent-created PR/preview reporting without local ownership
 

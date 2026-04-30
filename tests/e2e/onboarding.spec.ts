@@ -7,7 +7,7 @@ import { test, expect } from "@playwright/test";
  *   Step 1 — Name your company
  *   Step 2 — Create your first agent (adapter selection + config)
  *   Step 3 — Give it something to do (task creation)
- *   Step 4 — Ready to launch (summary + open issue)
+ *   Step 4 — Ready to launch (summary + open task)
  *
  * By default this runs in skip_llm mode: we do NOT assert that an LLM
  * heartbeat fires. Set PAPERCLIP_E2E_SKIP_LLM=false to enable LLM-dependent
@@ -109,9 +109,9 @@ test.describe("Onboarding wizard", () => {
     await expect(page.locator("text=" + AGENT_NAME)).toBeVisible();
     await expect(page.locator("text=" + TASK_TITLE)).toBeVisible();
 
-    await page.getByRole("button", { name: "Create & Open Issue" }).click();
+    await page.getByRole("button", { name: "Create & Open Task" }).click();
 
-    await expect(page).toHaveURL(/\/issues\//, { timeout: 30_000 });
+    await expect(page).toHaveURL(/\/tasks\//, { timeout: 30_000 });
 
     const companiesRes = await page.request.get(`${baseUrl}/api/companies`);
     expect(companiesRes.ok()).toBe(true);
@@ -142,12 +142,12 @@ test.describe("Onboarding wizard", () => {
       instructionsBundle.files.map((file: { path: string }) => file.path).sort()
     ).toEqual(["AGENTS.md", "HEARTBEAT.md", "SOUL.md", "TOOLS.md"]);
 
-    const issuesRes = await page.request.get(
-      `${baseUrl}/api/companies/${company.id}/issues`
+    const tasksRes = await page.request.get(
+      `${baseUrl}/api/companies/${company.id}/tasks`
     );
-    expect(issuesRes.ok()).toBe(true);
-    const issues = await issuesRes.json();
-    const task = issues.find(
+    expect(tasksRes.ok()).toBe(true);
+    const tasks = await tasksRes.json();
+    const task = tasks.find(
       (i: { title: string }) => i.title === TASK_TITLE
     );
     expect(task).toBeTruthy();
@@ -160,10 +160,10 @@ test.describe("Onboarding wizard", () => {
     if (!SKIP_LLM) {
       await expect(async () => {
         const res = await page.request.get(
-          `${baseUrl}/api/issues/${task.id}`
+          `${baseUrl}/api/tasks/${task.id}`
         );
-        const issue = await res.json();
-        expect(["in_progress", "done"]).toContain(issue.status);
+        const task = await res.json();
+        expect(["in_progress", "done"]).toContain(task.status);
       }).toPass({ timeout: 120_000, intervals: [5_000] });
     } else {
       await expect

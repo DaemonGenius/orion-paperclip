@@ -83,7 +83,7 @@ export interface OrionWorkflow {
 export interface OrionTaskWorkflowBinding {
   id: string;
   companyId: string;
-  issueId: string;
+  taskId: string;
   workflowId: string;
   currentNodeKey: string | null;
   status: string;
@@ -135,7 +135,7 @@ export interface OrionReqLedgerEvent {
 export interface OrionReqLedger {
   id: string;
   companyId: string;
-  issueId: string;
+  taskId: string;
   runId: string;
   mode: OrionAutonomyMode | string;
   status: string;
@@ -153,7 +153,7 @@ export interface OrionReqLedger {
 export interface OrionPrReceipt {
   id: string;
   companyId: string;
-  issueId: string;
+  taskId: string;
   runId: string;
   ledgerId: string;
   provider: "github" | string;

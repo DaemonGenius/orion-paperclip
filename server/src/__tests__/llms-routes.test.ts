@@ -68,7 +68,7 @@ describe("llm routes", () => {
     expect(res.status).toBe(200);
     expect(res.text).toContain("Use the paperclip-create-agent skill for end-to-end hiring");
     expect(res.text).toContain("desiredSkills");
-    expect(res.text).toContain("sourceIssueId/sourceIssueIds");
+    expect(res.text).toContain("sourceTaskId/sourceTaskIds");
     expect(res.text).toContain("Timer heartbeats are opt-in for new hires.");
     expect(res.text).toContain("Leave runtimeConfig.heartbeat.enabled false");
   });

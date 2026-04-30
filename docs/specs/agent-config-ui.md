@@ -14,7 +14,7 @@ This spec covers three surfaces:
 
 ## 1. Agent Creation Dialog
 
-Follows the existing `NewIssueDialog` / `NewProjectDialog` pattern: a `Dialog` component with expand/minimize toggle, company badge breadcrumb, and Cmd+Enter submit.
+Follows the existing `NewTaskDialog` / `NewProjectDialog` pattern: a `Dialog` component with expand/minimize toggle, company badge breadcrumb, and Cmd+Enter submit.
 
 ### Fields
 
@@ -145,7 +145,7 @@ This is the primary activity/history view. Shows a paginated list of heartbeat r
 **Run list item:**
 ```
 [StatusIcon] #run-id-short   source: timer     2 min ago     1.2k tokens   $0.03
-             "Reviewed 3 PRs and filed 2 issues"
+             "Reviewed 3 PRs and filed 2 tasks"
 ```
 
 Fields per row:
@@ -175,9 +175,9 @@ Fields per row:
 - "View full log" link fetches from `heartbeatsApi.log(runId)` and shows in a scrollable monospace container
 - Truncation: show last 200 events by default, "Load more" button to fetch earlier events
 
-#### Issues Tab
+#### Tasks Tab
 
-Keep as-is: list of issues assigned to this agent with status, clickable to navigate to issue detail.
+Keep as-is: list of tasks assigned to this agent with status, clickable to navigate to task detail.
 
 #### Costs Tab
 
@@ -222,7 +222,7 @@ Shows a flat list of agents with status badge, name, role, title, and budget bar
 - Add running indicator (animated dot) if agent currently has a running heartbeat
 
 **Filtering:**
-- Tab filters: All, Active, Paused, Error (similar to Issues page pattern)
+- Tab filters: All, Active, Paused, Error (similar to Tasks page pattern)
 
 ---
 

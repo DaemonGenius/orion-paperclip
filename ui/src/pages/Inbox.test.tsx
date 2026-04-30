@@ -3,14 +3,14 @@
 import { act } from "react";
 import type { ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
-import type { Issue } from "@paperclipai/shared";
+import type { Task } from "@paperclipai/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CompanyJoinRequest } from "../api/access";
 import {
   FailedRunInboxRow,
   InboxGroupHeader,
-  InboxIssueMetaLeading,
-  InboxIssueTrailingColumns,
+  InboxTaskMetaLeading,
+  InboxTaskTrailingColumns,
   formatJoinRequestInboxLabel,
 } from "./Inbox";
 
@@ -25,9 +25,9 @@ vi.mock("@/lib/router", () => ({
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
-function createIssue(overrides: Partial<Issue> = {}): Issue {
+function createTask(overrides: Partial<Task> = {}): Task {
   return {
-    id: "issue-1",
+    id: "task-1",
     identifier: "PAP-904",
     companyId: "company-1",
     projectId: null,
@@ -42,7 +42,7 @@ function createIssue(overrides: Partial<Issue> = {}): Issue {
     assigneeUserId: null,
     createdByAgentId: null,
     createdByUserId: null,
-    issueNumber: 904,
+    taskNumber: 904,
     requestDepth: 0,
     billingCode: null,
     assigneeAdapterOverrides: null,
@@ -170,9 +170,9 @@ describe("FailedRunInboxRow", () => {
       root.render(
         <FailedRunInboxRow
           run={run}
-          issueById={new Map()}
+          taskById={new Map()}
           agentName="Agent"
-          issueLinkState={null}
+          taskLinkState={null}
           onDismiss={() => {}}
           onRetry={() => {}}
           isRetrying={false}
@@ -192,7 +192,7 @@ describe("FailedRunInboxRow", () => {
   });
 });
 
-describe("InboxIssueMetaLeading", () => {
+describe("InboxTaskMetaLeading", () => {
   let container: HTMLDivElement;
 
   beforeEach(() => {
@@ -208,7 +208,7 @@ describe("InboxIssueMetaLeading", () => {
     const root = createRoot(container);
 
     act(() => {
-      root.render(<InboxIssueMetaLeading issue={createIssue()} isLive />);
+      root.render(<InboxTaskMetaLeading task={createTask()} isLive />);
     });
 
     const statusIcon = container.querySelector('span[class*="border-blue-600"]');
@@ -235,7 +235,7 @@ describe("InboxIssueMetaLeading", () => {
   });
 });
 
-describe("InboxIssueTrailingColumns", () => {
+describe("InboxTaskTrailingColumns", () => {
   let container: HTMLDivElement;
 
   beforeEach(() => {
@@ -247,13 +247,13 @@ describe("InboxIssueTrailingColumns", () => {
     container.remove();
   });
 
-  it("renders an empty tags cell when an issue has no labels", () => {
+  it("renders an empty tags cell when an task has no labels", () => {
     const root = createRoot(container);
 
     act(() => {
       root.render(
-        <InboxIssueTrailingColumns
-          issue={createIssue({ labels: [], labelIds: [] })}
+        <InboxTaskTrailingColumns
+          task={createTask({ labels: [], labelIds: [] })}
           columns={["labels"]}
           projectName={null}
           projectColor={null}
@@ -278,8 +278,8 @@ describe("InboxIssueTrailingColumns", () => {
 
     act(() => {
       root.render(
-        <InboxIssueTrailingColumns
-          issue={createIssue()}
+        <InboxTaskTrailingColumns
+          task={createTask()}
           columns={["workspace"]}
           projectName={null}
           projectColor={null}

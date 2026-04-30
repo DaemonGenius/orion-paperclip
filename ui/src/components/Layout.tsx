@@ -8,7 +8,7 @@ import { CompanySettingsSidebar } from "./CompanySettingsSidebar";
 import { BreadcrumbBar } from "./BreadcrumbBar";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { CommandPalette } from "./CommandPalette";
-import { NewIssueDialog } from "./NewIssueDialog";
+import { NewTaskDialog } from "./NewTaskDialog";
 import { NewProjectDialog } from "./NewProjectDialog";
 import { NewGoalDialog } from "./NewGoalDialog";
 import { NewAgentDialog } from "./NewAgentDialog";
@@ -54,7 +54,7 @@ function readRememberedInstanceSettingsPath(): string {
 
 export function Layout() {
   const { sidebarOpen, setSidebarOpen, toggleSidebar, isMobile } = useSidebar();
-  const { openNewIssue, openOnboarding } = useDialog();
+  const { openNewTask, openOnboarding } = useDialog();
   const { togglePanelVisible } = usePanel();
   const {
     companies,
@@ -80,7 +80,7 @@ export function Layout() {
   const matchedCompany = useMemo(() => {
     if (!companyPrefix) return null;
     const requestedPrefix = companyPrefix.toUpperCase();
-    return companies.find((company) => company.issuePrefix.toUpperCase() === requestedPrefix) ?? null;
+    return companies.find((company) => company.taskPrefix.toUpperCase() === requestedPrefix) ?? null;
   }, [companies, companyPrefix]);
   const hasUnknownCompanyPrefix =
     Boolean(companyPrefix) && !companiesLoading && companies.length > 0 && !matchedCompany;
@@ -121,9 +121,9 @@ export function Layout() {
       return;
     }
 
-    if (companyPrefix !== matchedCompany.issuePrefix) {
+    if (companyPrefix !== matchedCompany.taskPrefix) {
       const suffix = location.pathname.replace(/^\/[^/]+/, "");
-      navigate(`/${matchedCompany.issuePrefix}${suffix}${location.search}`, { replace: true });
+      navigate(`/${matchedCompany.taskPrefix}${suffix}${location.search}`, { replace: true });
       return;
     }
 
@@ -163,7 +163,7 @@ export function Layout() {
 
   useKeyboardShortcuts({
     enabled: keyboardShortcutsEnabled,
-    onNewIssue: () => openNewIssue(),
+    onNewTask: () => openNewTask(),
     onSearch: openSearch,
     onToggleSidebar: toggleSidebar,
     onTogglePanel: togglePanel,
@@ -399,7 +399,7 @@ export function Layout() {
               {hasUnknownCompanyPrefix ? (
                 <NotFoundPage
                   scope="invalid_company_prefix"
-                  requestedPrefix={companyPrefix ?? selectedCompany?.issuePrefix}
+                  requestedPrefix={companyPrefix ?? selectedCompany?.taskPrefix}
                 />
               ) : (
                 <Outlet />
@@ -411,7 +411,7 @@ export function Layout() {
       </div>
       {isMobile && <MobileBottomNav visible={mobileNavVisible} />}
       <CommandPalette />
-      <NewIssueDialog />
+      <NewTaskDialog />
       <NewProjectDialog />
       <NewGoalDialog />
       <NewAgentDialog />

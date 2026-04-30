@@ -19,7 +19,7 @@ type HumanUser = {
 type CompanySummary = {
   id: string;
   name: string;
-  issuePrefix?: string | null;
+  taskPrefix?: string | null;
 };
 
 type CompanyMember = {
@@ -277,7 +277,7 @@ test.describe("Multi-user: authenticated mode", () => {
     await acceptBootstrapInvite(page, createBootstrapInvite());
 
     const company = await createCompanyForSession(page, companyName);
-    const companyPrefix = company.issuePrefix ?? company.id;
+    const companyPrefix = company.taskPrefix ?? company.id;
     await page.goto(`${BASE}/${companyPrefix}/dashboard`);
     await expect(page.getByTestId("layout-account-menu-trigger")).toContainText(ownerUser.name);
     await page.getByTestId("layout-account-menu-trigger").click();

@@ -1,6 +1,6 @@
 # Orion Task, Run, and REQ Ledger Contract v0
 
-Orion keeps Paperclip issues as the backing task table for the MVP, but public Orion contracts call them Tasks.
+Orion keeps Paperclip tasks as the backing task table for the MVP, but public Orion contracts call them Tasks.
 
 One Task can have many Runs. One Run has one DB-backed REQ Ledger.
 

@@ -1,9 +1,9 @@
 ---
 title: Execution Workspaces And Runtime Services
-summary: How project runtime configuration, execution workspaces, and issue runs fit together
+summary: How project runtime configuration, execution workspaces, and task runs fit together
 ---
 
-This guide documents the intended runtime model for projects, execution workspaces, and issue runs in Paperclip.
+This guide documents the intended runtime model for projects, execution workspaces, and task runs in Paperclip.
 
 Paperclip now presents this as a workspace-command model:
 
@@ -25,7 +25,7 @@ Workspace commands are manually controlled from the UI.
 
 - Project workspace services are started and stopped from the project workspace UI, and project jobs can be run on demand there.
 - Execution workspace services are started and stopped from the execution workspace UI, and execution-workspace jobs can be run on demand there.
-- Paperclip does not automatically start or stop these workspace services as part of issue execution.
+- Paperclip does not automatically start or stop these workspace services as part of task execution.
 - Paperclip also does not automatically restart workspace services on server boot.
 
 ## Execution workspace inheritance
@@ -37,14 +37,14 @@ Execution workspaces isolate code and runtime state from the project primary wor
 - The execution workspace may override that runtime configuration with its own workspace-specific settings.
 - The inherited configuration answers "which commands exist and how to run them", but any running service process is still specific to that execution workspace.
 
-## Issues and execution workspaces
+## Tasks and execution workspaces
 
-Issues are attached to execution workspace behavior, not to automatic runtime management.
+Tasks are attached to execution workspace behavior, not to automatic runtime management.
 
-- An issue may create a new execution workspace when you choose an isolated workspace mode.
-- An issue may reuse an existing execution workspace when you choose reuse.
-- Multiple issues may intentionally share one execution workspace so they can work against the same branch and running runtime services.
-- Assigning or running an issue does not automatically start or stop workspace services for that workspace.
+- An task may create a new execution workspace when you choose an isolated workspace mode.
+- An task may reuse an existing execution workspace when you choose reuse.
+- Multiple tasks may intentionally share one execution workspace so they can work against the same branch and running runtime services.
+- Assigning or running an task does not automatically start or stop workspace services for that workspace.
 
 ## Execution workspace lifecycle
 

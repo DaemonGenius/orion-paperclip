@@ -1,1 +1,1 @@
-ALTER TABLE "issues" ADD COLUMN "hidden_at" timestamp with time zone;
+ALTER TABLE "tasks" ADD COLUMN "hidden_at" timestamp with time zone;

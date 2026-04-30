@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { buildWorktreeMergePlan, parseWorktreeMergeScopes } from "../commands/worktree-merge-history-lib.js";
 
-function makeIssue(overrides: Record<string, unknown> = {}) {
+function makeTask(overrides: Record<string, unknown> = {}) {
   return {
-    id: "issue-1",
+    id: "task-1",
     companyId: "company-1",
     projectId: null,
     projectWorkspaceId: null,
     goalId: "goal-1",
     parentId: null,
-    title: "Issue",
+    title: "Task",
     description: null,
     status: "todo",
     priority: "medium",
@@ -21,7 +21,7 @@ function makeIssue(overrides: Record<string, unknown> = {}) {
     executionLockedAt: null,
     createdByAgentId: null,
     createdByUserId: "local-board",
-    issueNumber: 1,
+    taskNumber: 1,
     identifier: "PAP-1",
     requestDepth: 0,
     billingCode: null,
@@ -43,7 +43,7 @@ function makeComment(overrides: Record<string, unknown> = {}) {
   return {
     id: "comment-1",
     companyId: "company-1",
-    issueId: "issue-1",
+    taskId: "task-1",
     authorAgentId: null,
     authorUserId: "local-board",
     body: "hello",
@@ -53,11 +53,11 @@ function makeComment(overrides: Record<string, unknown> = {}) {
   } as any;
 }
 
-function makeIssueDocument(overrides: Record<string, unknown> = {}) {
+function makeTaskDocument(overrides: Record<string, unknown> = {}) {
   return {
-    id: "issue-document-1",
+    id: "task-document-1",
     companyId: "company-1",
-    issueId: "issue-1",
+    taskId: "task-1",
     documentId: "document-1",
     key: "plan",
     linkCreatedAt: new Date("2026-03-20T00:00:00.000Z"),
@@ -96,11 +96,11 @@ function makeAttachment(overrides: Record<string, unknown> = {}) {
   return {
     id: "attachment-1",
     companyId: "company-1",
-    issueId: "issue-1",
-    issueCommentId: null,
+    taskId: "task-1",
+    taskCommentId: null,
     assetId: "asset-1",
     provider: "local_disk",
-    objectKey: "company-1/issues/issue-1/2026/03/20/asset.png",
+    objectKey: "company-1/tasks/task-1/2026/03/20/asset.png",
     contentType: "image/png",
     byteSize: 12,
     sha256: "deadbeef",
@@ -163,33 +163,33 @@ function makeProjectWorkspace(overrides: Record<string, unknown> = {}) {
 
 describe("worktree merge history planner", () => {
   it("parses default scopes", () => {
-    expect(parseWorktreeMergeScopes(undefined)).toEqual(["issues", "comments"]);
-    expect(parseWorktreeMergeScopes("issues")).toEqual(["issues"]);
+    expect(parseWorktreeMergeScopes(undefined)).toEqual(["tasks", "comments"]);
+    expect(parseWorktreeMergeScopes("tasks")).toEqual(["tasks"]);
   });
 
-  it("dedupes nested worktree issues by preserved source uuid", () => {
-    const sharedIssue = makeIssue({ id: "issue-a", identifier: "PAP-10", title: "Shared" });
-    const branchOneIssue = makeIssue({
-      id: "issue-b",
+  it("dedupes nested worktree tasks by preserved source uuid", () => {
+    const sharedTask = makeTask({ id: "task-a", identifier: "PAP-10", title: "Shared" });
+    const branchOneTask = makeTask({
+      id: "task-b",
       identifier: "PAP-22",
-      title: "Branch one issue",
+      title: "Branch one task",
       createdAt: new Date("2026-03-20T01:00:00.000Z"),
     });
-    const branchTwoIssue = makeIssue({
-      id: "issue-c",
+    const branchTwoTask = makeTask({
+      id: "task-c",
       identifier: "PAP-23",
-      title: "Branch two issue",
+      title: "Branch two task",
       createdAt: new Date("2026-03-20T02:00:00.000Z"),
     });
 
     const plan = buildWorktreeMergePlan({
       companyId: "company-1",
       companyName: "Paperclip",
-      issuePrefix: "PAP",
-      previewIssueCounterStart: 500,
-      scopes: ["issues", "comments"],
-      sourceIssues: [sharedIssue, branchOneIssue, branchTwoIssue],
-      targetIssues: [sharedIssue, branchOneIssue],
+      taskPrefix: "PAP",
+      previewTaskCounterStart: 500,
+      scopes: ["tasks", "comments"],
+      sourceTasks: [sharedTask, branchOneTask, branchTwoTask],
+      targetTasks: [sharedTask, branchOneTask],
       sourceComments: [],
       targetComments: [],
       targetAgents: [],
@@ -198,9 +198,9 @@ describe("worktree merge history planner", () => {
       targetGoals: [{ id: "goal-1" }] as any,
     });
 
-    expect(plan.counts.issuesToInsert).toBe(1);
-    expect(plan.issuePlans.filter((item) => item.action === "insert").map((item) => item.source.id)).toEqual(["issue-c"]);
-    expect(plan.issuePlans.find((item) => item.source.id === "issue-c" && item.action === "insert")).toMatchObject({
+    expect(plan.counts.tasksToInsert).toBe(1);
+    expect(plan.taskPlans.filter((item) => item.action === "insert").map((item) => item.source.id)).toEqual(["task-c"]);
+    expect(plan.taskPlans.find((item) => item.source.id === "task-c" && item.action === "insert")).toMatchObject({
       previewIdentifier: "PAP-501",
     });
   });
@@ -209,12 +209,12 @@ describe("worktree merge history planner", () => {
     const plan = buildWorktreeMergePlan({
       companyId: "company-1",
       companyName: "Paperclip",
-      issuePrefix: "PAP",
-      previewIssueCounterStart: 10,
-      scopes: ["issues"],
-      sourceIssues: [
-        makeIssue({
-          id: "issue-x",
+      taskPrefix: "PAP",
+      previewTaskCounterStart: 10,
+      scopes: ["tasks"],
+      sourceTasks: [
+        makeTask({
+          id: "task-x",
           identifier: "PAP-99",
           status: "in_progress",
           assigneeAgentId: "agent-missing",
@@ -223,7 +223,7 @@ describe("worktree merge history planner", () => {
           goalId: "goal-missing",
         }),
       ],
-      targetIssues: [],
+      targetTasks: [],
       sourceComments: [],
       targetComments: [],
       targetAgents: [],
@@ -232,7 +232,7 @@ describe("worktree merge history planner", () => {
       targetGoals: [],
     });
 
-    const insert = plan.issuePlans[0] as any;
+    const insert = plan.taskPlans[0] as any;
     expect(insert.targetStatus).toBe("todo");
     expect(insert.targetAssigneeAgentId).toBeNull();
     expect(insert.targetProjectId).toBeNull();
@@ -251,18 +251,18 @@ describe("worktree merge history planner", () => {
     const plan = buildWorktreeMergePlan({
       companyId: "company-1",
       companyName: "Paperclip",
-      issuePrefix: "PAP",
-      previewIssueCounterStart: 10,
-      scopes: ["issues"],
-      sourceIssues: [
-        makeIssue({
-          id: "issue-project-map",
+      taskPrefix: "PAP",
+      previewTaskCounterStart: 10,
+      scopes: ["tasks"],
+      sourceTasks: [
+        makeTask({
+          id: "task-project-map",
           identifier: "PAP-77",
           projectId: "source-project-1",
           projectWorkspaceId: "source-workspace-1",
         }),
       ],
-      targetIssues: [],
+      targetTasks: [],
       sourceComments: [],
       targetComments: [],
       targetAgents: [],
@@ -274,7 +274,7 @@ describe("worktree merge history planner", () => {
       },
     });
 
-    const insert = plan.issuePlans[0] as any;
+    const insert = plan.taskPlans[0] as any;
     expect(insert.targetProjectId).toBe("target-project-1");
     expect(insert.projectResolution).toBe("mapped");
     expect(insert.mappedProjectName).toBe("Mapped project");
@@ -298,18 +298,18 @@ describe("worktree merge history planner", () => {
     const plan = buildWorktreeMergePlan({
       companyId: "company-1",
       companyName: "Paperclip",
-      issuePrefix: "PAP",
-      previewIssueCounterStart: 10,
-      scopes: ["issues"],
-      sourceIssues: [
-        makeIssue({
-          id: "issue-project-import",
+      taskPrefix: "PAP",
+      previewTaskCounterStart: 10,
+      scopes: ["tasks"],
+      sourceTasks: [
+        makeTask({
+          id: "task-project-import",
           identifier: "PAP-88",
           projectId: "source-project-1",
           projectWorkspaceId: "source-workspace-1",
         }),
       ],
-      targetIssues: [],
+      targetTasks: [],
       sourceComments: [],
       targetComments: [],
       sourceProjects: [sourceProject],
@@ -328,7 +328,7 @@ describe("worktree merge history planner", () => {
       workspaces: [{ id: "source-workspace-1" }],
     });
 
-    const insert = plan.issuePlans[0] as any;
+    const insert = plan.taskPlans[0] as any;
     expect(insert.targetProjectId).toBe("source-project-1");
     expect(insert.targetProjectWorkspaceId).toBe("source-workspace-1");
     expect(insert.projectResolution).toBe("imported");
@@ -336,18 +336,18 @@ describe("worktree merge history planner", () => {
     expect(insert.adjustments).toEqual([]);
   });
 
-  it("imports comments onto shared or newly imported issues while skipping existing comments", () => {
-    const sharedIssue = makeIssue({ id: "issue-a", identifier: "PAP-10" });
-    const newIssue = makeIssue({
-      id: "issue-b",
+  it("imports comments onto shared or newly imported tasks while skipping existing comments", () => {
+    const sharedTask = makeTask({ id: "task-a", identifier: "PAP-10" });
+    const newTask = makeTask({
+      id: "task-b",
       identifier: "PAP-11",
       createdAt: new Date("2026-03-20T01:00:00.000Z"),
     });
-    const existingComment = makeComment({ id: "comment-existing", issueId: "issue-a" });
-    const sharedIssueComment = makeComment({ id: "comment-shared", issueId: "issue-a" });
-    const newIssueComment = makeComment({
-      id: "comment-new-issue",
-      issueId: "issue-b",
+    const existingComment = makeComment({ id: "comment-existing", taskId: "task-a" });
+    const sharedTaskComment = makeComment({ id: "comment-shared", taskId: "task-a" });
+    const newTaskComment = makeComment({
+      id: "comment-new-task",
+      taskId: "task-b",
       authorAgentId: "missing-agent",
       createdAt: new Date("2026-03-20T01:05:00.000Z"),
     });
@@ -355,12 +355,12 @@ describe("worktree merge history planner", () => {
     const plan = buildWorktreeMergePlan({
       companyId: "company-1",
       companyName: "Paperclip",
-      issuePrefix: "PAP",
-      previewIssueCounterStart: 10,
-      scopes: ["issues", "comments"],
-      sourceIssues: [sharedIssue, newIssue],
-      targetIssues: [sharedIssue],
-      sourceComments: [existingComment, sharedIssueComment, newIssueComment],
+      taskPrefix: "PAP",
+      previewTaskCounterStart: 10,
+      scopes: ["tasks", "comments"],
+      sourceTasks: [sharedTask, newTask],
+      targetTasks: [sharedTask],
+      sourceComments: [existingComment, sharedTaskComment, newTaskComment],
       targetComments: [existingComment],
       targetAgents: [],
       targetProjects: [],
@@ -372,15 +372,15 @@ describe("worktree merge history planner", () => {
     expect(plan.counts.commentsExisting).toBe(1);
     expect(plan.commentPlans.filter((item) => item.action === "insert").map((item) => item.source.id)).toEqual([
       "comment-shared",
-      "comment-new-issue",
+      "comment-new-task",
     ]);
     expect(plan.adjustments.clear_author_agent).toBe(1);
   });
 
   it("merges document revisions onto an existing shared document and renumbers conflicts", () => {
-    const sharedIssue = makeIssue({ id: "issue-a", identifier: "PAP-10" });
-    const sourceDocument = makeIssueDocument({
-      issueId: "issue-a",
+    const sharedTask = makeTask({ id: "task-a", identifier: "PAP-10" });
+    const sourceDocument = makeTaskDocument({
+      taskId: "task-a",
       documentId: "document-a",
       latestBody: "# Branch plan",
       latestRevisionId: "revision-branch-2",
@@ -388,8 +388,8 @@ describe("worktree merge history planner", () => {
       documentUpdatedAt: new Date("2026-03-20T02:00:00.000Z"),
       linkUpdatedAt: new Date("2026-03-20T02:00:00.000Z"),
     });
-    const targetDocument = makeIssueDocument({
-      issueId: "issue-a",
+    const targetDocument = makeTaskDocument({
+      taskId: "task-a",
       documentId: "document-a",
       latestBody: "# Main plan",
       latestRevisionId: "revision-main-2",
@@ -417,11 +417,11 @@ describe("worktree merge history planner", () => {
     const plan = buildWorktreeMergePlan({
       companyId: "company-1",
       companyName: "Paperclip",
-      issuePrefix: "PAP",
-      previewIssueCounterStart: 10,
-      scopes: ["issues", "comments"],
-      sourceIssues: [sharedIssue],
-      targetIssues: [sharedIssue],
+      taskPrefix: "PAP",
+      previewTaskCounterStart: 10,
+      scopes: ["tasks", "comments"],
+      sourceTasks: [sharedTask],
+      targetTasks: [sharedTask],
       sourceComments: [],
       targetComments: [],
       sourceDocuments: [sourceDocument],
@@ -452,21 +452,21 @@ describe("worktree merge history planner", () => {
   });
 
   it("imports attachments while clearing missing comment and author references", () => {
-    const sharedIssue = makeIssue({ id: "issue-a", identifier: "PAP-10" });
+    const sharedTask = makeTask({ id: "task-a", identifier: "PAP-10" });
     const attachment = makeAttachment({
-      issueId: "issue-a",
-      issueCommentId: "comment-missing",
+      taskId: "task-a",
+      taskCommentId: "comment-missing",
       createdByAgentId: "agent-missing",
     });
 
     const plan = buildWorktreeMergePlan({
       companyId: "company-1",
       companyName: "Paperclip",
-      issuePrefix: "PAP",
-      previewIssueCounterStart: 10,
-      scopes: ["issues"],
-      sourceIssues: [sharedIssue],
-      targetIssues: [sharedIssue],
+      taskPrefix: "PAP",
+      previewTaskCounterStart: 10,
+      scopes: ["tasks"],
+      sourceTasks: [sharedTask],
+      targetTasks: [sharedTask],
       sourceComments: [],
       targetComments: [],
       sourceDocuments: [],
@@ -485,7 +485,7 @@ describe("worktree merge history planner", () => {
     expect(plan.adjustments.clear_attachment_agent).toBe(1);
     expect(plan.attachmentPlans[0]).toMatchObject({
       action: "insert",
-      targetIssueCommentId: null,
+      targetTaskCommentId: null,
       targetCreatedByAgentId: null,
     });
   });

@@ -65,7 +65,7 @@ export interface CompanyMembersResponse {
 
 export interface ArchiveCompanyMemberResponse {
   member: CompanyMemberRecord;
-  reassignedIssueCount: number;
+  reassignedTaskCount: number;
 }
 
 export interface Invite {

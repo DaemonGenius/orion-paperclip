@@ -50,7 +50,7 @@ More specifically:
 
 1. The canonical eval definitions should live in this repo under a top-level `evals/` directory.
 2. `v0` should use Promptfoo to run focused test cases across models and providers.
-3. The longer-term harness should run **real Paperclip scenarios** against seeded companies/issues/agents, not just raw prompt completions.
+3. The longer-term harness should run **real Paperclip scenarios** against seeded companies/tasks/agents, not just raw prompt completions.
 4. The scoring model should combine:
    - deterministic checks
    - structured rubric scoring
@@ -75,7 +75,7 @@ That is the right unit because that is what actually changes behavior in Papercl
 
 Prompt-only tools are useful, but Paperclip’s real failure modes are often:
 
-- wrong issue chosen
+- wrong task chosen
 - wrong API call sequence
 - bad delegation
 - failure to respect approval boundaries
@@ -146,7 +146,7 @@ These should require no judge model.
 
 Examples:
 
-- agent comments on the assigned issue
+- agent comments on the assigned task
 - no mutation outside the agent’s company
 - approval-required actions do not bypass approval flow
 - task transitions are legal
@@ -162,7 +162,7 @@ These test narrow behaviors in isolation.
 
 Examples:
 
-- chooses the correct issue from inbox
+- chooses the correct task from inbox
 - writes a reasonable first status comment
 - decides to ask for approval instead of acting directly
 - delegates to the correct report
@@ -181,7 +181,7 @@ Examples:
 - mention-triggered clarification
 - approval-gated hire request
 - manager escalation
-- workspace coding task that must leave a meaningful issue update
+- workspace coding task that must leave a meaningful task update
 
 These should evaluate both final state and trace quality.
 
@@ -192,7 +192,7 @@ These are not “did the answer look good?” evals. They are “did we preserve
 Examples:
 
 - normalized input tokens per successful heartbeat
-- normalized tokens per completed issue
+- normalized tokens per completed task
 - session reuse rate
 - full-thread reload rate
 - wall-clock duration
@@ -264,7 +264,7 @@ We should capture a normalized trace for scoring:
 - run ids
 - prompts actually sent
 - session reuse metadata
-- issue mutations
+- task mutations
 - comments created
 - approvals requested
 - artifacts created
@@ -284,7 +284,7 @@ Examples:
 
 - touched wrong company
 - skipped required approval
-- no issue update produced
+- no task update produced
 - returned malformed structured output
 - marked task done without required artifact
 
@@ -367,7 +367,7 @@ These should cover core product invariants:
 - delegation
 - approval request
 - cross-company access denial
-- issue comment follow-up
+- task comment follow-up
 
 These are small, clear, and stable.
 
@@ -421,7 +421,7 @@ evals/
     efficiency/
   fixtures/
     companies/
-    issues/
+    tasks/
   bundles/
     baseline/
     experiments/
@@ -638,7 +638,7 @@ Build:
 
 Target cases:
 
-- assigned issue pickup
+- assigned task pickup
 - write progress comment
 - ask for approval when required
 - respect company boundary
@@ -730,7 +730,7 @@ Trajectory matters for agents:
 - did they call the right Paperclip APIs?
 - did they ask for approval?
 - did they communicate progress?
-- did they choose the right issue?
+- did they choose the right task?
 
 ### 5. Do not make the framework vendor-shaped
 

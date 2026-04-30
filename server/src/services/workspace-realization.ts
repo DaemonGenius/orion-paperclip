@@ -39,7 +39,7 @@ function readWorkspaceRealizationRequest(value: unknown): WorkspaceRealizationRe
     companyId,
     environmentId,
     executionWorkspaceId: readString(parsed.executionWorkspaceId),
-    issueId: readString(parsed.issueId),
+    taskId: readString(parsed.taskId),
     heartbeatRunId,
     requestedMode: readString(parsed.requestedMode),
     source: {
@@ -72,7 +72,7 @@ export function buildWorkspaceRealizationRequest(input: {
   companyId: string;
   environmentId: string;
   executionWorkspaceId: string | null;
-  issueId: string | null;
+  taskId: string | null;
   heartbeatRunId: string;
   requestedMode: string | null;
   workspace: RealizedExecutionWorkspace;
@@ -84,7 +84,7 @@ export function buildWorkspaceRealizationRequest(input: {
     companyId: input.companyId,
     environmentId: input.environmentId,
     executionWorkspaceId: input.executionWorkspaceId,
-    issueId: input.issueId,
+    taskId: input.taskId,
     heartbeatRunId: input.heartbeatRunId,
     requestedMode: input.requestedMode,
     source: {
@@ -241,7 +241,7 @@ export function buildWorkspaceRealizationRecordFromDriverInput(input: {
       companyId: input.lease.companyId,
       environmentId: input.environment.id,
       executionWorkspaceId: input.lease.executionWorkspaceId,
-      issueId: input.lease.issueId,
+      taskId: input.lease.taskId,
       heartbeatRunId: input.lease.heartbeatRunId ?? "unknown",
       requestedMode: input.workspace.mode ?? null,
       workspace: {

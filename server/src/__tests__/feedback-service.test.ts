@@ -17,9 +17,9 @@ import {
   feedbackVotes,
   heartbeatRuns,
   instanceSettings,
-  issueComments,
-  issueDocuments,
-  issues,
+  taskComments,
+  taskDocuments,
+  tasks,
 } from "@paperclipai/db";
 import { feedbackService } from "../services/feedback.ts";
 import { startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.ts";
@@ -28,7 +28,7 @@ async function closeDbClient(db: ReturnType<typeof createDb> | undefined) {
   await db?.$client?.end?.({ timeout: 0 });
 }
 
-describe("feedbackService.saveIssueVote", () => {
+describe("feedbackService.saveTaskVote", () => {
   let db!: ReturnType<typeof createDb>;
   let svc!: ReturnType<typeof feedbackService>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
@@ -45,14 +45,14 @@ describe("feedbackService.saveIssueVote", () => {
     await db.delete(feedbackExports);
     await db.delete(feedbackVotes);
     await db.delete(instanceSettings);
-    await db.delete(issueDocuments);
+    await db.delete(taskDocuments);
     await db.delete(documentRevisions);
     await db.delete(documents);
-    await db.delete(issueComments);
+    await db.delete(taskComments);
     await db.delete(costEvents);
     await db.delete(heartbeatRuns);
     await db.delete(companySkills);
-    await db.delete(issues);
+    await db.delete(tasks);
     await db.delete(agents);
     await db.delete(companies);
     for (const dir of tempDirs) {
@@ -67,16 +67,16 @@ describe("feedbackService.saveIssueVote", () => {
     await tempDb?.cleanup();
   });
 
-  async function seedIssueWithAgentComment() {
+  async function seedTaskWithAgentComment() {
     const companyId = randomUUID();
     const agentId = randomUUID();
-    const issueId = randomUUID();
+    const taskId = randomUUID();
     const commentId = randomUUID();
 
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `F${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      taskPrefix: `F${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
@@ -92,8 +92,8 @@ describe("feedbackService.saveIssueVote", () => {
       permissions: {},
     });
 
-    await db.insert(issues).values({
-      id: issueId,
+    await db.insert(tasks).values({
+      id: taskId,
       companyId,
       title: "Add feedback voting",
       status: "todo",
@@ -101,21 +101,21 @@ describe("feedbackService.saveIssueVote", () => {
       createdByUserId: "user-1",
     });
 
-    await db.insert(issueComments).values({
+    await db.insert(taskComments).values({
       id: commentId,
       companyId,
-      issueId,
+      taskId,
       authorAgentId: agentId,
       body: "AI generated update",
     });
 
-    return { companyId, issueId, commentId };
+    return { companyId, taskId, commentId };
   }
 
-  async function seedIssueWithRichAgentComment() {
+  async function seedTaskWithRichAgentComment() {
     const companyId = randomUUID();
     const agentId = randomUUID();
-    const issueId = randomUUID();
+    const taskId = randomUUID();
     const targetCommentId = randomUUID();
     const earlierCommentId = randomUUID();
     const laterCommentId = randomUUID();
@@ -136,7 +136,7 @@ describe("feedbackService.saveIssueVote", () => {
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `R${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      taskPrefix: `R${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
@@ -193,11 +193,11 @@ describe("feedbackService.saveIssueVote", () => {
       permissions: {},
     });
 
-    await db.insert(issues).values({
-      id: issueId,
+    await db.insert(tasks).values({
+      id: taskId,
       companyId,
       title: "Trace-rich feedback",
-      description: "Issue context includes ops@example.com and a backup phone 555 111 2222.",
+      description: "Task context includes ops@example.com and a backup phone 555 111 2222.",
       status: "todo",
       priority: "medium",
       createdByUserId: "user-1",
@@ -224,7 +224,7 @@ describe("feedbackService.saveIssueVote", () => {
       id: randomUUID(),
       companyId,
       agentId,
-      issueId,
+      taskId,
       heartbeatRunId: runId,
       provider: "openai",
       biller: "openai",
@@ -237,11 +237,11 @@ describe("feedbackService.saveIssueVote", () => {
       occurredAt: new Date("2026-03-30T10:05:00.000Z"),
     });
 
-    await db.insert(issueComments).values([
+    await db.insert(taskComments).values([
       {
         id: earlierCommentId,
         companyId,
-        issueId,
+        taskId,
         authorAgentId: agentId,
         createdByRunId: runId,
         body: "Previous comment with ops@example.com in it.",
@@ -250,7 +250,7 @@ describe("feedbackService.saveIssueVote", () => {
       {
         id: targetCommentId,
         companyId,
-        issueId,
+        taskId,
         authorAgentId: agentId,
         createdByRunId: runId,
         body: "Target output with api_key=secret-value and Bearer secret-token.",
@@ -259,7 +259,7 @@ describe("feedbackService.saveIssueVote", () => {
       {
         id: laterCommentId,
         companyId,
-        issueId,
+        taskId,
         authorAgentId: agentId,
         createdByRunId: runId,
         body: "Later comment mentions 555 111 2222 for follow-up.",
@@ -267,20 +267,20 @@ describe("feedbackService.saveIssueVote", () => {
       },
     ]);
 
-    return { companyId, issueId, targetCommentId, runId };
+    return { companyId, taskId, targetCommentId, runId };
   }
 
-  async function seedIssueWithAgentDocument() {
+  async function seedTaskWithAgentDocument() {
     const companyId = randomUUID();
     const agentId = randomUUID();
-    const issueId = randomUUID();
+    const taskId = randomUUID();
     const documentId = randomUUID();
     const revisionId = randomUUID();
 
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `D${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      taskPrefix: `D${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
@@ -296,8 +296,8 @@ describe("feedbackService.saveIssueVote", () => {
       permissions: {},
     });
 
-    await db.insert(issues).values({
-      id: issueId,
+    await db.insert(tasks).values({
+      id: taskId,
       companyId,
       title: "Document feedback",
       status: "todo",
@@ -326,30 +326,30 @@ describe("feedbackService.saveIssueVote", () => {
       createdByAgentId: agentId,
     });
 
-    await db.insert(issueDocuments).values({
+    await db.insert(taskDocuments).values({
       companyId,
-      issueId,
+      taskId,
       documentId,
       key: "plan",
     });
 
-    return { companyId, issueId, revisionId };
+    return { companyId, taskId, revisionId };
   }
 
-  async function seedIssueWithAdapterRunComment(input: {
+  async function seedTaskWithAdapterRunComment(input: {
     adapterType: "claude_local" | "opencode_local";
     sessionId: string;
   }) {
     const companyId = randomUUID();
     const agentId = randomUUID();
-    const issueId = randomUUID();
+    const taskId = randomUUID();
     const commentId = randomUUID();
     const runId = randomUUID();
 
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      taskPrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
@@ -365,8 +365,8 @@ describe("feedbackService.saveIssueVote", () => {
       permissions: {},
     });
 
-    await db.insert(issues).values({
-      id: issueId,
+    await db.insert(tasks).values({
+      id: taskId,
       companyId,
       title: "Trace-backed feedback",
       status: "todo",
@@ -389,24 +389,24 @@ describe("feedbackService.saveIssueVote", () => {
       },
     });
 
-    await db.insert(issueComments).values({
+    await db.insert(taskComments).values({
       id: commentId,
       companyId,
-      issueId,
+      taskId,
       authorAgentId: agentId,
       createdByRunId: runId,
       body: "Trace-backed agent output",
     });
 
-    return { companyId, issueId, commentId };
+    return { companyId, taskId, commentId };
   }
 
   it("stores a local vote without enabling sharing by default", async () => {
-    const { companyId, issueId, commentId } = await seedIssueWithAgentComment();
+    const { companyId, taskId, commentId } = await seedTaskWithAgentComment();
 
-    const result = await svc.saveIssueVote({
-      issueId,
-      targetType: "issue_comment",
+    const result = await svc.saveTaskVote({
+      taskId,
+      targetType: "task_comment",
       targetId: commentId,
       vote: "up",
       authorUserId: "user-1",
@@ -438,7 +438,7 @@ describe("feedbackService.saveIssueVote", () => {
 
     const traces = await svc.listFeedbackTraces({
       companyId,
-      issueId,
+      taskId,
       includePayload: true,
     });
     expect(traces[0]?.payloadSnapshot?.bundle).toBeNull();
@@ -446,11 +446,11 @@ describe("feedbackService.saveIssueVote", () => {
   });
 
   it("enables sharing metadata on the first consented vote and upserts subsequent votes", async () => {
-    const { companyId, issueId, commentId } = await seedIssueWithAgentComment();
+    const { companyId, taskId, commentId } = await seedTaskWithAgentComment();
 
-    const first = await svc.saveIssueVote({
-      issueId,
-      targetType: "issue_comment",
+    const first = await svc.saveTaskVote({
+      taskId,
+      targetType: "task_comment",
       targetId: commentId,
       vote: "up",
       authorUserId: "user-1",
@@ -464,9 +464,9 @@ describe("feedbackService.saveIssueVote", () => {
     expect(first.vote.sharedAt).toBeInstanceOf(Date);
     expect(first.vote.consentVersion).toBe("feedback-data-sharing-v1");
 
-    const second = await svc.saveIssueVote({
-      issueId,
-      targetType: "issue_comment",
+    const second = await svc.saveTaskVote({
+      taskId,
+      targetType: "task_comment",
       targetId: commentId,
       vote: "down",
       authorUserId: "user-1",
@@ -480,7 +480,7 @@ describe("feedbackService.saveIssueVote", () => {
     expect(second.vote.sharedAt).toBeNull();
     expect(second.vote.consentVersion).toBeNull();
 
-    const votes = await svc.listIssueVotesForUser(issueId, "user-1");
+    const votes = await svc.listTaskVotesForUser(taskId, "user-1");
     expect(votes).toHaveLength(1);
     expect(votes[0]?.vote).toBe("down");
     expect(votes[0]?.sharedWithLabs).toBe(false);
@@ -508,11 +508,11 @@ describe("feedbackService.saveIssueVote", () => {
   });
 
   it("stores a trace record for document revision feedback targets", async () => {
-    const { issueId, revisionId } = await seedIssueWithAgentDocument();
+    const { taskId, revisionId } = await seedTaskWithAgentDocument();
 
-    const result = await svc.saveIssueVote({
-      issueId,
-      targetType: "issue_document_revision",
+    const result = await svc.saveTaskVote({
+      taskId,
+      targetType: "task_document_revision",
       targetId: revisionId,
       vote: "up",
       authorUserId: "user-1",
@@ -524,17 +524,17 @@ describe("feedbackService.saveIssueVote", () => {
 
     const traces = await svc.listFeedbackTraces({
       companyId: result.vote.companyId,
-      issueId,
+      taskId,
       includePayload: true,
     });
 
     expect(traces).toHaveLength(1);
-    expect(traces[0]?.targetType).toBe("issue_document_revision");
+    expect(traces[0]?.targetType).toBe("task_document_revision");
     expect(traces[0]?.status).toBe("pending");
     expect(traces[0]?.targetSummary.documentKey).toBe("plan");
     expect(traces[0]?.targetSummary.revisionNumber).toBe(1);
     expect(traces[0]?.payloadSnapshot?.target).toMatchObject({
-      type: "issue_document_revision",
+      type: "task_document_revision",
       id: revisionId,
       documentKey: "plan",
       revisionNumber: 1,
@@ -542,11 +542,11 @@ describe("feedbackService.saveIssueVote", () => {
   });
 
   it("stores a downvote reason and includes it in the trace payload", async () => {
-    const { issueId, commentId } = await seedIssueWithAgentComment();
+    const { taskId, commentId } = await seedTaskWithAgentComment();
 
-    const result = await svc.saveIssueVote({
-      issueId,
-      targetType: "issue_comment",
+    const result = await svc.saveTaskVote({
+      taskId,
+      targetType: "task_comment",
       targetId: commentId,
       vote: "down",
       reason: "The update missed the edge case handling.",
@@ -557,7 +557,7 @@ describe("feedbackService.saveIssueVote", () => {
 
     const traces = await svc.listFeedbackTraces({
       companyId: result.vote.companyId,
-      issueId,
+      taskId,
       includePayload: true,
     });
 
@@ -569,19 +569,19 @@ describe("feedbackService.saveIssueVote", () => {
   });
 
   it("updates an existing downvote reason in place without creating a second trace", async () => {
-    const { issueId, commentId } = await seedIssueWithAgentComment();
+    const { taskId, commentId } = await seedTaskWithAgentComment();
 
-    const firstResult = await svc.saveIssueVote({
-      issueId,
-      targetType: "issue_comment",
+    const firstResult = await svc.saveTaskVote({
+      taskId,
+      targetType: "task_comment",
       targetId: commentId,
       vote: "down",
       authorUserId: "user-1",
     });
 
-    const secondResult = await svc.saveIssueVote({
-      issueId,
-      targetType: "issue_comment",
+    const secondResult = await svc.saveTaskVote({
+      taskId,
+      targetType: "task_comment",
       targetId: commentId,
       vote: "down",
       reason: "Needed concrete next steps.",
@@ -593,7 +593,7 @@ describe("feedbackService.saveIssueVote", () => {
 
     const traces = await svc.listFeedbackTraces({
       companyId: secondResult.vote.companyId,
-      issueId,
+      taskId,
       includePayload: true,
     });
 
@@ -606,12 +606,12 @@ describe("feedbackService.saveIssueVote", () => {
     });
   });
 
-  it("builds a detailed sanitized shared bundle with issue and agent context", async () => {
-    const { companyId, issueId, targetCommentId, runId } = await seedIssueWithRichAgentComment();
+  it("builds a detailed sanitized shared bundle with task and agent context", async () => {
+    const { companyId, taskId, targetCommentId, runId } = await seedTaskWithRichAgentComment();
 
-    await svc.saveIssueVote({
-      issueId,
-      targetType: "issue_comment",
+    await svc.saveTaskVote({
+      taskId,
+      targetType: "task_comment",
       targetId: targetCommentId,
       vote: "up",
       authorUserId: "user-1",
@@ -620,15 +620,15 @@ describe("feedbackService.saveIssueVote", () => {
 
     const traces = await svc.listFeedbackTraces({
       companyId,
-      issueId,
+      taskId,
       includePayload: true,
     });
     const trace = traces[0];
     const payload = trace?.payloadSnapshot;
     const bundle = payload?.bundle as Record<string, unknown> | null;
     const primaryContent = bundle?.primaryContent as Record<string, unknown> | null;
-    const issueContext = bundle?.issueContext as Record<string, unknown> | null;
-    const issueContextItems = issueContext?.items as Array<Record<string, unknown>> | undefined;
+    const taskContext = bundle?.taskContext as Record<string, unknown> | null;
+    const taskContextItems = taskContext?.items as Array<Record<string, unknown>> | undefined;
     const agentContext = bundle?.agentContext as Record<string, unknown> | null;
     const runtime = agentContext?.runtime as Record<string, unknown> | null;
     const sourceRun = runtime?.sourceRun as Record<string, unknown> | null;
@@ -644,9 +644,9 @@ describe("feedbackService.saveIssueVote", () => {
     expect(primaryContent?.createdByRunId).toBe(runId);
     expect(String(primaryContent?.body)).toContain("[REDACTED]");
     expect(String(primaryContent?.body)).not.toContain("secret-value");
-    expect(issueContextItems).toHaveLength(2);
-    expect(JSON.stringify(issueContextItems)).toContain("[REDACTED_EMAIL]");
-    expect(JSON.stringify(issueContextItems)).toContain("[REDACTED_PHONE]");
+    expect(taskContextItems).toHaveLength(2);
+    expect(JSON.stringify(taskContextItems)).toContain("[REDACTED_EMAIL]");
+    expect(JSON.stringify(taskContextItems)).toContain("[REDACTED_PHONE]");
     expect(sourceRun?.id).toBe(runId);
     expect(JSON.stringify(sourceRun)).toContain("gpt-5.4");
     expect(skillItems?.[1]?.sourceLocator).toBe("https://github.com/octo/research/tree/main/skills/public-skill");
@@ -655,33 +655,33 @@ describe("feedbackService.saveIssueVote", () => {
   });
 
   it("keeps earlier local votes local when a later vote enables sharing", async () => {
-    const { companyId, issueId, commentId: firstCommentId } = await seedIssueWithAgentComment();
+    const { companyId, taskId, commentId: firstCommentId } = await seedTaskWithAgentComment();
     const secondCommentId = randomUUID();
     const agentId = await db
-      .select({ authorAgentId: issueComments.authorAgentId })
-      .from(issueComments)
-      .where(eq(issueComments.id, firstCommentId))
+      .select({ authorAgentId: taskComments.authorAgentId })
+      .from(taskComments)
+      .where(eq(taskComments.id, firstCommentId))
       .then((rows) => rows[0]?.authorAgentId ?? null);
 
-    await db.insert(issueComments).values({
+    await db.insert(taskComments).values({
       id: secondCommentId,
       companyId,
-      issueId,
+      taskId,
       authorAgentId: agentId,
       body: "Second AI generated update",
     });
 
-    await svc.saveIssueVote({
-      issueId,
-      targetType: "issue_comment",
+    await svc.saveTaskVote({
+      taskId,
+      targetType: "task_comment",
       targetId: firstCommentId,
       vote: "up",
       authorUserId: "user-1",
     });
 
-    await svc.saveIssueVote({
-      issueId,
-      targetType: "issue_comment",
+    await svc.saveTaskVote({
+      taskId,
+      targetType: "task_comment",
       targetId: secondCommentId,
       vote: "up",
       authorUserId: "user-1",
@@ -690,7 +690,7 @@ describe("feedbackService.saveIssueVote", () => {
 
     const traces = await svc.listFeedbackTraces({
       companyId,
-      issueId,
+      taskId,
       includePayload: true,
     });
     const localTrace = traces.find((trace) => trace.targetId === firstCommentId);
@@ -749,14 +749,14 @@ describe("feedbackService.saveIssueVote", () => {
       },
     });
 
-    const { issueId, commentId } = await seedIssueWithAdapterRunComment({
+    const { taskId, commentId } = await seedTaskWithAdapterRunComment({
       adapterType: "claude_local",
       sessionId,
     });
 
-    await flushingSvc.saveIssueVote({
-      issueId,
-      targetType: "issue_comment",
+    await flushingSvc.saveTaskVote({
+      taskId,
+      targetType: "task_comment",
       targetId: commentId,
       vote: "up",
       authorUserId: "user-1",
@@ -816,7 +816,7 @@ describe("feedbackService.saveIssueVote", () => {
         id: userMessageId,
         sessionID: sessionId,
         role: "user",
-        summary: { title: "Continue the issue" },
+        summary: { title: "Continue the task" },
       }),
       "utf8",
     );
@@ -878,14 +878,14 @@ describe("feedbackService.saveIssueVote", () => {
       },
     });
 
-    const { issueId, commentId } = await seedIssueWithAdapterRunComment({
+    const { taskId, commentId } = await seedTaskWithAdapterRunComment({
       adapterType: "opencode_local",
       sessionId,
     });
 
-    await flushingSvc.saveIssueVote({
-      issueId,
-      targetType: "issue_comment",
+    await flushingSvc.saveTaskVote({
+      taskId,
+      targetType: "task_comment",
       targetId: commentId,
       vote: "up",
       authorUserId: "user-1",
@@ -912,18 +912,18 @@ describe("feedbackService.saveIssueVote", () => {
 
   it("rejects feedback votes on human-authored comments", async () => {
     const companyId = randomUUID();
-    const issueId = randomUUID();
+    const taskId = randomUUID();
     const commentId = randomUUID();
 
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `H${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      taskPrefix: `H${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
-    await db.insert(issues).values({
-      id: issueId,
+    await db.insert(tasks).values({
+      id: taskId,
       companyId,
       title: "Human-authored comment",
       status: "todo",
@@ -931,27 +931,27 @@ describe("feedbackService.saveIssueVote", () => {
       createdByUserId: "user-1",
     });
 
-    await db.insert(issueComments).values({
+    await db.insert(taskComments).values({
       id: commentId,
       companyId,
-      issueId,
+      taskId,
       authorUserId: "user-2",
       body: "Board comment",
     });
 
     await expect(
-      svc.saveIssueVote({
-        issueId,
-        targetType: "issue_comment",
+      svc.saveTaskVote({
+        taskId,
+        targetType: "task_comment",
         targetId: commentId,
         vote: "up",
         authorUserId: "user-1",
       }),
-    ).rejects.toThrow("Feedback voting is only available on agent-authored issue comments");
+    ).rejects.toThrow("Feedback voting is only available on agent-authored task comments");
   });
 
   it("flushes pending shared traces into configured object storage and marks them sent", async () => {
-    const { companyId, issueId, commentId } = await seedIssueWithAgentComment();
+    const { companyId, taskId, commentId } = await seedTaskWithAgentComment();
     const uploadTraceBundle = vi.fn().mockResolvedValue({
       objectKey: `feedback-traces/${companyId}/2026/04/01/test-trace.json`,
     });
@@ -961,9 +961,9 @@ describe("feedbackService.saveIssueVote", () => {
       },
     });
 
-    await flushingSvc.saveIssueVote({
-      issueId,
-      targetType: "issue_comment",
+    await flushingSvc.saveTaskVote({
+      taskId,
+      targetType: "task_comment",
       targetId: commentId,
       vote: "up",
       authorUserId: "user-1",
@@ -979,7 +979,7 @@ describe("feedbackService.saveIssueVote", () => {
 
     const traces = await flushingSvc.listFeedbackTraces({
       companyId,
-      issueId,
+      taskId,
       includePayload: true,
     });
     expect(traces[0]?.status).toBe("sent");
@@ -991,8 +991,8 @@ describe("feedbackService.saveIssueVote", () => {
       traceId: traces[0]?.id,
       exportId: traces[0]?.exportId,
       companyId,
-      issueId,
-      issueIdentifier: traces[0]?.issueIdentifier,
+      taskId,
+      taskIdentifier: traces[0]?.taskIdentifier,
       captureStatus: expect.stringMatching(/^(full|partial|unavailable)$/),
       envelope: {
         destination: "paperclip_labs_feedback_v1",
@@ -1002,18 +1002,18 @@ describe("feedbackService.saveIssueVote", () => {
   });
 
   it("can flush a single shared trace immediately by trace id", async () => {
-    const { companyId, issueId, commentId: firstCommentId } = await seedIssueWithAgentComment();
+    const { companyId, taskId, commentId: firstCommentId } = await seedTaskWithAgentComment();
     const secondCommentId = randomUUID();
     const agentId = await db
-      .select({ authorAgentId: issueComments.authorAgentId })
-      .from(issueComments)
-      .where(eq(issueComments.id, firstCommentId))
+      .select({ authorAgentId: taskComments.authorAgentId })
+      .from(taskComments)
+      .where(eq(taskComments.id, firstCommentId))
       .then((rows) => rows[0]?.authorAgentId ?? null);
 
-    await db.insert(issueComments).values({
+    await db.insert(taskComments).values({
       id: secondCommentId,
       companyId,
-      issueId,
+      taskId,
       authorAgentId: agentId,
       body: "Second AI generated update",
     });
@@ -1027,17 +1027,17 @@ describe("feedbackService.saveIssueVote", () => {
       },
     });
 
-    const first = await flushingSvc.saveIssueVote({
-      issueId,
-      targetType: "issue_comment",
+    const first = await flushingSvc.saveTaskVote({
+      taskId,
+      targetType: "task_comment",
       targetId: firstCommentId,
       vote: "up",
       authorUserId: "user-1",
       allowSharing: true,
     });
-    await flushingSvc.saveIssueVote({
-      issueId,
-      targetType: "issue_comment",
+    await flushingSvc.saveTaskVote({
+      taskId,
+      targetType: "task_comment",
       targetId: secondCommentId,
       vote: "up",
       authorUserId: "user-1",
@@ -1059,7 +1059,7 @@ describe("feedbackService.saveIssueVote", () => {
 
     const traces = await flushingSvc.listFeedbackTraces({
       companyId,
-      issueId,
+      taskId,
       includePayload: true,
     });
     const firstTrace = traces.find((trace) => trace.targetId === firstCommentId);
@@ -1069,7 +1069,7 @@ describe("feedbackService.saveIssueVote", () => {
   });
 
   it("marks pending shared traces as failed when remote export upload fails", async () => {
-    const { companyId, issueId, commentId } = await seedIssueWithAgentComment();
+    const { companyId, taskId, commentId } = await seedTaskWithAgentComment();
     const uploadTraceBundle = vi.fn().mockRejectedValue(new Error("telemetry unavailable"));
     const flushingSvc = feedbackService(db, {
       shareClient: {
@@ -1077,9 +1077,9 @@ describe("feedbackService.saveIssueVote", () => {
       },
     });
 
-    await flushingSvc.saveIssueVote({
-      issueId,
-      targetType: "issue_comment",
+    await flushingSvc.saveTaskVote({
+      taskId,
+      targetType: "task_comment",
       targetId: commentId,
       vote: "up",
       authorUserId: "user-1",
@@ -1095,7 +1095,7 @@ describe("feedbackService.saveIssueVote", () => {
 
     const traces = await flushingSvc.listFeedbackTraces({
       companyId,
-      issueId,
+      taskId,
       includePayload: true,
     });
     expect(traces[0]?.status).toBe("failed");
@@ -1107,11 +1107,11 @@ describe("feedbackService.saveIssueVote", () => {
   });
 
   it("marks pending shared traces as failed when no feedback export backend is configured", async () => {
-    const { companyId, issueId, commentId } = await seedIssueWithAgentComment();
+    const { companyId, taskId, commentId } = await seedTaskWithAgentComment();
 
-    const result = await svc.saveIssueVote({
-      issueId,
-      targetType: "issue_comment",
+    const result = await svc.saveTaskVote({
+      taskId,
+      targetType: "task_comment",
       targetId: commentId,
       vote: "up",
       authorUserId: "user-1",
@@ -1132,7 +1132,7 @@ describe("feedbackService.saveIssueVote", () => {
 
     const traces = await svc.listFeedbackTraces({
       companyId,
-      issueId,
+      taskId,
       includePayload: true,
     });
     expect(traces[0]?.status).toBe("failed");

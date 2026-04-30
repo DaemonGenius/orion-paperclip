@@ -4,9 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockActivityService = vi.hoisted(() => ({
   list: vi.fn(),
-  forIssue: vi.fn(),
-  runsForIssue: vi.fn(),
-  issuesForRun: vi.fn(),
+  forTask: vi.fn(),
+  runsForTask: vi.fn(),
+  tasksForRun: vi.fn(),
   create: vi.fn(),
 }));
 
@@ -14,7 +14,7 @@ const mockHeartbeatService = vi.hoisted(() => ({
   getRun: vi.fn(),
 }));
 
-const mockIssueService = vi.hoisted(() => ({
+const mockTaskService = vi.hoisted(() => ({
   getById: vi.fn(),
   getByIdentifier: vi.fn(),
 }));
@@ -28,7 +28,7 @@ vi.mock("../services/activity.js", () => ({
 }));
 
 vi.mock("../services/index.js", () => ({
-  issueService: () => mockIssueService,
+  taskService: () => mockTaskService,
   heartbeatService: () => mockHeartbeatService,
 }));
 
@@ -91,7 +91,7 @@ describe.sequential("activity routes", () => {
   beforeEach(() => {
     for (const mock of Object.values(mockActivityService)) mock.mockReset();
     for (const mock of Object.values(mockHeartbeatService)) mock.mockReset();
-    for (const mock of Object.values(mockIssueService)) mock.mockReset();
+    for (const mock of Object.values(mockTaskService)) mock.mockReset();
   });
 
   it("limits company activity lists by default", async () => {
@@ -115,25 +115,25 @@ describe.sequential("activity routes", () => {
 
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
-      request(baseUrl).get("/api/companies/company-1/activity?limit=5000&entityType=issue"),
+      request(baseUrl).get("/api/companies/company-1/activity?limit=5000&entityType=task"),
     );
 
     expect(res.status).toBe(200);
     expect(mockActivityService.list).toHaveBeenCalledWith({
       companyId: "company-1",
       agentId: undefined,
-      entityType: "issue",
+      entityType: "task",
       entityId: undefined,
       limit: 500,
     });
   });
 
-  it("resolves issue identifiers before loading runs", async () => {
-    mockIssueService.getByIdentifier.mockResolvedValue({
-      id: "issue-uuid-1",
+  it("resolves task identifiers before loading runs", async () => {
+    mockTaskService.getByIdentifier.mockResolvedValue({
+      id: "task-uuid-1",
       companyId: "company-1",
     });
-    mockActivityService.runsForIssue.mockResolvedValue([
+    mockActivityService.runsForTask.mockResolvedValue([
       {
         runId: "run-1",
         adapterType: "codex_local",
@@ -141,13 +141,29 @@ describe.sequential("activity routes", () => {
     ]);
 
     const app = await createApp();
-    const res = await requestApp(app, (baseUrl) => request(baseUrl).get("/api/issues/PAP-475/runs"));
+    const res = await requestApp(app, (baseUrl) => request(baseUrl).get("/api/tasks/PAP-475/runs"));
 
     expect(res.status).toBe(200);
-    expect(mockIssueService.getByIdentifier).toHaveBeenCalledWith("PAP-475");
-    expect(mockIssueService.getById).not.toHaveBeenCalled();
-    expect(mockActivityService.runsForIssue).toHaveBeenCalledWith("company-1", "issue-uuid-1");
+    expect(mockTaskService.getByIdentifier).toHaveBeenCalledWith("PAP-475");
+    expect(mockTaskService.getById).not.toHaveBeenCalled();
+    expect(mockActivityService.runsForTask).toHaveBeenCalledWith("company-1", "task-uuid-1");
     expect(res.body).toEqual([{ runId: "run-1", adapterType: "codex_local" }]);
+  });
+
+  it("resolves multi-segment task identifiers before loading runs", async () => {
+    mockTaskService.getByIdentifier.mockResolvedValue({
+      id: "task-uuid-2",
+      companyId: "company-1",
+    });
+    mockActivityService.runsForTask.mockResolvedValue([]);
+
+    const app = await createApp();
+    const res = await requestApp(app, (baseUrl) => request(baseUrl).get("/api/tasks/ORN-V1-001/runs"));
+
+    expect(res.status).toBe(200);
+    expect(mockTaskService.getByIdentifier).toHaveBeenCalledWith("ORN-V1-001");
+    expect(mockTaskService.getById).not.toHaveBeenCalled();
+    expect(mockActivityService.runsForTask).toHaveBeenCalledWith("company-1", "task-uuid-2");
   });
 
   it("requires company access before creating activity events", async () => {
@@ -157,33 +173,33 @@ describe.sequential("activity routes", () => {
       .send({
         actorId: "user-1",
         action: "test.event",
-        entityType: "issue",
-        entityId: "issue-1",
+        entityType: "task",
+        entityId: "task-1",
       }));
 
     expect(res.status).toBe(403);
     expect(mockActivityService.create).not.toHaveBeenCalled();
   });
 
-  it("requires company access before listing issues for another company's run", async () => {
+  it("requires company access before listing tasks for another company's run", async () => {
     mockHeartbeatService.getRun.mockResolvedValue({
       id: "run-2",
       companyId: "company-2",
     });
 
     const app = await createApp();
-    const res = await requestApp(app, (baseUrl) => request(baseUrl).get("/api/heartbeat-runs/run-2/issues"));
+    const res = await requestApp(app, (baseUrl) => request(baseUrl).get("/api/heartbeat-runs/run-2/tasks"));
 
     expect(res.status).toBe(403);
-    expect(mockActivityService.issuesForRun).not.toHaveBeenCalled();
+    expect(mockActivityService.tasksForRun).not.toHaveBeenCalled();
   });
 
-  it("rejects anonymous heartbeat run issue lookups before run existence checks", async () => {
+  it("rejects anonymous heartbeat run task lookups before run existence checks", async () => {
     const app = await createApp({ type: "none", source: "none" });
-    const res = await requestApp(app, (baseUrl) => request(baseUrl).get("/api/heartbeat-runs/missing-run/issues"));
+    const res = await requestApp(app, (baseUrl) => request(baseUrl).get("/api/heartbeat-runs/missing-run/tasks"));
 
     expect(res.status).toBe(401);
     expect(mockHeartbeatService.getRun).not.toHaveBeenCalled();
-    expect(mockActivityService.issuesForRun).not.toHaveBeenCalled();
+    expect(mockActivityService.tasksForRun).not.toHaveBeenCalled();
   });
 });

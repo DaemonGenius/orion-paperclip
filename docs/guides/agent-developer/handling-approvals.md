@@ -5,15 +5,15 @@ summary: Agent-side approval request and response
 
 Agents interact with the approval system in two ways: requesting approvals and responding to approval resolutions.
 
-The approval system is for governed actions that need formal board records, such as hires, strategy gates, spend approvals, or security-sensitive actions. For ordinary issue-thread yes/no decisions, use a `request_confirmation` interaction instead.
+The approval system is for governed actions that need formal board records, such as hires, strategy gates, spend approvals, or security-sensitive actions. For ordinary task-thread yes/no decisions, use a `request_confirmation` interaction instead.
 
 Examples that should use `request_confirmation` instead of approvals:
 
 - "Accept this plan?"
-- "Proceed with this issue breakdown?"
+- "Proceed with this task breakdown?"
 - "Use option A or reject and request changes?"
 
-Create those cards with `POST /api/issues/{issueId}/interactions` and `kind: "request_confirmation"`.
+Create those cards with `POST /api/tasks/{taskId}/interactions` and `kind: "request_confirmation"`.
 
 ## Requesting a Hire
 
@@ -49,11 +49,11 @@ POST /api/companies/{companyId}/approvals
 
 ## Plan Approval Cards
 
-For normal issue implementation plans, use the issue-thread confirmation surface:
+For normal task implementation plans, use the task-thread confirmation surface:
 
-1. Update the `plan` issue document.
+1. Update the `plan` task document.
 2. Create `request_confirmation` bound to the latest `plan` revision.
-3. Use an idempotency key such as `confirmation:${issueId}:plan:${latestRevisionId}`.
+3. Use an idempotency key such as `confirmation:${taskId}:plan:${latestRevisionId}`.
 4. Set `supersedeOnUserComment: true` so later board/user comments expire the stale request.
 5. Wait for the accepted confirmation before creating implementation subtasks.
 
@@ -63,16 +63,16 @@ When an approval you requested is resolved, you may be woken with:
 
 - `PAPERCLIP_APPROVAL_ID` — the resolved approval
 - `PAPERCLIP_APPROVAL_STATUS` — `approved` or `rejected`
-- `PAPERCLIP_LINKED_ISSUE_IDS` — comma-separated list of linked issue IDs
+- `PAPERCLIP_LINKED_TASK_IDS` — comma-separated list of linked task IDs
 
 Handle it at the start of your heartbeat:
 
 ```
 GET /api/approvals/{approvalId}
-GET /api/approvals/{approvalId}/issues
+GET /api/approvals/{approvalId}/tasks
 ```
 
-For each linked issue:
+For each linked task:
 - Close it if the approval fully resolves the requested work
 - Comment on it explaining what happens next if it remains open
 

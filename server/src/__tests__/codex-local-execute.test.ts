@@ -306,16 +306,15 @@ describe("codex execute", () => {
           promptTemplate: "Follow the paperclip heartbeat.",
         },
         context: {
-          issueId: "issue-1",
-          taskId: "issue-1",
-          wakeReason: "issue_commented",
+          taskId: "task-1",
+          wakeReason: "task_commented",
           wakeCommentId: "comment-2",
           paperclipWake: {
-            reason: "issue_commented",
-            issue: {
-              id: "issue-1",
+            reason: "task_commented",
+            task: {
+              id: "task-1",
               identifier: "PAP-874",
-              title: "chat-speed issues",
+              title: "chat-speed tasks",
               status: "in_progress",
               priority: "medium",
             },
@@ -324,7 +323,7 @@ describe("codex execute", () => {
             comments: [
               {
                 id: "comment-1",
-                issueId: "issue-1",
+                taskId: "task-1",
                 body: "First comment",
                 bodyTruncated: false,
                 createdAt: "2026-03-28T14:35:00.000Z",
@@ -332,7 +331,7 @@ describe("codex execute", () => {
               },
               {
                 id: "comment-2",
-                issueId: "issue-1",
+                taskId: "task-1",
                 body: "Second comment",
                 bodyTruncated: false,
                 createdAt: "2026-03-28T14:35:10.000Z",
@@ -359,13 +358,13 @@ describe("codex execute", () => {
       expect(capture.paperclipEnvKeys).toContain("PAPERCLIP_WAKE_PAYLOAD_JSON");
       expect(capture.paperclipWakePayloadJson).not.toBeNull();
       expect(JSON.parse(capture.paperclipWakePayloadJson ?? "{}")).toMatchObject({
-        reason: "issue_commented",
+        reason: "task_commented",
         latestCommentId: "comment-2",
         commentIds: ["comment-1", "comment-2"],
       });
       expect(capture.prompt).toContain("## Paperclip Wake Payload");
       expect(capture.prompt).toContain("Treat this wake payload as the highest-priority change for the current heartbeat.");
-      expect(capture.prompt).toContain("Do not switch to another issue until you have handled this wake.");
+      expect(capture.prompt).toContain("Do not switch to another task until you have handled this wake.");
       expect(capture.prompt).toContain(
         "acknowledge the latest comment and explain how it changes your next action.",
       );
@@ -536,7 +535,7 @@ describe("codex execute", () => {
           paperclipContinuationSummary: {
             key: "continuation-summary",
             title: "Continuation Summary",
-            body: "Issue continuation summary for the next fresh session.",
+            body: "Task continuation summary for the next fresh session.",
             updatedAt: "2026-04-21T01:00:00.000Z",
           },
         },
@@ -556,7 +555,7 @@ describe("codex execute", () => {
       expect(capture.argv).not.toContain('service_tier="fast"');
       expect(capture.argv).not.toContain("features.fast_mode=true");
       expect(capture.prompt).toContain("Paperclip session handoff:");
-      expect(capture.prompt).toContain("Issue continuation summary for the next fresh session.");
+      expect(capture.prompt).toContain("Task continuation summary for the next fresh session.");
       expect(commandNotes).toContain("Codex transient fallback requested safer invocation settings for this retry.");
       expect(commandNotes).toContain("Codex transient fallback forced a fresh session with a continuation handoff.");
     } finally {
@@ -602,13 +601,12 @@ describe("codex execute", () => {
           promptTemplate: "Follow the paperclip heartbeat.",
         },
         context: {
-          issueId: "issue-1",
-          taskId: "issue-1",
+          taskId: "task-1",
           wakeReason: "execution_review_requested",
           paperclipWake: {
             reason: "execution_review_requested",
-            issue: {
-              id: "issue-1",
+            task: {
+              id: "task-1",
               identifier: "PAP-1207",
               title: "implement the plan of PAP-1200",
               status: "in_review",
@@ -642,7 +640,7 @@ describe("codex execute", () => {
       expect(result.exitCode).toBe(0);
       const capture = JSON.parse(await fs.readFile(capturePath, "utf8")) as CapturePayload;
       expect(capture.prompt).toContain("execution wake role: reviewer");
-      expect(capture.prompt).toContain("You are waking as the active reviewer for this issue.");
+      expect(capture.prompt).toContain("You are waking as the active reviewer for this task.");
       expect(capture.prompt).toContain("Do not execute the task itself or continue executor work.");
       expect(capture.prompt).toContain("allowed actions: approve, request_changes");
 
@@ -671,13 +669,12 @@ describe("codex execute", () => {
           promptTemplate: "Follow the paperclip heartbeat.",
         },
         context: {
-          issueId: "issue-1",
-          taskId: "issue-1",
+          taskId: "task-1",
           wakeReason: "execution_changes_requested",
           paperclipWake: {
             reason: "execution_changes_requested",
-            issue: {
-              id: "issue-1",
+            task: {
+              id: "task-1",
               identifier: "PAP-1207",
               title: "implement the plan of PAP-1200",
               status: "in_progress",
@@ -720,8 +717,8 @@ describe("codex execute", () => {
     }
   });
 
-  it("renders an issue-scoped wake prompt even when the wake has no comments yet", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-codex-execute-issue-wake-"));
+  it("renders an task-scoped wake prompt even when the wake has no comments yet", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-codex-execute-task-wake-"));
     const workspace = path.join(root, "workspace");
     const commandPath = path.join(root, "codex");
     const capturePath = path.join(root, "capture.json");
@@ -733,7 +730,7 @@ describe("codex execute", () => {
 
     try {
       const result = await execute({
-        runId: "run-issue-wake",
+        runId: "run-task-wake",
         agent: {
           id: "agent-1",
           companyId: "company-1",
@@ -756,13 +753,12 @@ describe("codex execute", () => {
           promptTemplate: "Follow the paperclip heartbeat.",
         },
         context: {
-          issueId: "issue-1",
-          taskId: "issue-1",
-          wakeReason: "issue_assigned",
+          taskId: "task-1",
+          wakeReason: "task_assigned",
           paperclipWake: {
-            reason: "issue_assigned",
-            issue: {
-              id: "issue-1",
+            reason: "task_assigned",
+            task: {
+              id: "task-1",
               identifier: "PAP-1201",
               title: "Fix gallery opening for inline images",
               status: "in_progress",
@@ -792,8 +788,8 @@ describe("codex execute", () => {
       expect(capture.paperclipEnvKeys).toContain("PAPERCLIP_WAKE_PAYLOAD_JSON");
       expect(capture.paperclipWakePayloadJson).not.toBeNull();
       expect(JSON.parse(capture.paperclipWakePayloadJson ?? "{}")).toMatchObject({
-        reason: "issue_assigned",
-        issue: {
+        reason: "task_assigned",
+        task: {
           identifier: "PAP-1201",
           title: "Fix gallery opening for inline images",
           status: "in_progress",
@@ -803,12 +799,12 @@ describe("codex execute", () => {
         commentIds: [],
       });
       expect(capture.prompt).toContain("## Paperclip Wake Payload");
-      expect(capture.prompt).toContain("Do not switch to another issue until you have handled this wake.");
-      expect(capture.prompt).toContain("- issue: PAP-1201 Fix gallery opening for inline images");
+      expect(capture.prompt).toContain("Do not switch to another task until you have handled this wake.");
+      expect(capture.prompt).toContain("- task: PAP-1201 Fix gallery opening for inline images");
       expect(capture.prompt).toContain("- pending comments: 0/0");
-      expect(capture.prompt).toContain("- issue status: in_progress");
+      expect(capture.prompt).toContain("- task status: in_progress");
       expect(capture.prompt).toContain("- checkout: already claimed by the harness for this run");
-      expect(capture.prompt).toContain("The harness already checked out this issue for the current run.");
+      expect(capture.prompt).toContain("The harness already checked out this task for the current run.");
     } finally {
       if (previousHome === undefined) delete process.env.HOME;
       else process.env.HOME = previousHome;
@@ -861,16 +857,15 @@ describe("codex execute", () => {
           promptTemplate: "Follow the paperclip heartbeat.",
         },
         context: {
-          issueId: "issue-1",
-          taskId: "issue-1",
-          wakeReason: "issue_commented",
+          taskId: "task-1",
+          wakeReason: "task_commented",
           wakeCommentId: "comment-2",
           paperclipWake: {
-            reason: "issue_commented",
-            issue: {
-              id: "issue-1",
+            reason: "task_commented",
+            task: {
+              id: "task-1",
               identifier: "PAP-874",
-              title: "chat-speed issues",
+              title: "chat-speed tasks",
               status: "in_progress",
               priority: "medium",
             },
@@ -879,7 +874,7 @@ describe("codex execute", () => {
             comments: [
               {
                 id: "comment-2",
-                issueId: "issue-1",
+                taskId: "task-1",
                 body: "Second comment",
                 bodyTruncated: false,
                 createdAt: "2026-03-28T14:35:10.000Z",
@@ -910,7 +905,7 @@ describe("codex execute", () => {
       const capture = JSON.parse(await fs.readFile(capturePath, "utf8")) as CapturePayload;
       expect(capture.argv).toEqual(expect.arrayContaining(["resume", "codex-session-1", "-"]));
       expect(capture.prompt).toContain("## Paperclip Resume Delta");
-      expect(capture.prompt).toContain("Do not switch to another issue until you have handled this wake.");
+      expect(capture.prompt).toContain("Do not switch to another task until you have handled this wake.");
       expect(capture.prompt).toContain("Second comment");
       expect(capture.prompt).not.toContain("Follow the paperclip heartbeat.");
       expect(capture.prompt).not.toContain("You are managed instructions.");

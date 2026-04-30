@@ -3,7 +3,7 @@ import {
   AGENT_ICON_NAMES,
   AGENT_ROLES,
   AGENT_STATUSES,
-  INBOX_MINE_ISSUE_STATUS_FILTER,
+  INBOX_MINE_TASK_STATUS_FILTER,
 } from "../constants.js";
 import { agentAdapterTypeSchema } from "../adapter-type.js";
 import { envConfigSchema } from "./secret.js";
@@ -64,8 +64,8 @@ export const createAgentSchema = z.object({
 export type CreateAgent = z.infer<typeof createAgentSchema>;
 
 export const createAgentHireSchema = createAgentSchema.extend({
-  sourceIssueId: z.string().uuid().optional().nullable(),
-  sourceIssueIds: z.array(z.string().uuid()).optional(),
+  sourceTaskId: z.string().uuid().optional().nullable(),
+  sourceTaskIds: z.array(z.string().uuid()).optional(),
 });
 
 export type CreateAgentHire = z.infer<typeof createAgentHireSchema>;
@@ -97,7 +97,7 @@ export type CreateAgentKey = z.infer<typeof createAgentKeySchema>;
 
 export const agentMineInboxQuerySchema = z.object({
   userId: z.string().trim().min(1),
-  status: z.string().trim().min(1).optional().default(INBOX_MINE_ISSUE_STATUS_FILTER),
+  status: z.string().trim().min(1).optional().default(INBOX_MINE_TASK_STATUS_FILTER),
 });
 
 export type AgentMineInboxQuery = z.infer<typeof agentMineInboxQuerySchema>;

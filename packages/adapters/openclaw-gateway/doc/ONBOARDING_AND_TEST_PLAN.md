@@ -41,7 +41,7 @@ Recommended fields:
 {
   "paperclipApiUrl": "http://host.docker.internal:3100",
   "waitTimeoutMs": 120000,
-  "sessionKeyStrategy": "issue",
+  "sessionKeyStrategy": "task",
   "role": "operator",
   "scopes": ["operator.admin"]
 }

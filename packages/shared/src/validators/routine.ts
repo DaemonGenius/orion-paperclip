@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  ISSUE_PRIORITIES,
+  TASK_PRIORITIES,
   ROUTINE_CATCH_UP_POLICIES,
   ROUTINE_CONCURRENCY_POLICIES,
   ROUTINE_STATUSES,
@@ -8,9 +8,9 @@ import {
   ROUTINE_VARIABLE_TYPES,
 } from "../constants.js";
 import {
-  ISSUE_EXECUTION_WORKSPACE_PREFERENCES,
-  issueExecutionWorkspaceSettingsSchema,
-} from "./issue.js";
+  TASK_EXECUTION_WORKSPACE_PREFERENCES,
+  taskExecutionWorkspaceSettingsSchema,
+} from "./task.js";
 
 const routineVariableValueSchema = z.union([z.string(), z.number().finite(), z.boolean()]);
 
@@ -50,11 +50,11 @@ export const routineVariableSchema = z.object({
 export const createRoutineSchema = z.object({
   projectId: z.string().uuid().optional().nullable(),
   goalId: z.string().uuid().optional().nullable(),
-  parentIssueId: z.string().uuid().optional().nullable(),
+  parentTaskId: z.string().uuid().optional().nullable(),
   title: z.string().trim().min(1).max(200),
   description: z.string().optional().nullable(),
   assigneeAgentId: z.string().uuid().optional().nullable(),
-  priority: z.enum(ISSUE_PRIORITIES).optional().default("medium"),
+  priority: z.enum(TASK_PRIORITIES).optional().default("medium"),
   status: z.enum(ROUTINE_STATUSES).optional().default("active"),
   concurrencyPolicy: z.enum(ROUTINE_CONCURRENCY_POLICIES).optional().default("coalesce_if_active"),
   catchUpPolicy: z.enum(ROUTINE_CATCH_UP_POLICIES).optional().default("skip_missed"),
@@ -109,8 +109,8 @@ export const runRoutineSchema = z.object({
   idempotencyKey: z.string().trim().max(255).optional().nullable(),
   source: z.enum(["manual", "api"]).optional().default("manual"),
   executionWorkspaceId: z.string().uuid().optional().nullable(),
-  executionWorkspacePreference: z.enum(ISSUE_EXECUTION_WORKSPACE_PREFERENCES).optional().nullable(),
-  executionWorkspaceSettings: issueExecutionWorkspaceSettingsSchema.optional().nullable(),
+  executionWorkspacePreference: z.enum(TASK_EXECUTION_WORKSPACE_PREFERENCES).optional().nullable(),
+  executionWorkspaceSettings: taskExecutionWorkspaceSettingsSchema.optional().nullable(),
 });
 
 export type RunRoutine = z.infer<typeof runRoutineSchema>;

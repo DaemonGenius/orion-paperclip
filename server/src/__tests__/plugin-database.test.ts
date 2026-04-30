@@ -7,8 +7,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   companies,
   createDb,
-  issueRelations,
-  issues,
+  taskRelations,
+  tasks,
   pluginDatabaseNamespaces,
   pluginMigrations,
   plugins,
@@ -39,9 +39,9 @@ describe("plugin database SQL validation", () => {
   it("allows namespace migrations with whitelisted public foreign keys", () => {
     expect(() =>
       validatePluginMigrationStatement(
-        "CREATE TABLE plugin_test.rows (id uuid PRIMARY KEY, issue_id uuid REFERENCES public.issues(id))",
+        "CREATE TABLE plugin_test.rows (id uuid PRIMARY KEY, task_id uuid REFERENCES public.tasks(id))",
         "plugin_test",
-        ["issues"],
+        ["tasks"],
       )
     ).not.toThrow();
   });
@@ -51,7 +51,7 @@ describe("plugin database SQL validation", () => {
       validatePluginMigrationStatement(
         "CREATE TABLE public.rows (id uuid PRIMARY KEY)",
         "plugin_test",
-        ["issues"],
+        ["tasks"],
       )
     ).toThrow(/public/i);
   });
@@ -59,13 +59,13 @@ describe("plugin database SQL validation", () => {
   it("allows whitelisted runtime reads but rejects public writes", () => {
     expect(() =>
       validatePluginRuntimeQuery(
-        "SELECT r.id FROM plugin_test.rows r JOIN public.issues i ON i.id = r.issue_id",
+        "SELECT r.id FROM plugin_test.rows r JOIN public.tasks i ON i.id = r.task_id",
         "plugin_test",
-        ["issues"],
+        ["tasks"],
       )
     ).not.toThrow();
     expect(() =>
-      validatePluginRuntimeExecute("UPDATE public.issues SET title = $1", "plugin_test")
+      validatePluginRuntimeExecute("UPDATE public.tasks SET title = $1", "plugin_test")
     ).toThrow(/namespace/i);
   });
 
@@ -100,8 +100,8 @@ describeEmbeddedPostgres("plugin database namespaces", () => {
     await db.delete(pluginMigrations);
     await db.delete(pluginDatabaseNamespaces);
     await db.delete(plugins);
-    await db.delete(issueRelations);
-    await db.delete(issues);
+    await db.delete(taskRelations);
+    await db.delete(tasks);
     await db.delete(companies);
     await Promise.all(packageRoots.map((root) => rm(root, { recursive: true, force: true })));
     packageRoots = [];
@@ -153,7 +153,7 @@ describeEmbeddedPostgres("plugin database namespaces", () => {
       entrypoints: { worker: "./dist/worker.js" },
       database: {
         migrationsDir: "migrations",
-        coreReadTables: ["issues"],
+        coreReadTables: ["tasks"],
       },
     };
   }
@@ -166,24 +166,24 @@ describeEmbeddedPostgres("plugin database namespaces", () => {
       `
       CREATE TABLE ${namespace}.mission_rows (
         id uuid PRIMARY KEY,
-        issue_id uuid NOT NULL REFERENCES public.issues(id),
+        task_id uuid NOT NULL REFERENCES public.tasks(id),
         label text NOT NULL
       );
       `,
     );
     const pluginId = await installPluginRecord(pluginManifest);
     const companyId = randomUUID();
-    const issueId = randomUUID();
+    const taskId = randomUUID();
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: "TST",
+      taskPrefix: "TST",
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(issues).values({
-      id: issueId,
+    await db.insert(tasks).values({
+      id: taskId,
       companyId,
-      title: "Joined issue",
+      title: "Joined task",
       status: "todo",
       priority: "medium",
       identifier: "TST-1",
@@ -195,14 +195,14 @@ describeEmbeddedPostgres("plugin database namespaces", () => {
 
     await pluginDb.execute(
       pluginId,
-      `INSERT INTO ${namespace}.mission_rows (id, issue_id, label) VALUES ($1, $2, $3)`,
-      [randomUUID(), issueId, "alpha"],
+      `INSERT INTO ${namespace}.mission_rows (id, task_id, label) VALUES ($1, $2, $3)`,
+      [randomUUID(), taskId, "alpha"],
     );
     const rows = await pluginDb.query<{ label: string; title: string }>(
       pluginId,
-      `SELECT m.label, i.title FROM ${namespace}.mission_rows m JOIN public.issues i ON i.id = m.issue_id`,
+      `SELECT m.label, i.title FROM ${namespace}.mission_rows m JOIN public.tasks i ON i.id = m.task_id`,
     );
-    expect(rows).toEqual([{ label: "alpha", title: "Joined issue" }]);
+    expect(rows).toEqual([{ label: "alpha", title: "Joined task" }]);
 
     const migrations = await db
       .select()
@@ -223,7 +223,7 @@ describeEmbeddedPostgres("plugin database namespaces", () => {
     await pluginDb.applyMigrations(pluginId, pluginManifest, packageRoot);
 
     await expect(
-      pluginDb.execute(pluginId, "UPDATE public.issues SET title = $1", ["bad"]),
+      pluginDb.execute(pluginId, "UPDATE public.tasks SET title = $1", ["bad"]),
     ).rejects.toThrow(/plugin namespace/i);
   });
 

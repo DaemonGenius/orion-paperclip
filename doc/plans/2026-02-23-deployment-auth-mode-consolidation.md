@@ -39,7 +39,7 @@ Keep Paperclip low-friction while making the mode model simpler and safer:
 
 ## Membership/Assignment Integration
 
-- User task assignment requires active `company_memberships` entry for that user (`server/src/services/issues.ts`).
+- User task assignment requires active `company_memberships` entry for that user (`server/src/services/tasks.ts`).
 - Local implicit board identity is not automatically a real membership principal; this is a gap for “board as assignable user” semantics.
 
 ## Proposed Runtime Model

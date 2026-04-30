@@ -354,7 +354,7 @@ describe("server adapter registry", () => {
     expect(patchedCtx.agent.adapterConfig.env.PAPERCLIP_RUN_ID).toBe("run-123");
     // No custom promptTemplate was set — Hermes must use its built-in default.
     // Setting promptTemplate here would replace the full default with just the auth guard text,
-    // stripping assigned issue / workflow instructions.
+    // stripping assigned task / workflow instructions.
     expect(patchedCtx.agent.adapterConfig.promptTemplate).toBeUndefined();
   });
 

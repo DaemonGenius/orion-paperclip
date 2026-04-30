@@ -12,9 +12,9 @@ import { budgetsApi } from "../api/budgets";
 import { heartbeatsApi } from "../api/heartbeats";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { ApiError } from "../api/client";
-import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRateChart } from "../components/ActivityCharts";
+import { ChartCard, RunActivityChart, PriorityChart, TaskStatusChart, SuccessRateChart } from "../components/ActivityCharts";
 import { activityApi } from "../api/activity";
-import { issuesApi } from "../api/issues";
+import { tasksApi } from "../api/tasks";
 import { usePanel } from "../context/PanelContext";
 import { useSidebar } from "../context/SidebarContext";
 import { useCompany } from "../context/CompanyContext";
@@ -626,7 +626,7 @@ export function AgentDetail() {
   }>();
   const { companies, selectedCompanyId, setSelectedCompanyId } = useCompany();
   const { closePanel } = usePanel();
-  const { openNewIssue } = useDialog();
+  const { openNewTask } = useDialog();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -645,7 +645,7 @@ export function AgentDetail() {
   const routeCompanyId = useMemo(() => {
     if (!companyPrefix) return null;
     const requestedPrefix = companyPrefix.toUpperCase();
-    return companies.find((company) => company.issuePrefix.toUpperCase() === requestedPrefix)?.id ?? null;
+    return companies.find((company) => company.taskPrefix.toUpperCase() === requestedPrefix)?.id ?? null;
   }, [companies, companyPrefix]);
   const lookupCompanyId = routeCompanyId ?? selectedCompanyId ?? undefined;
   const canFetchAgent = routeAgentRef.length > 0 && (isUuidLike(routeAgentRef) || Boolean(lookupCompanyId));
@@ -674,9 +674,9 @@ export function AgentDetail() {
     enabled: !!resolvedCompanyId && !!agent?.id && shouldLoadHeartbeats,
   });
 
-  const { data: allIssues } = useQuery({
-    queryKey: [...queryKeys.issues.list(resolvedCompanyId!), "participant-agent", resolvedAgentId ?? "__none__"],
-    queryFn: () => issuesApi.list(resolvedCompanyId!, { participantAgentId: resolvedAgentId! }),
+  const { data: allTasks } = useQuery({
+    queryKey: [...queryKeys.tasks.list(resolvedCompanyId!), "participant-agent", resolvedAgentId ?? "__none__"],
+    queryFn: () => tasksApi.list(resolvedCompanyId!, { participantAgentId: resolvedAgentId! }),
     enabled: !!resolvedCompanyId && !!resolvedAgentId && needsDashboardData,
   });
 
@@ -694,7 +694,7 @@ export function AgentDetail() {
     staleTime: 5_000,
   });
 
-  const assignedIssues = (allIssues ?? [])
+  const assignedTasks = (allTasks ?? [])
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   const reportsToAgent = (allAgents ?? []).find((a) => a.id === agent?.reportsTo);
   const directReports = (allAgents ?? []).filter((a) => a.reportsTo === agent?.id && a.status !== "terminated");
@@ -931,7 +931,7 @@ export function AgentDetail() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => openNewIssue({ assigneeAgentId: agent.id })}
+            onClick={() => openNewTask({ assigneeAgentId: agent.id })}
           >
             <Plus className="h-3.5 w-3.5 sm:mr-1" />
             <span className="hidden sm:inline">Assign Task</span>
@@ -1094,7 +1094,7 @@ export function AgentDetail() {
         <AgentOverview
           agent={agent}
           runs={heartbeats ?? []}
-          assignedIssues={assignedIssues}
+          assignedTasks={assignedTasks}
           runtimeState={runtimeState}
           agentId={agent.id}
           agentRouteId={canonicalAgentRef}
@@ -1261,14 +1261,14 @@ function LatestRunCard({ runs, agentId }: { runs: HeartbeatRun[]; agentId: strin
 function AgentOverview({
   agent,
   runs,
-  assignedIssues,
+  assignedTasks,
   runtimeState,
   agentId,
   agentRouteId,
 }: {
   agent: AgentDetailRecord;
   runs: HeartbeatRun[];
-  assignedIssues: { id: string; title: string; status: string; priority: string; identifier?: string | null; createdAt: Date }[];
+  assignedTasks: { id: string; title: string; status: string; priority: string; identifier?: string | null; createdAt: Date }[];
   runtimeState?: AgentRuntimeState;
   agentId: string;
   agentRouteId: string;
@@ -1283,44 +1283,44 @@ function AgentOverview({
         <ChartCard title="Run Activity" subtitle="Last 14 days">
           <RunActivityChart runs={runs} />
         </ChartCard>
-        <ChartCard title="Issues by Priority" subtitle="Last 14 days">
-          <PriorityChart issues={assignedIssues} />
+        <ChartCard title="Tasks by Priority" subtitle="Last 14 days">
+          <PriorityChart tasks={assignedTasks} />
         </ChartCard>
-        <ChartCard title="Issues by Status" subtitle="Last 14 days">
-          <IssueStatusChart issues={assignedIssues} />
+        <ChartCard title="Tasks by Status" subtitle="Last 14 days">
+          <TaskStatusChart tasks={assignedTasks} />
         </ChartCard>
         <ChartCard title="Success Rate" subtitle="Last 14 days">
           <SuccessRateChart runs={runs} />
         </ChartCard>
       </div>
 
-      {/* Recent Issues */}
+      {/* Recent Tasks */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium">Recent Issues</h3>
+          <h3 className="text-sm font-medium">Recent Tasks</h3>
           <Link
-            to={`/issues?participantAgentId=${agentId}`}
+            to={`/tasks?participantAgentId=${agentId}`}
             className="text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             See All &rarr;
           </Link>
         </div>
-        {assignedIssues.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No recent issues.</p>
+        {assignedTasks.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No recent tasks.</p>
         ) : (
           <div className="border border-border rounded-lg">
-            {assignedIssues.slice(0, 10).map((issue) => (
+            {assignedTasks.slice(0, 10).map((task) => (
               <EntityRow
-                key={issue.id}
-                identifier={issue.identifier ?? issue.id.slice(0, 8)}
-                title={issue.title}
-                to={`/issues/${issue.identifier ?? issue.id}`}
-                trailing={<StatusBadge status={issue.status} />}
+                key={task.id}
+                identifier={task.identifier ?? task.id.slice(0, 8)}
+                title={task.title}
+                to={`/tasks/${task.identifier ?? task.id}`}
+                trailing={<StatusBadge status={task.status} />}
               />
             ))}
-            {assignedIssues.length > 10 && (
+            {assignedTasks.length > 10 && (
               <div className="px-3 py-2 text-xs text-muted-foreground text-center border-t border-border">
-                +{assignedIssues.length - 10} more issues
+                +{assignedTasks.length - 10} more tasks
               </div>
             )}
           </div>
@@ -3038,11 +3038,9 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
     };
     const context = asRecord(run.contextSnapshot);
     if (!context) return payload;
-    const issueId = asNonEmptyString(context.issueId);
     const taskId = asNonEmptyString(context.taskId);
     const taskKey = asNonEmptyString(context.taskKey);
     const commentId = asNonEmptyString(context.wakeCommentId) ?? asNonEmptyString(context.commentId);
-    if (issueId) payload.issueId = issueId;
     if (taskId) payload.taskId = taskId;
     if (taskKey) payload.taskKey = taskKey;
     if (commentId) payload.commentId = commentId;
@@ -3072,10 +3070,8 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
     const payload: Record<string, unknown> = {};
     const context = asRecord(run.contextSnapshot);
     if (!context) return payload;
-    const issueId = asNonEmptyString(context.issueId);
     const taskId = asNonEmptyString(context.taskId);
     const taskKey = asNonEmptyString(context.taskKey);
-    if (issueId) payload.issueId = issueId;
     if (taskId) payload.taskId = taskId;
     if (taskKey) payload.taskKey = taskKey;
     return payload;
@@ -3099,25 +3095,25 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
     },
   });
 
-  const { data: touchedIssues } = useQuery({
-    queryKey: queryKeys.runIssues(run.id),
-    queryFn: () => activityApi.issuesForRun(run.id),
+  const { data: touchedTasks } = useQuery({
+    queryKey: queryKeys.runTasks(run.id),
+    queryFn: () => activityApi.tasksForRun(run.id),
   });
-  const touchedIssueIds = useMemo(
-    () => Array.from(new Set((touchedIssues ?? []).map((issue) => issue.issueId))),
-    [touchedIssues],
+  const touchedTaskIds = useMemo(
+    () => Array.from(new Set((touchedTasks ?? []).map((task) => task.taskId))),
+    [touchedTasks],
   );
 
-  const clearSessionsForTouchedIssues = useMutation({
+  const clearSessionsForTouchedTasks = useMutation({
     mutationFn: async () => {
-      if (touchedIssueIds.length === 0) return 0;
-      await Promise.all(touchedIssueIds.map((issueId) => agentsApi.resetSession(run.agentId, issueId, run.companyId)));
-      return touchedIssueIds.length;
+      if (touchedTaskIds.length === 0) return 0;
+      await Promise.all(touchedTaskIds.map((taskId) => agentsApi.resetSession(run.agentId, taskId, run.companyId)));
+      return touchedTaskIds.length;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.runtimeState(run.agentId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.taskSessions(run.agentId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.runIssues(run.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.runTasks(run.id) });
     },
   });
 
@@ -3385,29 +3381,29 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
                     <CopyText text={run.sessionIdAfter} className="font-mono" />
                   </div>
                 )}
-                {touchedIssueIds.length > 0 && (
+                {touchedTaskIds.length > 0 && (
                   <div className="pt-1">
                     <button
                       type="button"
                       className="text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-60"
-                      disabled={clearSessionsForTouchedIssues.isPending}
+                      disabled={clearSessionsForTouchedTasks.isPending}
                       onClick={() => {
-                        const issueCount = touchedIssueIds.length;
+                        const taskCount = touchedTaskIds.length;
                         const confirmed = window.confirm(
-                          `Clear session for ${issueCount} issue${issueCount === 1 ? "" : "s"} touched by this run?`,
+                          `Clear session for ${taskCount} task${taskCount === 1 ? "" : "s"} touched by this run?`,
                         );
                         if (!confirmed) return;
-                        clearSessionsForTouchedIssues.mutate();
+                        clearSessionsForTouchedTasks.mutate();
                       }}
                     >
-                      {clearSessionsForTouchedIssues.isPending
+                      {clearSessionsForTouchedTasks.isPending
                         ? "clearing session..."
-                        : "clear session for these issues"}
+                        : "clear session for these tasks"}
                     </button>
-                    {clearSessionsForTouchedIssues.isError && (
+                    {clearSessionsForTouchedTasks.isError && (
                       <p className="text-[11px] text-destructive mt-1">
-                        {clearSessionsForTouchedIssues.error instanceof Error
-                          ? clearSessionsForTouchedIssues.error.message
+                        {clearSessionsForTouchedTasks.error instanceof Error
+                          ? clearSessionsForTouchedTasks.error.message
                           : "Failed to clear sessions"}
                       </p>
                     )}
@@ -3419,22 +3415,22 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
         )}
       </div>
 
-      {/* Issues touched by this run */}
-      {touchedIssues && touchedIssues.length > 0 && (
+      {/* Tasks touched by this run */}
+      {touchedTasks && touchedTasks.length > 0 && (
         <div className="space-y-2">
-          <span className="text-xs font-medium text-muted-foreground">Issues Touched ({touchedIssues.length})</span>
+          <span className="text-xs font-medium text-muted-foreground">Tasks Touched ({touchedTasks.length})</span>
           <div className="border border-border rounded-lg divide-y divide-border">
-            {touchedIssues.map((issue) => (
+            {touchedTasks.map((task) => (
               <Link
-                key={issue.issueId}
-                to={`/issues/${issue.identifier ?? issue.issueId}`}
+                key={task.taskId}
+                to={`/tasks/${task.identifier ?? task.taskId}`}
                 className="flex items-center justify-between w-full px-3 py-2 text-xs hover:bg-accent/20 transition-colors text-left no-underline text-inherit"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <StatusBadge status={issue.status} />
-                  <span className="truncate">{issue.title}</span>
+                  <StatusBadge status={task.status} />
+                  <span className="truncate">{task.title}</span>
                 </div>
-                <span className="font-mono text-muted-foreground shrink-0 ml-2">{issue.identifier ?? issue.issueId.slice(0, 8)}</span>
+                <span className="font-mono text-muted-foreground shrink-0 ml-2">{task.identifier ?? task.taskId.slice(0, 8)}</span>
               </Link>
             ))}
           </div>

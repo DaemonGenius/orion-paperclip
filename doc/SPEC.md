@@ -269,7 +269,7 @@ There is no separate messaging or chat system. Tasks are the communication chann
 
 ### Task Hierarchy Mapping
 
-Full hierarchy: **Initiative** (company goal) → Projects → Milestones → Issues → Sub-issues. Everything traces back to an initiative, and the "company goal" is just the first/primary initiative.
+Full hierarchy: **Initiative** (company goal) → Projects → Milestones → Tasks → Sub-tasks. Everything traces back to an initiative, and the "company goal" is just the first/primary initiative.
 
 ---
 
@@ -410,7 +410,7 @@ No separate "agent API" vs. "board API." Same endpoints, different authorization
 
 ### Work Artifacts
 
-Paperclip manages task-linked work artifacts: issue documents (rich-text plans, specs, notes attached to issues) and file attachments. Agents read and write these through the API as part of normal task execution. Full delivery infrastructure (code repos, deployments, production runtime) remains the agent's domain — Paperclip orchestrates the work, not the build pipeline.
+Paperclip manages task-linked work artifacts: task documents (rich-text plans, specs, notes attached to tasks) and file attachments. Agents read and write these through the API as part of normal task execution. Full delivery infrastructure (code repos, deployments, production runtime) remains the agent's domain — Paperclip orchestrates the work, not the build pipeline.
 
 ### Open Questions
 

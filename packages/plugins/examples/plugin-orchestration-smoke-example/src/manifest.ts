@@ -13,15 +13,15 @@ const manifest: PaperclipPluginManifestV1 = {
     "database.namespace.migrate",
     "database.namespace.read",
     "database.namespace.write",
-    "issues.read",
-    "issues.create",
-    "issues.wakeup",
-    "issue.relations.read",
-    "issue.relations.write",
-    "issue.documents.read",
-    "issue.documents.write",
-    "issue.subtree.read",
-    "issues.orchestration.read",
+    "tasks.read",
+    "tasks.create",
+    "tasks.wakeup",
+    "task.relations.read",
+    "task.relations.write",
+    "task.documents.read",
+    "task.documents.write",
+    "task.subtree.read",
+    "tasks.orchestration.read",
     "ui.dashboardWidget.register",
     "ui.detailTab.register",
     "instance.settings.register"
@@ -33,25 +33,25 @@ const manifest: PaperclipPluginManifestV1 = {
   database: {
     namespaceSlug: "orchestration_smoke",
     migrationsDir: "migrations",
-    coreReadTables: ["issues"]
+    coreReadTables: ["tasks"]
   },
   apiRoutes: [
     {
       routeKey: "initialize",
       method: "POST",
-      path: "/issues/:issueId/smoke",
+      path: "/tasks/:taskId/smoke",
       auth: "board-or-agent",
       capability: "api.routes.register",
       checkoutPolicy: "required-for-agent-in-progress",
-      companyResolution: { from: "issue", param: "issueId" }
+      companyResolution: { from: "task", param: "taskId" }
     },
     {
       routeKey: "summary",
       method: "GET",
-      path: "/issues/:issueId/smoke",
+      path: "/tasks/:taskId/smoke",
       auth: "board-or-agent",
       capability: "api.routes.register",
-      companyResolution: { from: "issue", param: "issueId" }
+      companyResolution: { from: "task", param: "taskId" }
     }
   ],
   ui: {
@@ -64,10 +64,10 @@ const manifest: PaperclipPluginManifestV1 = {
       },
       {
         type: "taskDetailView",
-        id: "issue-panel",
+        id: "task-panel",
         displayName: "Orchestration Smoke",
-        exportName: "IssuePanel",
-        entityTypes: ["issue"]
+        exportName: "TaskPanel",
+        entityTypes: ["task"]
       },
       {
         type: "settingsPage",

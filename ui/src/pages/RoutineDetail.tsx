@@ -310,11 +310,11 @@ export function RoutineDetail() {
     queryFn: () => routinesApi.get(routineId!),
     enabled: !!routineId,
   });
-  const activeIssueId = routine?.activeIssue?.id;
+  const activeTaskId = routine?.activeTask?.id;
   const { data: liveRuns } = useQuery({
-    queryKey: queryKeys.issues.liveRuns(activeIssueId!),
-    queryFn: () => heartbeatsApi.liveRunsForIssue(activeIssueId!),
-    enabled: !!activeIssueId,
+    queryKey: queryKeys.tasks.liveRuns(activeTaskId!),
+    queryFn: () => heartbeatsApi.liveRunsForTask(activeTaskId!),
+    enabled: !!activeTaskId,
     refetchInterval: 3000,
   });
   const hasLiveRun = (liveRuns ?? []).length > 0;
@@ -657,7 +657,7 @@ export function RoutineDetail() {
   }
 
   if (isLoading) {
-    return <PageSkeleton variant="issues-list" />;
+    return <PageSkeleton variant="tasks-list" />;
   }
 
   if (error || !routine) {
@@ -1058,8 +1058,8 @@ export function RoutineDetail() {
         </TabsContent>
 
         <TabsContent value="runs" className="space-y-4">
-          {hasLiveRun && activeIssueId && routine && (
-            <LiveRunWidget issueId={activeIssueId} companyId={routine.companyId} />
+          {hasLiveRun && activeTaskId && routine && (
+            <LiveRunWidget taskId={activeTaskId} companyId={routine.companyId} />
           )}
           {(routineRuns ?? []).length === 0 ? (
             <p className="text-xs text-muted-foreground">No runs yet.</p>
@@ -1075,9 +1075,9 @@ export function RoutineDetail() {
                     {run.trigger && (
                       <span className="text-muted-foreground truncate">{run.trigger.label ?? run.trigger.kind}</span>
                     )}
-                    {run.linkedIssue && (
-                      <Link to={`/issues/${run.linkedIssue.identifier ?? run.linkedIssue.id}`} className="text-muted-foreground hover:underline truncate">
-                        {run.linkedIssue.identifier ?? run.linkedIssue.id.slice(0, 8)}
+                    {run.linkedTask && (
+                      <Link to={`/tasks/${run.linkedTask.identifier ?? run.linkedTask.id}`} className="text-muted-foreground hover:underline truncate">
+                        {run.linkedTask.identifier ?? run.linkedTask.id.slice(0, 8)}
                       </Link>
                     )}
                   </div>

@@ -69,7 +69,7 @@ function ClearResultSummary({ result }: { result: KnowledgeClearResult }) {
   const cleared = [
     `${result.clearedRefs} refs`,
     `${result.removedMirrorFiles} generated mirror files`,
-    `${result.deletedImportedIssues} imported tasks`,
+    `${result.deletedImportedTasks} imported tasks`,
     `${result.deletedImportedProjects} imported projects`,
     `${result.deletedKnowledgeProposals} proposals`,
     `${result.deletedSyncConflicts} conflicts`,
@@ -377,7 +377,7 @@ export function Knowledge() {
       queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeProposals(selectedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.orion.syncConflicts(selectedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.projects.list(selectedCompanyId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(selectedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(selectedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(selectedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.activity(selectedCompanyId) });
@@ -420,7 +420,7 @@ export function Knowledge() {
     queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeRefs(selectedCompanyId, "notion") });
     queryClient.invalidateQueries({ queryKey: queryKeys.orion.knowledgeRefs(selectedCompanyId, "obsidian") });
     queryClient.invalidateQueries({ queryKey: queryKeys.projects.list(selectedCompanyId) });
-    queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(selectedCompanyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(selectedCompanyId) });
     queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(selectedCompanyId) });
     queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(selectedCompanyId) });
   }, [lastAppliedSyncUpdatedAt, notionSyncStatus, queryClient, selectedCompanyId]);

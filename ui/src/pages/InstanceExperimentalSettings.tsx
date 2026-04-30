@@ -56,8 +56,8 @@ export function InstanceExperimentalSettings() {
   const enableEnvironments = experimentalQuery.data?.enableEnvironments === true;
   const enableIsolatedWorkspaces = experimentalQuery.data?.enableIsolatedWorkspaces === true;
   const autoRestartDevServerWhenIdle = experimentalQuery.data?.autoRestartDevServerWhenIdle === true;
-  const enableIssueGraphLivenessAutoRecovery =
-    experimentalQuery.data?.enableIssueGraphLivenessAutoRecovery === true;
+  const enableTaskGraphLivenessAutoRecovery =
+    experimentalQuery.data?.enableTaskGraphLivenessAutoRecovery === true;
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -101,7 +101,7 @@ export function InstanceExperimentalSettings() {
             <h2 className="text-sm font-semibold">Enable Isolated Workspaces</h2>
             <p className="max-w-2xl text-sm text-muted-foreground">
               Show execution workspace controls in project configuration and allow isolated workspace behavior for new
-              and existing issue runs.
+              and existing task runs.
             </p>
           </div>
           <ToggleSwitch
@@ -134,21 +134,21 @@ export function InstanceExperimentalSettings() {
       <section className="rounded-xl border border-border bg-card p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1.5">
-            <h2 className="text-sm font-semibold">Auto-Create Issue Recovery Tasks</h2>
+            <h2 className="text-sm font-semibold">Auto-Create Task Recovery Tasks</h2>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              Let the heartbeat scheduler create recovery issues for issue dependency chains that have been stalled for
+              Let the heartbeat scheduler create recovery tasks for task dependency chains that have been stalled for
               at least 24 hours.
             </p>
           </div>
           <ToggleSwitch
-            checked={enableIssueGraphLivenessAutoRecovery}
+            checked={enableTaskGraphLivenessAutoRecovery}
             onCheckedChange={() =>
               toggleMutation.mutate({
-                enableIssueGraphLivenessAutoRecovery: !enableIssueGraphLivenessAutoRecovery,
+                enableTaskGraphLivenessAutoRecovery: !enableTaskGraphLivenessAutoRecovery,
               })
             }
             disabled={toggleMutation.isPending}
-            aria-label="Toggle issue graph liveness auto-recovery"
+            aria-label="Toggle task graph liveness auto-recovery"
           />
         </div>
       </section>

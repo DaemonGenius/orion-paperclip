@@ -1,5 +1,5 @@
 import { createDb } from "./client.js";
-import { companies, agents, goals, projects, issues } from "./schema/index.js";
+import { companies, agents, goals, projects, tasks } from "./schema/index.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is required");
@@ -71,7 +71,7 @@ const [project] = await db
   })
   .returning();
 
-await db.insert(issues).values([
+await db.insert(tasks).values([
   {
     companyId: company!.id,
     projectId: project!.id,

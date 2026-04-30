@@ -10,8 +10,8 @@ import {
   authUsers,
   companies,
   createDb,
-  issueComments,
-  issues,
+  taskComments,
+  tasks,
   projects,
   routines,
   routineTriggers,
@@ -246,7 +246,7 @@ describe("worktree helpers", () => {
           },
         ],
         "company-1",
-        "company-1/issues/issue-1/missing.png",
+        "company-1/tasks/task-1/missing.png",
       ),
     ).resolves.toEqual(expected);
   });
@@ -264,7 +264,7 @@ describe("worktree helpers", () => {
           },
         ],
         "company-1",
-        "company-1/issues/issue-1/missing.png",
+        "company-1/tasks/task-1/missing.png",
       ),
     ).resolves.toBeNull();
   });
@@ -281,7 +281,7 @@ describe("worktree helpers", () => {
     expect(minimal.excludedTables).toContain("heartbeat_run_events");
     expect(minimal.excludedTables).toContain("workspace_runtime_services");
     expect(minimal.excludedTables).toContain("agent_task_sessions");
-    expect(minimal.nullifyColumns.issues).toEqual(["checkout_run_id", "execution_run_id"]);
+    expect(minimal.nullifyColumns.tasks).toEqual(["checkout_run_id", "execution_run_id"]);
 
     expect(full.excludedTables).toEqual([]);
     expect(full.nullifyColumns).toEqual({});
@@ -293,16 +293,16 @@ describe("worktree helpers", () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
     const idleAgentId = randomUUID();
-    const inProgressIssueId = randomUUID();
-    const todoIssueId = randomUUID();
-    const reviewIssueId = randomUUID();
-    const userIssueId = randomUUID();
+    const inProgressTaskId = randomUUID();
+    const todoTaskId = randomUUID();
+    const reviewTaskId = randomUUID();
+    const userTaskId = randomUUID();
 
     try {
       await db.insert(companies).values({
         id: companyId,
         name: "Paperclip",
-        issuePrefix: "WTQ",
+        taskPrefix: "WTQ",
         requireBoardApprovalForNewAgents: false,
       });
       await db.insert(agents).values([
@@ -332,47 +332,47 @@ describe("worktree helpers", () => {
           permissions: {},
         },
       ]);
-      await db.insert(issues).values([
+      await db.insert(tasks).values([
         {
-          id: inProgressIssueId,
+          id: inProgressTaskId,
           companyId,
-          title: "Copied in-flight issue",
+          title: "Copied in-flight task",
           status: "in_progress",
           priority: "medium",
           assigneeAgentId: agentId,
-          issueNumber: 1,
+          taskNumber: 1,
           identifier: "WTQ-1",
           executionAgentNameKey: "codexcoder",
           executionLockedAt: new Date("2026-04-18T00:00:00.000Z"),
         },
         {
-          id: todoIssueId,
+          id: todoTaskId,
           companyId,
-          title: "Copied assigned todo issue",
+          title: "Copied assigned todo task",
           status: "todo",
           priority: "medium",
           assigneeAgentId: agentId,
-          issueNumber: 2,
+          taskNumber: 2,
           identifier: "WTQ-2",
         },
         {
-          id: reviewIssueId,
+          id: reviewTaskId,
           companyId,
-          title: "Copied assigned review issue",
+          title: "Copied assigned review task",
           status: "in_review",
           priority: "medium",
           assigneeAgentId: idleAgentId,
-          issueNumber: 3,
+          taskNumber: 3,
           identifier: "WTQ-3",
         },
         {
-          id: userIssueId,
+          id: userTaskId,
           companyId,
-          title: "Copied user issue",
+          title: "Copied user task",
           status: "todo",
           priority: "medium",
           assigneeUserId: "user-1",
-          issueNumber: 4,
+          taskNumber: 4,
           identifier: "WTQ-4",
         },
       ]);
@@ -380,9 +380,9 @@ describe("worktree helpers", () => {
       await expect(quarantineSeededWorktreeExecutionState(tempDb.connectionString)).resolves.toEqual({
         disabledTimerHeartbeats: 1,
         resetRunningAgents: 1,
-        quarantinedInProgressIssues: 1,
-        unassignedTodoIssues: 1,
-        unassignedReviewIssues: 1,
+        quarantinedInProgressTasks: 1,
+        unassignedTodoTasks: 1,
+        unassignedReviewTasks: 1,
       });
 
       const [quarantinedAgent] = await db.select().from(agents).where(eq(agents.id, agentId));
@@ -392,25 +392,25 @@ describe("worktree helpers", () => {
         wakeOnDemand: true,
       });
 
-      const [inProgressIssue] = await db.select().from(issues).where(eq(issues.id, inProgressIssueId));
-      expect(inProgressIssue?.status).toBe("blocked");
-      expect(inProgressIssue?.assigneeAgentId).toBeNull();
-      expect(inProgressIssue?.executionAgentNameKey).toBeNull();
-      expect(inProgressIssue?.executionLockedAt).toBeNull();
+      const [inProgressTask] = await db.select().from(tasks).where(eq(tasks.id, inProgressTaskId));
+      expect(inProgressTask?.status).toBe("blocked");
+      expect(inProgressTask?.assigneeAgentId).toBeNull();
+      expect(inProgressTask?.executionAgentNameKey).toBeNull();
+      expect(inProgressTask?.executionLockedAt).toBeNull();
 
-      const [todoIssue] = await db.select().from(issues).where(eq(issues.id, todoIssueId));
-      expect(todoIssue?.status).toBe("todo");
-      expect(todoIssue?.assigneeAgentId).toBeNull();
+      const [todoTask] = await db.select().from(tasks).where(eq(tasks.id, todoTaskId));
+      expect(todoTask?.status).toBe("todo");
+      expect(todoTask?.assigneeAgentId).toBeNull();
 
-      const [reviewIssue] = await db.select().from(issues).where(eq(issues.id, reviewIssueId));
-      expect(reviewIssue?.status).toBe("in_review");
-      expect(reviewIssue?.assigneeAgentId).toBeNull();
+      const [reviewTask] = await db.select().from(tasks).where(eq(tasks.id, reviewTaskId));
+      expect(reviewTask?.status).toBe("in_review");
+      expect(reviewTask?.assigneeAgentId).toBeNull();
 
-      const [userIssue] = await db.select().from(issues).where(eq(issues.id, userIssueId));
-      expect(userIssue?.status).toBe("todo");
-      expect(userIssue?.assigneeUserId).toBe("user-1");
+      const [userTask] = await db.select().from(tasks).where(eq(tasks.id, userTaskId));
+      expect(userTask?.status).toBe("todo");
+      expect(userTask?.assigneeUserId).toBe("user-1");
 
-      const comments = await db.select().from(issueComments).where(eq(issueComments.issueId, inProgressIssueId));
+      const comments = await db.select().from(taskComments).where(eq(taskComments.taskId, inProgressTaskId));
       expect(comments).toHaveLength(1);
       expect(comments[0]?.body).toContain("Quarantined during worktree seed");
     } finally {
@@ -1201,7 +1201,7 @@ describeEmbeddedPostgres("pauseSeededScheduledRoutines", () => {
       await db.insert(companies).values({
         id: companyId,
         name: "Paperclip",
-        issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+        taskPrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
         requireBoardApprovalForNewAgents: false,
       });
       await db.insert(agents).values({

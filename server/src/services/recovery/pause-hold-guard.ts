@@ -1,14 +1,14 @@
 import type { Db } from "@paperclipai/db";
-import { issueTreeControlService } from "../issue-tree-control.js";
+import { taskTreeControlService } from "../task-tree-control.js";
 
-type IssueTreeControlService = ReturnType<typeof issueTreeControlService>;
+type TaskTreeControlService = ReturnType<typeof taskTreeControlService>;
 
 export async function isAutomaticRecoverySuppressedByPauseHold(
   db: Db,
   companyId: string,
-  issueId: string,
-  treeControlSvc: IssueTreeControlService = issueTreeControlService(db),
+  taskId: string,
+  treeControlSvc: TaskTreeControlService = taskTreeControlService(db),
 ) {
-  const activePauseHold = await treeControlSvc.getActivePauseHoldGate(companyId, issueId);
+  const activePauseHold = await treeControlSvc.getActivePauseHoldGate(companyId, taskId);
   return Boolean(activePauseHold);
 }

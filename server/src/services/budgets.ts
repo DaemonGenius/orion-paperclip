@@ -716,7 +716,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
     getInvocationBlock: async (
       companyId: string,
       agentId: string,
-      context?: { issueId?: string | null; projectId?: string | null },
+      context?: { taskId?: string | null; projectId?: string | null },
     ) => {
       const agent = await db
         .select({

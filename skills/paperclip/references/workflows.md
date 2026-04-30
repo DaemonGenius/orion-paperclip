@@ -39,9 +39,9 @@ Access control:
 
 - Use `onboardingTextUrl` from the response.
 - Ask the board to paste that prompt into OpenClaw.
-- If the issue includes an OpenClaw URL (for example `ws://127.0.0.1:18789`), include that URL in your comment so the board/OpenClaw uses it in `agentDefaultsPayload.url`.
+- If the task includes an OpenClaw URL (for example `ws://127.0.0.1:18789`), include that URL in your comment so the board/OpenClaw uses it in `agentDefaultsPayload.url`.
 
-3. Post the prompt in the issue comment so the human can paste it into OpenClaw.
+3. Post the prompt in the task comment so the human can paste it into OpenClaw.
 
 4. After OpenClaw submits the join request, monitor approvals and continue onboarding (approval + API key claim + skill install).
 
@@ -88,15 +88,15 @@ Use the company-scoped routes when a CEO agent needs to inspect or move package 
   - existing-company imports are non-destructive
   - `replace` is rejected
   - collisions resolve with `rename` or `skip`
-  - issues are always created as new issues
+  - tasks are always created as new tasks
 - CEO agents may use the safe routes with `target.mode = "new_company"` to create a new company directly. Paperclip copies active user memberships from the source company so the new company is not orphaned.
 
 For export, preview first and keep tasks explicit:
 
 - `POST /api/companies/{companyId}/exports/preview`
 - `POST /api/companies/{companyId}/exports`
-- Export preview defaults to `issues: false`
-- Add `issues` or `projectIssues` only when you intentionally need task files
+- Export preview defaults to `tasks: false`
+- Add `tasks` or `projectTasks` only when you intentionally need task files
 - Use `selectedFiles` to narrow the final package to specific agents, skills, projects, or tasks after you inspect the preview inventory
 
 See `api-reference.md` for full schema examples.
@@ -107,13 +107,13 @@ See `api-reference.md` for full schema examples.
 
 Use this when validating Paperclip itself (assignment flow, checkouts, run visibility, and status transitions).
 
-1. Create a throwaway issue assigned to a known local agent (`claudecoder` or `codexcoder`):
+1. Create a throwaway task assigned to a known local agent (`claudecoder` or `codexcoder`):
 
 ```bash
-npx paperclipai issue create \
+npx paperclipai task create \
   --company-id "$PAPERCLIP_COMPANY_ID" \
   --title "Self-test: assignment/watch flow" \
-  --description "Temporary validation issue" \
+  --description "Temporary validation task" \
   --status todo \
   --assignee-agent-id "$PAPERCLIP_AGENT_ID"
 ```
@@ -124,18 +124,18 @@ npx paperclipai issue create \
 npx paperclipai heartbeat run --agent-id "$PAPERCLIP_AGENT_ID"
 ```
 
-3. Verify the issue transitions (`todo -> in_progress -> done` or `blocked`) and that comments are posted:
+3. Verify the task transitions (`todo -> in_progress -> done` or `blocked`) and that comments are posted:
 
 ```bash
-npx paperclipai issue get <issue-id-or-identifier>
+npx paperclipai task get <task-id-or-identifier>
 ```
 
-4. Reassignment test (optional): move the same issue between `claudecoder` and `codexcoder` and confirm wake/run behavior:
+4. Reassignment test (optional): move the same task between `claudecoder` and `codexcoder` and confirm wake/run behavior:
 
 ```bash
-npx paperclipai issue update <issue-id> --assignee-agent-id <other-agent-id> --status todo
+npx paperclipai task update <task-id> --assignee-agent-id <other-agent-id> --status todo
 ```
 
-5. Cleanup: mark temporary issues done/cancelled with a clear note.
+5. Cleanup: mark temporary tasks done/cancelled with a clear note.
 
-If you use direct `curl` during these tests, include `X-Paperclip-Run-Id` on all mutating issue requests whenever running inside a heartbeat.
+If you use direct `curl` during these tests, include `X-Paperclip-Run-Id` on all mutating task requests whenever running inside a heartbeat.

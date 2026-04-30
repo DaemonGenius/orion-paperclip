@@ -10,8 +10,8 @@ import {
   companyMemberships,
   costEvents,
   createDb,
-  issueComments,
-  issues,
+  taskComments,
+  tasks,
 } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
@@ -60,7 +60,7 @@ describeEmbeddedPostgres("GET /companies/:companyId/users/:userSlug/profile", ()
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `U${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      taskPrefix: `U${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(authUsers).values({
@@ -93,9 +93,9 @@ describeEmbeddedPostgres("GET /companies/:companyId/users/:userSlug/profile", ()
 
   afterEach(async () => {
     await db.delete(costEvents);
-    await db.delete(issueComments);
+    await db.delete(taskComments);
     await db.delete(activityLog);
-    await db.delete(issues);
+    await db.delete(tasks);
     await db.delete(agents);
     await db.delete(companyMemberships);
     await db.delete(authUsers);
@@ -126,15 +126,15 @@ describeEmbeddedPostgres("GET /companies/:companyId/users/:userSlug/profile", ()
     return app;
   }
 
-  it("resolves a user slug and returns issue, activity, and attributed cost stats", async () => {
-    const doneIssueId = randomUUID();
-    const openIssueId = randomUUID();
+  it("resolves a user slug and returns task, activity, and attributed cost stats", async () => {
+    const doneTaskId = randomUUID();
+    const openTaskId = randomUUID();
     const now = new Date();
     const older = new Date(now.getTime() - 60_000);
 
-    await db.insert(issues).values([
+    await db.insert(tasks).values([
       {
-        id: doneIssueId,
+        id: doneTaskId,
         companyId,
         title: "Ship profile page",
         status: "done",
@@ -146,7 +146,7 @@ describeEmbeddedPostgres("GET /companies/:companyId/users/:userSlug/profile", ()
         updatedAt: now,
       },
       {
-        id: openIssueId,
+        id: openTaskId,
         companyId,
         title: "Review profile copy",
         status: "in_progress",
@@ -157,9 +157,9 @@ describeEmbeddedPostgres("GET /companies/:companyId/users/:userSlug/profile", ()
         updatedAt: older,
       },
     ]);
-    await db.insert(issueComments).values({
+    await db.insert(taskComments).values({
       companyId,
-      issueId: openIssueId,
+      taskId: openTaskId,
       authorUserId: userId,
       body: "Looks good.",
       createdAt: now,
@@ -169,15 +169,15 @@ describeEmbeddedPostgres("GET /companies/:companyId/users/:userSlug/profile", ()
       companyId,
       actorType: "user",
       actorId: userId,
-      action: "issue.updated",
-      entityType: "issue",
-      entityId: doneIssueId,
+      action: "task.updated",
+      entityType: "task",
+      entityId: doneTaskId,
       createdAt: now,
     });
     await db.insert(costEvents).values({
       companyId,
       agentId,
-      issueId: doneIssueId,
+      taskId: doneTaskId,
       provider: "openai",
       biller: "openai",
       billingType: "metered_api",
@@ -198,10 +198,10 @@ describeEmbeddedPostgres("GET /companies/:companyId/users/:userSlug/profile", ()
 
     const all = response.body.stats.find((entry: { key: string }) => entry.key === "all");
     expect(all).toMatchObject({
-      touchedIssues: 2,
-      createdIssues: 1,
-      completedIssues: 1,
-      assignedOpenIssues: 1,
+      touchedTasks: 2,
+      createdTasks: 1,
+      completedTasks: 1,
+      assignedOpenTasks: 1,
       commentCount: 1,
       activityCount: 1,
       costCents: 42,
@@ -210,8 +210,8 @@ describeEmbeddedPostgres("GET /companies/:companyId/users/:userSlug/profile", ()
       outputTokens: 40,
       costEventCount: 1,
     });
-    expect(response.body.recentIssues.map((issue: { identifier: string }) => issue.identifier)).toEqual(["USR-1", "USR-2"]);
-    expect(response.body.recentActivity[0].action).toBe("issue.updated");
+    expect(response.body.recentTasks.map((task: { identifier: string }) => task.identifier)).toEqual(["USR-1", "USR-2"]);
+    expect(response.body.recentActivity[0].action).toBe("task.updated");
     expect(response.body.topAgents[0]).toMatchObject({ agentId, agentName: "Coder", costCents: 42 });
     expect(response.body.topProviders[0]).toMatchObject({ provider: "openai", model: "gpt-test", costCents: 42 });
   });

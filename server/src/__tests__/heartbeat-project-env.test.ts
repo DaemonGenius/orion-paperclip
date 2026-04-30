@@ -70,7 +70,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
 });
 
 describe("extractMentionedSkillIdsFromSources", () => {
-  it("collects explicit skill mention ids across issue sources", () => {
+  it("collects explicit skill mention ids across task sources", () => {
     const releaseHref = buildSkillMentionHref("skill-1", "release-changelog");
     const browserHref = buildSkillMentionHref("skill-2", "agent-browser");
 

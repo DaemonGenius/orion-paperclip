@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS "routine_runs" (
 	"triggered_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"idempotency_key" text,
 	"trigger_payload" jsonb,
-	"linked_issue_id" uuid,
+	"linked_task_id" uuid,
 	"coalesced_into_run_id" uuid,
 	"failure_reason" text,
 	"completed_at" timestamp with time zone,
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS "routines" (
 	"company_id" uuid NOT NULL,
 	"project_id" uuid NOT NULL,
 	"goal_id" uuid,
-	"parent_issue_id" uuid,
+	"parent_task_id" uuid,
 	"title" text NOT NULL,
 	"description" text,
 	"assignee_agent_id" uuid NOT NULL,
@@ -64,9 +64,9 @@ CREATE TABLE IF NOT EXISTS "routines" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "issues" ADD COLUMN IF NOT EXISTS "origin_kind" text DEFAULT 'manual' NOT NULL;--> statement-breakpoint
-ALTER TABLE "issues" ADD COLUMN IF NOT EXISTS "origin_id" text;--> statement-breakpoint
-ALTER TABLE "issues" ADD COLUMN IF NOT EXISTS "origin_run_id" text;--> statement-breakpoint
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "origin_kind" text DEFAULT 'manual' NOT NULL;--> statement-breakpoint
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "origin_id" text;--> statement-breakpoint
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "origin_run_id" text;--> statement-breakpoint
 DO $$ BEGIN
  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'routine_runs_company_id_companies_id_fk') THEN
   ALTER TABLE "routine_runs" ADD CONSTRAINT "routine_runs_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;
@@ -83,8 +83,8 @@ DO $$ BEGIN
  END IF;
 END $$;--> statement-breakpoint
 DO $$ BEGIN
- IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'routine_runs_linked_issue_id_issues_id_fk') THEN
-  ALTER TABLE "routine_runs" ADD CONSTRAINT "routine_runs_linked_issue_id_issues_id_fk" FOREIGN KEY ("linked_issue_id") REFERENCES "public"."issues"("id") ON DELETE set null ON UPDATE no action;
+ IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'routine_runs_linked_task_id_tasks_id_fk') THEN
+  ALTER TABLE "routine_runs" ADD CONSTRAINT "routine_runs_linked_task_id_tasks_id_fk" FOREIGN KEY ("linked_task_id") REFERENCES "public"."tasks"("id") ON DELETE set null ON UPDATE no action;
  END IF;
 END $$;--> statement-breakpoint
 DO $$ BEGIN
@@ -128,8 +128,8 @@ DO $$ BEGIN
  END IF;
 END $$;--> statement-breakpoint
 DO $$ BEGIN
- IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'routines_parent_issue_id_issues_id_fk') THEN
-  ALTER TABLE "routines" ADD CONSTRAINT "routines_parent_issue_id_issues_id_fk" FOREIGN KEY ("parent_issue_id") REFERENCES "public"."issues"("id") ON DELETE set null ON UPDATE no action;
+ IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'routines_parent_task_id_tasks_id_fk') THEN
+  ALTER TABLE "routines" ADD CONSTRAINT "routines_parent_task_id_tasks_id_fk" FOREIGN KEY ("parent_task_id") REFERENCES "public"."tasks"("id") ON DELETE set null ON UPDATE no action;
  END IF;
 END $$;--> statement-breakpoint
 DO $$ BEGIN
@@ -149,7 +149,7 @@ DO $$ BEGIN
 END $$;--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "routine_runs_company_routine_idx" ON "routine_runs" USING btree ("company_id","routine_id","created_at");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "routine_runs_trigger_idx" ON "routine_runs" USING btree ("trigger_id","created_at");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "routine_runs_linked_issue_idx" ON "routine_runs" USING btree ("linked_issue_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "routine_runs_linked_task_idx" ON "routine_runs" USING btree ("linked_task_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "routine_runs_trigger_idempotency_idx" ON "routine_runs" USING btree ("trigger_id","idempotency_key");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "routine_triggers_company_routine_idx" ON "routine_triggers" USING btree ("company_id","routine_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "routine_triggers_company_kind_idx" ON "routine_triggers" USING btree ("company_id","kind");--> statement-breakpoint
@@ -158,4 +158,4 @@ CREATE INDEX IF NOT EXISTS "routine_triggers_public_id_idx" ON "routine_triggers
 CREATE INDEX IF NOT EXISTS "routines_company_status_idx" ON "routines" USING btree ("company_id","status");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "routines_company_assignee_idx" ON "routines" USING btree ("company_id","assignee_agent_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "routines_company_project_idx" ON "routines" USING btree ("company_id","project_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "issues_company_origin_idx" ON "issues" USING btree ("company_id","origin_kind","origin_id");
+CREATE INDEX IF NOT EXISTS "tasks_company_origin_idx" ON "tasks" USING btree ("company_id","origin_kind","origin_id");

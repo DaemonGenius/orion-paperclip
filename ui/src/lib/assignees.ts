@@ -26,7 +26,7 @@ export function assigneeValueFromSelection(selection: Partial<AssigneeSelection>
 }
 
 export function suggestedCommentAssigneeValue(
-  issue: CommentAssigneeSuggestionInput,
+  task: CommentAssigneeSuggestionInput,
   comments: CommentAssigneeSuggestionComment[] | null | undefined,
   currentUserId: string | null | undefined,
   currentAgentId?: string | null | undefined,
@@ -43,7 +43,7 @@ export function suggestedCommentAssigneeValue(
     }
   }
 
-  return assigneeValueFromSelection(issue);
+  return assigneeValueFromSelection(task);
 }
 
 export function parseAssigneeValue(value: string): AssigneeSelection {

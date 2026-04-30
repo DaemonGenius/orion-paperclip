@@ -42,11 +42,11 @@ paperclipai company export <company-id> --out ./my-export
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--out <path>` | Output directory (required) | — |
-| `--include <values>` | Comma-separated set: `company`, `agents`, `projects`, `issues`, `tasks`, `skills` | `company,agents` |
+| `--include <values>` | Comma-separated set: `company`, `agents`, `projects`, `tasks`, `tasks`, `skills` | `company,agents` |
 | `--skills <values>` | Export only specific skill slugs | all |
 | `--projects <values>` | Export only specific project shortnames or IDs | all |
-| `--issues <values>` | Export specific issue identifiers or IDs | none |
-| `--project-issues <values>` | Export issues belonging to specific projects | none |
+| `--tasks <values>` | Export specific task identifiers or IDs | none |
+| `--project-tasks <values>` | Export tasks belonging to specific projects | none |
 | `--expand-referenced-skills` | Vendor skill file contents instead of keeping upstream references | `false` |
 
 ### Examples
@@ -67,7 +67,7 @@ paperclipai company export abc123 --out ./skills-only --include skills --skills 
 - Company name, description, and metadata
 - Agent names, roles, reporting structure, and instructions
 - Project definitions and workspace config
-- Task/issue descriptions (when included)
+- Task/task descriptions (when included)
 - Skill packages (as references or vendored content)
 - Adapter type and env input declarations in `.paperclip.yaml`
 
@@ -99,7 +99,7 @@ paperclipai company import org/repo/companies/acme
 | `--target <mode>` | `new` (create a new company) or `existing` (merge into existing) | inferred from context |
 | `--company-id <id>` | Target company ID for `--target existing` | current context |
 | `--new-company-name <name>` | Override company name for `--target new` | from package |
-| `--include <values>` | Comma-separated set: `company`, `agents`, `projects`, `issues`, `tasks`, `skills` | auto-detected |
+| `--include <values>` | Comma-separated set: `company`, `agents`, `projects`, `tasks`, `tasks`, `skills` | auto-detected |
 | `--agents <list>` | Comma-separated agent slugs to import, or `all` | `all` |
 | `--collision <mode>` | How to handle name conflicts: `rename`, `skip`, or `replace` | `rename` |
 | `--ref <value>` | Git ref for GitHub imports (branch, tag, or commit) | default branch |
@@ -138,7 +138,7 @@ The preview shows:
 - **Package contents** — How many agents, projects, tasks, and skills are in the source
 - **Import plan** — What will be created, renamed, skipped, or replaced
 - **Env inputs** — Environment variables that may need values after import
-- **Warnings** — Potential issues like missing skills or unresolved references
+- **Warnings** — Potential tasks like missing skills or unresolved references
 
 Imported agents always land with timer heartbeats disabled. Assignment/on-demand wake behavior from the package is preserved, but scheduled runs stay off until a board operator re-enables them.
 
@@ -189,7 +189,7 @@ The CLI commands use these API endpoints under the hood:
 | Preview import (new company) | `POST /api/companies/import/preview` |
 | Apply import (new company) | `POST /api/companies/import` |
 
-CEO agents can also use the safe import routes (`/imports/preview` and `/imports/apply`) which enforce non-destructive rules: `replace` is rejected, collisions resolve with `rename` or `skip`, and issues are always created as new.
+CEO agents can also use the safe import routes (`/imports/preview` and `/imports/apply`) which enforce non-destructive rules: `replace` is rejected, collisions resolve with `rename` or `skip`, and tasks are always created as new.
 
 ## GitHub Sources
 

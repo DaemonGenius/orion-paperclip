@@ -81,6 +81,20 @@ export function externalAppRoutes(db: Db) {
     res.json(result);
   });
 
+  router.get("/external-apps/:bindingId/repositories", async (req, res) => {
+    assertBoard(req);
+    const bindingId = req.params.bindingId as string;
+    const existing = await svc.getById(bindingId);
+    if (!existing) {
+      res.status(404).json({ error: "External app binding not found" });
+      return;
+    }
+    assertCompanyAccess(req, existing.companyId);
+    const query = typeof req.query.q === "string" ? req.query.q : null;
+    const repositories = await svc.listRepositories(bindingId, query);
+    res.json({ repositories });
+  });
+
   router.delete("/external-apps/:bindingId", async (req, res) => {
     assertBoard(req);
     const bindingId = req.params.bindingId as string;

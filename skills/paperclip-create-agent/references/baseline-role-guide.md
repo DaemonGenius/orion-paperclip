@@ -49,14 +49,14 @@ How the agent runs a single heartbeat end-to-end. Cover:
 
 - how it decides what to work on (scope to assigned tasks; do not freelance)
 - what a progress comment must include (status, what changed, next action)
-- when to create child issues instead of polling or batching
+- when to create child tasks instead of polling or batching
 - how to mark work as `blocked` with owner + action
 - when to hand off to a reviewer or manager
 - the requirement to always leave a task update before exiting a heartbeat
 
 Include this line verbatim for any execution-heavy role:
 
-> Start actionable work in the same heartbeat; do not stop at a plan unless planning was requested. Leave durable progress with a clear next action. Use child issues for long or parallel delegated work instead of polling. Mark blocked work with owner and action. Respect budget, pause/cancel, approval gates, and company boundaries.
+> Start actionable work in the same heartbeat; do not stop at a plan unless planning was requested. Leave durable progress with a clear next action. Use child tasks for long or parallel delegated work instead of polling. Mark blocked work with owner and action. Respect budget, pause/cancel, approval gates, and company boundaries.
 
 ### 4. Domain lenses
 
@@ -68,7 +68,7 @@ Lenses should be specific to the role. Examples of what good lenses look like:
 - **Security engineer**: STRIDE, OWASP Top 10, least-privilege, blast radius, defence in depth, secrets in process memory vs disk, auditability, LLM prompt-injection surface, supply-chain trust.
 - **Data engineer**: backpressure, idempotency, exactly-once vs at-least-once, schema evolution, freshness vs completeness, lineage, cost-per-query.
 - **Ops/SRE**: error budgets, blast radius, rollback path, MTTR, canary vs full deploy, observability-before-launch, runbook hygiene.
-- **Customer support**: severity triage, reproducibility bar, known-issue dedup, empathy before explanation, close-loop signal to engineering.
+- **Customer support**: severity triage, reproducibility bar, known-task dedup, empathy before explanation, close-loop signal to engineering.
 
 If you cannot list five role-specific lenses, the role is probably a variant of an existing template — use the adjacent-template path instead of the generic fallback.
 
@@ -105,7 +105,7 @@ Default to least privilege. For each new role, explicitly state:
 
 ### 8. Done criteria
 
-How the agent verifies its own work before marking an issue done or handing it to a reviewer. Be concrete:
+How the agent verifies its own work before marking an task done or handing it to a reviewer. Be concrete:
 
 - the smallest check that proves the work (tests run, screenshots captured, query executed, spec reviewed)
 - what evidence goes in the final comment
@@ -120,8 +120,8 @@ How the agent verifies its own work before marking an issue done or handing it t
 - **Permission sprawl.** Do not grant write access, admin endpoints, or broad skill sets "just in case." Grant exactly what the role needs.
 - **Secrets in adapter config.** Do not embed long-lived tokens, API keys, or private URLs in `adapterConfig` or `promptTemplate` when environment injection or a scoped skill can carry the capability instead.
 - **Silent timer heartbeats.** A timer heartbeat burns budget every interval. If the role has no scheduled work, leave it off.
-- **Bypassing governance.** Never skip `sourceIssueId`, reporting line, icon, or approval flow to ship faster. Hires without these are hard to audit and hard to hand off.
-- **Copying another company's prompt verbatim.** Placeholders like `{{companyName}}`, `{{managerTitle}}`, and `{{issuePrefix}}` must be replaced with this company's values before submitting the hire.
+- **Bypassing governance.** Never skip `sourceTaskId`, reporting line, icon, or approval flow to ship faster. Hires without these are hard to audit and hard to hand off.
+- **Copying another company's prompt verbatim.** Placeholders like `{{companyName}}`, `{{managerTitle}}`, and `{{taskPrefix}}` must be replaced with this company's values before submitting the hire.
 
 ---
 
@@ -142,7 +142,7 @@ You report to {{managerTitle}}. Work only on tasks assigned to you or explicitly
 
 ## Working rules
 
-<!-- Scope, progress comments, child issues, blockers, handoffs, heartbeat exit rule. -->
+<!-- Scope, progress comments, child tasks, blockers, handoffs, heartbeat exit rule. -->
 
 ## Domain lenses
 

@@ -7,7 +7,7 @@ import {
   createDb,
   executionWorkspaces,
   heartbeatRuns,
-  issues,
+  tasks,
   projectWorkspaces,
   projects,
   routineRuns,
@@ -56,7 +56,7 @@ describeEmbeddedPostgres("routine run telemetry", () => {
     await db.delete(routineTriggers);
     await db.delete(routines);
     await db.delete(heartbeatRuns);
-    await db.delete(issues);
+    await db.delete(tasks);
     await db.delete(executionWorkspaces);
     await db.delete(projectWorkspaces);
     await db.delete(projects);
@@ -76,7 +76,7 @@ describeEmbeddedPostgres("routine run telemetry", () => {
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      taskPrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
@@ -102,11 +102,11 @@ describeEmbeddedPostgres("routine run telemetry", () => {
     const svc = routineService(db, {
       heartbeat: {
         wakeup: async (wakeupAgentId, wakeupOpts) => {
-          const issueId =
-            (typeof wakeupOpts.payload?.issueId === "string" && wakeupOpts.payload.issueId)
-            || (typeof wakeupOpts.contextSnapshot?.issueId === "string" && wakeupOpts.contextSnapshot.issueId)
+          const taskId =
+            (typeof wakeupOpts.payload?.taskId === "string" && wakeupOpts.payload.taskId)
+            || (typeof wakeupOpts.contextSnapshot?.taskId === "string" && wakeupOpts.contextSnapshot.taskId)
             || null;
-          if (!issueId) return null;
+          if (!taskId) return null;
           const queuedRunId = randomUUID();
           await db.insert(heartbeatRuns).values({
             id: queuedRunId,
@@ -115,15 +115,15 @@ describeEmbeddedPostgres("routine run telemetry", () => {
             invocationSource: wakeupOpts.source ?? "assignment",
             triggerDetail: wakeupOpts.triggerDetail ?? null,
             status: "queued",
-            contextSnapshot: { ...(wakeupOpts.contextSnapshot ?? {}), issueId },
+            contextSnapshot: { ...(wakeupOpts.contextSnapshot ?? {}), taskId },
           });
           await db
-            .update(issues)
+            .update(tasks)
             .set({
               executionRunId: queuedRunId,
               executionLockedAt: new Date(),
             })
-            .where(eq(issues.id, issueId));
+            .where(eq(tasks.id, taskId));
           return { id: queuedRunId };
         },
       },
@@ -134,7 +134,7 @@ describeEmbeddedPostgres("routine run telemetry", () => {
       {
         projectId,
         goalId: null,
-        parentIssueId: null,
+        parentTaskId: null,
         title: "Run telemetry test",
         description: "Routine body",
         assigneeAgentId: agentId,
@@ -154,10 +154,10 @@ describeEmbeddedPostgres("routine run telemetry", () => {
 
     const run = await svc.runRoutine(routine.id, { source: "manual" });
 
-    expect(run.status).toBe("issue_created");
+    expect(run.status).toBe("task_created");
     expect(mockTrackRoutineRun).toHaveBeenCalledWith(mockTelemetryClient, {
       source: "manual",
-      status: "issue_created",
+      status: "task_created",
     });
   });
 });

@@ -1,7 +1,7 @@
 import { useState } from "react";
-import type { IssueBlockerAttention } from "@paperclipai/shared";
+import type { TaskBlockerAttention } from "@paperclipai/shared";
 import { cn } from "../lib/utils";
-import { issueStatusIcon, issueStatusIconDefault } from "../lib/status-colors";
+import { taskStatusIcon, taskStatusIconDefault } from "../lib/status-colors";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 
@@ -13,22 +13,22 @@ function statusLabel(status: string): string {
 
 interface StatusIconProps {
   status: string;
-  blockerAttention?: IssueBlockerAttention | null;
+  blockerAttention?: TaskBlockerAttention | null;
   onChange?: (status: string) => void;
   className?: string;
   showLabel?: boolean;
 }
 
-function blockedAttentionLabel(blockerAttention: IssueBlockerAttention | null | undefined) {
+function blockedAttentionLabel(blockerAttention: TaskBlockerAttention | null | undefined) {
   if (!blockerAttention || blockerAttention.state === "none") return "Blocked";
 
   if (blockerAttention.reason === "active_child") {
     const count = blockerAttention.coveredBlockerCount;
     if (count === 1 && blockerAttention.sampleBlockerIdentifier) {
-      return `Blocked · waiting on active sub-issue ${blockerAttention.sampleBlockerIdentifier}`;
+      return `Blocked · waiting on active sub-task ${blockerAttention.sampleBlockerIdentifier}`;
     }
-    if (count === 1) return "Blocked · waiting on 1 active sub-issue";
-    return `Blocked · waiting on ${count} active sub-issues`;
+    if (count === 1) return "Blocked · waiting on 1 active sub-task";
+    return `Blocked · waiting on ${count} active sub-tasks`;
   }
 
   if (blockerAttention.reason === "active_dependency") {
@@ -64,7 +64,7 @@ export function StatusIcon({ status, blockerAttention, onChange, className, show
     ? "text-cyan-600 border-cyan-600 dark:text-cyan-400 dark:border-cyan-400"
     : isStalledBlocked
       ? "text-amber-600 border-amber-600 dark:text-amber-400 dark:border-amber-400"
-      : issueStatusIcon[status] ?? issueStatusIconDefault;
+      : taskStatusIcon[status] ?? taskStatusIconDefault;
   const isDone = status === "done";
   const ariaLabel = status === "blocked" ? blockedAttentionLabel(blockerAttention) : statusLabel(status);
   const blockerAttentionState = isCoveredBlocked

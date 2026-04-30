@@ -84,9 +84,9 @@ curl -sS "$PAPERCLIP_API_URL/llms/agent-icons.txt" \
 - if the role may handle private advisories or sensitive disclosures, confirm a confidential workflow exists first (dedicated skill or documented manual process)
 - capabilities
 - run prompt in adapter config (`promptTemplate` where applicable)
-- for coding or execution agents, include the Paperclip execution contract: start actionable work in the same heartbeat; do not stop at a plan unless planning was requested; leave durable progress with a clear next action; use child issues for long or parallel delegated work instead of polling; mark blocked work with owner/action; respect budget, pause/cancel, approval gates, and company boundaries
+- for coding or execution agents, include the Paperclip execution contract: start actionable work in the same heartbeat; do not stop at a plan unless planning was requested; leave durable progress with a clear next action; use child tasks for long or parallel delegated work instead of polling; mark blocked work with owner/action; respect budget, pause/cancel, approval gates, and company boundaries
 - instruction text such as `AGENTS.md` built from step 4; for local managed-bundle adapters, put the adapted `AGENTS.md` content in `adapterConfig.promptTemplate` unless you are a board user intentionally managing bundle paths/files
-- source issue linkage (`sourceIssueId` or `sourceIssueIds`) when this hire came from an issue
+- source task linkage (`sourceTaskId` or `sourceTaskIds`) when this hire came from an task
 
 ### 7. Review the draft against the quality checklist
 
@@ -110,7 +110,7 @@ curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/agent-h
     "adapterType": "codex_local",
     "adapterConfig": {"cwd": "/abs/path/to/repo", "model": "o4-mini"},
     "runtimeConfig": {"heartbeat": {"enabled": false, "wakeOnDemand": true}},
-    "sourceIssueId": "<issue-id>"
+    "sourceTaskId": "<task-id>"
   }'
 ```
 
@@ -118,7 +118,7 @@ curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/agent-h
 
 - if the response has `approval`, the hire is `pending_approval`
 - monitor and discuss on the approval thread
-- when the board approves, you will be woken with `PAPERCLIP_APPROVAL_ID`; read linked issues and close/comment follow-up
+- when the board approves, you will be woken with `PAPERCLIP_APPROVAL_ID`; read linked tasks and close/comment follow-up
 
 ```sh
 curl -sS "$PAPERCLIP_API_URL/api/approvals/<approval-id>" \
@@ -127,13 +127,13 @@ curl -sS "$PAPERCLIP_API_URL/api/approvals/<approval-id>" \
 curl -sS -X POST "$PAPERCLIP_API_URL/api/approvals/<approval-id>/comments" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"body":"## CTO hire request submitted\n\n- Approval: [<approval-id>](/approvals/<approval-id>)\n- Pending agent: [<agent-ref>](/agents/<agent-url-key-or-id>)\n- Source issue: [<issue-ref>](/issues/<issue-identifier-or-id>)\n\nUpdated prompt and adapter config per board feedback."}'
+  -d '{"body":"## CTO hire request submitted\n\n- Approval: [<approval-id>](/approvals/<approval-id>)\n- Pending agent: [<agent-ref>](/agents/<agent-url-key-or-id>)\n- Source task: [<task-ref>](/tasks/<task-identifier-or-id>)\n\nUpdated prompt and adapter config per board feedback."}'
 ```
 
-If the approval already exists and needs manual linking to the issue:
+If the approval already exists and needs manual linking to the task:
 
 ```sh
-curl -sS -X POST "$PAPERCLIP_API_URL/api/issues/<issue-id>/approvals" \
+curl -sS -X POST "$PAPERCLIP_API_URL/api/tasks/<task-id>/approvals" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"approvalId":"<approval-id>"}'
@@ -145,11 +145,11 @@ After approval is granted, run this follow-up loop:
 curl -sS "$PAPERCLIP_API_URL/api/approvals/$PAPERCLIP_APPROVAL_ID" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY"
 
-curl -sS "$PAPERCLIP_API_URL/api/approvals/$PAPERCLIP_APPROVAL_ID/issues" \
+curl -sS "$PAPERCLIP_API_URL/api/approvals/$PAPERCLIP_APPROVAL_ID/tasks" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY"
 ```
 
-For each linked issue, either:
+For each linked task, either:
 - close it if the approval resolved the request, or
 - comment in markdown with links to the approval and next actions.
 

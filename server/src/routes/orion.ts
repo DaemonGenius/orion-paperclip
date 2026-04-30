@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { eq } from "drizzle-orm";
-import { heartbeatRuns, issues, orionReqLedgers, type Db } from "@paperclipai/db";
+import { heartbeatRuns, tasks, orionReqLedgers, type Db } from "@paperclipai/db";
 import {
   bindOrionTaskWorkflowSchema,
   cancelOrionRunSchema,
@@ -79,7 +79,7 @@ export function orionRoutes(db: Db) {
 
   router.post("/orion/tasks/:taskId/workflow-binding", validate(bindOrionTaskWorkflowSchema), async (req, res) => {
     assertBoard(req);
-    const task = await db.select({ companyId: issues.companyId }).from(issues).where(eq(issues.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
+    const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
     if (task) assertCompanyAccess(req, task.companyId);
     const binding = await svc.bindTaskWorkflow(req.params.taskId as string, req.body);
     res.status(201).json(binding);
@@ -110,7 +110,7 @@ export function orionRoutes(db: Db) {
 
   router.post("/orion/tasks/:taskId/runs", validate(createOrionRunSchema), async (req, res) => {
     assertBoard(req);
-    const task = await db.select({ companyId: issues.companyId }).from(issues).where(eq(issues.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
+    const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
     if (task) assertCompanyAccess(req, task.companyId);
     const result = await svc.createRun(req.params.taskId as string, req.body);
     res.status(201).json(result);

@@ -3,14 +3,14 @@ import type {
   PaperclipPluginManifestV1,
   PluginCapability,
   PluginEventType,
-  PluginIssueOriginKind,
+  PluginTaskOriginKind,
   Company,
   Project,
-  Issue,
-  IssueComment,
-  IssueThreadInteraction,
-  CreateIssueThreadInteraction,
-  IssueDocument,
+  Task,
+  TaskComment,
+  TaskThreadInteraction,
+  CreateTaskThreadInteraction,
+  TaskDocument,
   Agent,
   Goal,
 } from "@paperclipai/shared";
@@ -63,12 +63,12 @@ export interface TestHarnessLogEntry {
 export interface TestHarness {
   /** Fully-typed in-memory plugin context passed to `plugin.setup(ctx)`. */
   ctx: PluginContext;
-  /** Seed host entities for `ctx.companies/projects/issues/agents/goals` reads. */
+  /** Seed host entities for `ctx.companies/projects/tasks/agents/goals` reads. */
   seed(input: {
     companies?: Company[];
     projects?: Project[];
-    issues?: Issue[];
-    issueComments?: IssueComment[];
+    tasks?: Task[];
+    taskComments?: TaskComment[];
     agents?: Agent[];
     goals?: Goal[];
   }): void;
@@ -419,11 +419,11 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
   const entityExternalIndex = new Map<string, string>();
   const companies = new Map<string, Company>();
   const projects = new Map<string, Project>();
-  const issues = new Map<string, Issue>();
-  const blockedByIssueIds = new Map<string, string[]>();
-  const issueComments = new Map<string, IssueComment[]>();
-  const issueInteractions = new Map<string, IssueThreadInteraction[]>();
-  const issueDocuments = new Map<string, IssueDocument>();
+  const tasks = new Map<string, Task>();
+  const blockedByTaskIds = new Map<string, string[]>();
+  const taskComments = new Map<string, TaskComment[]>();
+  const taskInteractions = new Map<string, TaskThreadInteraction[]>();
+  const taskDocuments = new Map<string, TaskDocument>();
   const agents = new Map<string, Agent>();
   const goals = new Map<string, Goal>();
   const projectWorkspaces = new Map<string, PluginWorkspace[]>();
@@ -438,12 +438,12 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
   const actionHandlers = new Map<string, (params: Record<string, unknown>) => Promise<unknown>>();
   const toolHandlers = new Map<string, (params: unknown, runCtx: ToolRunContext) => Promise<ToolResult>>();
 
-  function issueRelationSummary(issueId: string) {
-    const issue = issues.get(issueId);
-    if (!issue) throw new Error(`Issue not found: ${issueId}`);
+  function taskRelationSummary(taskId: string) {
+    const task = tasks.get(taskId);
+    if (!task) throw new Error(`Task not found: ${taskId}`);
     const summarize = (candidateId: string) => {
-      const related = issues.get(candidateId);
-      if (!related || related.companyId !== issue.companyId) return null;
+      const related = tasks.get(candidateId);
+      if (!related || related.companyId !== task.companyId) return null;
       return {
         id: related.id,
         identifier: related.identifier,
@@ -454,22 +454,22 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
         assigneeUserId: related.assigneeUserId,
       };
     };
-    const blockedBy = (blockedByIssueIds.get(issueId) ?? [])
+    const blockedBy = (blockedByTaskIds.get(taskId) ?? [])
       .map(summarize)
       .filter((value): value is NonNullable<typeof value> => value !== null);
-    const blocks = [...blockedByIssueIds.entries()]
-      .filter(([, blockers]) => blockers.includes(issueId))
-      .map(([blockedIssueId]) => summarize(blockedIssueId))
+    const blocks = [...blockedByTaskIds.entries()]
+      .filter(([, blockers]) => blockers.includes(taskId))
+      .map(([blockedTaskId]) => summarize(blockedTaskId))
       .filter((value): value is NonNullable<typeof value> => value !== null);
     return { blockedBy, blocks };
   }
 
-  const defaultPluginOriginKind: PluginIssueOriginKind = `plugin:${manifest.id}`;
-  function normalizePluginOriginKind(originKind: unknown = defaultPluginOriginKind): PluginIssueOriginKind {
+  const defaultPluginOriginKind: PluginTaskOriginKind = `plugin:${manifest.id}`;
+  function normalizePluginOriginKind(originKind: unknown = defaultPluginOriginKind): PluginTaskOriginKind {
     if (originKind == null || originKind === "") return defaultPluginOriginKind;
-    if (typeof originKind !== "string") throw new Error("Plugin issue originKind must be a string");
+    if (typeof originKind !== "string") throw new Error("Plugin task originKind must be a string");
     if (originKind === defaultPluginOriginKind || originKind.startsWith(`${defaultPluginOriginKind}:`)) {
-      return originKind as PluginIssueOriginKind;
+      return originKind as PluginTaskOriginKind;
     }
     throw new Error(`Plugin may only use originKind values under ${defaultPluginOriginKind}`);
   }
@@ -637,11 +637,11 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
         const workspaces = projectWorkspaces.get(projectId) ?? [];
         return workspaces.find((workspace) => workspace.isPrimary) ?? null;
       },
-      async getWorkspaceForIssue(issueId, companyId) {
+      async getWorkspaceForTask(taskId, companyId) {
         requireCapability(manifest, capabilitySet, "project.workspaces.read");
-        const issue = issues.get(issueId);
-        if (!isInCompany(issue, companyId)) return null;
-        const projectId = (issue as unknown as Record<string, unknown>)?.projectId as string | undefined;
+        const task = tasks.get(taskId);
+        if (!isInCompany(task, companyId)) return null;
+        const projectId = (task as unknown as Record<string, unknown>)?.projectId as string | undefined;
         if (!projectId) return null;
         if (!isInCompany(projects.get(projectId), companyId)) return null;
         const workspaces = projectWorkspaces.get(projectId) ?? [];
@@ -661,33 +661,33 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
         return companies.get(companyId) ?? null;
       },
     },
-    issues: {
+    tasks: {
       async list(input) {
-        requireCapability(manifest, capabilitySet, "issues.read");
+        requireCapability(manifest, capabilitySet, "tasks.read");
         const companyId = requireCompanyId(input?.companyId);
-        let out = [...issues.values()];
-        out = out.filter((issue) => issue.companyId === companyId);
-        if (input?.projectId) out = out.filter((issue) => issue.projectId === input.projectId);
-        if (input?.assigneeAgentId) out = out.filter((issue) => issue.assigneeAgentId === input.assigneeAgentId);
+        let out = [...tasks.values()];
+        out = out.filter((task) => task.companyId === companyId);
+        if (input?.projectId) out = out.filter((task) => task.projectId === input.projectId);
+        if (input?.assigneeAgentId) out = out.filter((task) => task.assigneeAgentId === input.assigneeAgentId);
         if (input?.originKind) {
           if (input.originKind.startsWith("plugin:")) normalizePluginOriginKind(input.originKind);
-          out = out.filter((issue) => issue.originKind === input.originKind);
+          out = out.filter((task) => task.originKind === input.originKind);
         }
-        if (input?.originId) out = out.filter((issue) => issue.originId === input.originId);
-        if (input?.status) out = out.filter((issue) => issue.status === input.status);
+        if (input?.originId) out = out.filter((task) => task.originId === input.originId);
+        if (input?.status) out = out.filter((task) => task.status === input.status);
         if (input?.offset) out = out.slice(input.offset);
         if (input?.limit) out = out.slice(0, input.limit);
         return out;
       },
-      async get(issueId, companyId) {
-        requireCapability(manifest, capabilitySet, "issues.read");
-        const issue = issues.get(issueId);
-        return isInCompany(issue, companyId) ? issue : null;
+      async get(taskId, companyId) {
+        requireCapability(manifest, capabilitySet, "tasks.read");
+        const task = tasks.get(taskId);
+        return isInCompany(task, companyId) ? task : null;
       },
       async create(input) {
-        requireCapability(manifest, capabilitySet, "issues.create");
+        requireCapability(manifest, capabilitySet, "tasks.create");
         const now = new Date();
-        const record: Issue = {
+        const record: Task = {
           id: randomUUID(),
           companyId: input.companyId,
           projectId: input.projectId ?? null,
@@ -706,7 +706,7 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
           executionLockedAt: null,
           createdByAgentId: null,
           createdByUserId: null,
-          issueNumber: null,
+          taskNumber: null,
           identifier: null,
           originKind: normalizePluginOriginKind(input.originKind),
           originId: input.originId ?? null,
@@ -724,119 +724,119 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
           createdAt: now,
           updatedAt: now,
         };
-        issues.set(record.id, record);
-        if (input.blockedByIssueIds) blockedByIssueIds.set(record.id, [...new Set(input.blockedByIssueIds)]);
+        tasks.set(record.id, record);
+        if (input.blockedByTaskIds) blockedByTaskIds.set(record.id, [...new Set(input.blockedByTaskIds)]);
         return record;
       },
-      async update(issueId, patch, companyId) {
-        requireCapability(manifest, capabilitySet, "issues.update");
-        const record = issues.get(issueId);
-        if (!isInCompany(record, companyId)) throw new Error(`Issue not found: ${issueId}`);
-        const { blockedByIssueIds: nextBlockedByIssueIds, ...issuePatch } = patch;
-        if (issuePatch.originKind !== undefined) {
-          issuePatch.originKind = normalizePluginOriginKind(issuePatch.originKind);
+      async update(taskId, patch, companyId) {
+        requireCapability(manifest, capabilitySet, "tasks.update");
+        const record = tasks.get(taskId);
+        if (!isInCompany(record, companyId)) throw new Error(`Task not found: ${taskId}`);
+        const { blockedByTaskIds: nextBlockedByTaskIds, ...taskPatch } = patch;
+        if (taskPatch.originKind !== undefined) {
+          taskPatch.originKind = normalizePluginOriginKind(taskPatch.originKind);
         }
-        const updated: Issue = {
+        const updated: Task = {
           ...record,
-          ...issuePatch,
+          ...taskPatch,
           updatedAt: new Date(),
         };
-        issues.set(issueId, updated);
-        if (nextBlockedByIssueIds !== undefined) {
-          blockedByIssueIds.set(issueId, [...new Set(nextBlockedByIssueIds)]);
+        tasks.set(taskId, updated);
+        if (nextBlockedByTaskIds !== undefined) {
+          blockedByTaskIds.set(taskId, [...new Set(nextBlockedByTaskIds)]);
         }
         return updated;
       },
       async assertCheckoutOwner(input) {
-        requireCapability(manifest, capabilitySet, "issues.checkout");
-        const record = issues.get(input.issueId);
-        if (!isInCompany(record, input.companyId)) throw new Error(`Issue not found: ${input.issueId}`);
+        requireCapability(manifest, capabilitySet, "tasks.checkout");
+        const record = tasks.get(input.taskId);
+        if (!isInCompany(record, input.companyId)) throw new Error(`Task not found: ${input.taskId}`);
         if (
           record.status !== "in_progress" ||
           record.assigneeAgentId !== input.actorAgentId ||
           (record.checkoutRunId !== null && record.checkoutRunId !== input.actorRunId)
         ) {
-          throw new Error("Issue run ownership conflict");
+          throw new Error("Task run ownership conflict");
         }
         return {
-          issueId: record.id,
+          taskId: record.id,
           status: record.status,
           assigneeAgentId: record.assigneeAgentId,
           checkoutRunId: record.checkoutRunId,
           adoptedFromRunId: null,
         };
       },
-      async requestWakeup(issueId, companyId) {
-        requireCapability(manifest, capabilitySet, "issues.wakeup");
-        const record = issues.get(issueId);
-        if (!isInCompany(record, companyId)) throw new Error(`Issue not found: ${issueId}`);
-        if (!record.assigneeAgentId) throw new Error("Issue has no assigned agent to wake");
+      async requestWakeup(taskId, companyId) {
+        requireCapability(manifest, capabilitySet, "tasks.wakeup");
+        const record = tasks.get(taskId);
+        if (!isInCompany(record, companyId)) throw new Error(`Task not found: ${taskId}`);
+        if (!record.assigneeAgentId) throw new Error("Task has no assigned agent to wake");
         if (["backlog", "done", "cancelled"].includes(record.status)) {
-          throw new Error(`Issue is not wakeable in status: ${record.status}`);
+          throw new Error(`Task is not wakeable in status: ${record.status}`);
         }
-        const unresolved = issueRelationSummary(issueId).blockedBy.filter((blocker) => blocker.status !== "done");
-        if (unresolved.length > 0) throw new Error("Issue is blocked by unresolved blockers");
+        const unresolved = taskRelationSummary(taskId).blockedBy.filter((blocker) => blocker.status !== "done");
+        if (unresolved.length > 0) throw new Error("Task is blocked by unresolved blockers");
         return { queued: true, runId: randomUUID() };
       },
-      async requestWakeups(issueIds, companyId) {
-        requireCapability(manifest, capabilitySet, "issues.wakeup");
+      async requestWakeups(taskIds, companyId) {
+        requireCapability(manifest, capabilitySet, "tasks.wakeup");
         const results = [];
-        for (const issueId of issueIds) {
-          const record = issues.get(issueId);
-          if (!isInCompany(record, companyId)) throw new Error(`Issue not found: ${issueId}`);
-          if (!record.assigneeAgentId) throw new Error("Issue has no assigned agent to wake");
+        for (const taskId of taskIds) {
+          const record = tasks.get(taskId);
+          if (!isInCompany(record, companyId)) throw new Error(`Task not found: ${taskId}`);
+          if (!record.assigneeAgentId) throw new Error("Task has no assigned agent to wake");
           if (["backlog", "done", "cancelled"].includes(record.status)) {
-            throw new Error(`Issue is not wakeable in status: ${record.status}`);
+            throw new Error(`Task is not wakeable in status: ${record.status}`);
           }
-          const unresolved = issueRelationSummary(issueId).blockedBy.filter((blocker) => blocker.status !== "done");
-          if (unresolved.length > 0) throw new Error("Issue is blocked by unresolved blockers");
-          results.push({ issueId, queued: true, runId: randomUUID() });
+          const unresolved = taskRelationSummary(taskId).blockedBy.filter((blocker) => blocker.status !== "done");
+          if (unresolved.length > 0) throw new Error("Task is blocked by unresolved blockers");
+          results.push({ taskId, queued: true, runId: randomUUID() });
         }
         return results;
       },
-      async listComments(issueId, companyId) {
-        requireCapability(manifest, capabilitySet, "issue.comments.read");
-        if (!isInCompany(issues.get(issueId), companyId)) return [];
-        return issueComments.get(issueId) ?? [];
+      async listComments(taskId, companyId) {
+        requireCapability(manifest, capabilitySet, "task.comments.read");
+        if (!isInCompany(tasks.get(taskId), companyId)) return [];
+        return taskComments.get(taskId) ?? [];
       },
-      async createComment(issueId, body, companyId, options) {
-        requireCapability(manifest, capabilitySet, "issue.comments.create");
-        const parentIssue = issues.get(issueId);
-        if (!isInCompany(parentIssue, companyId)) {
-          throw new Error(`Issue not found: ${issueId}`);
+      async createComment(taskId, body, companyId, options) {
+        requireCapability(manifest, capabilitySet, "task.comments.create");
+        const parentTask = tasks.get(taskId);
+        if (!isInCompany(parentTask, companyId)) {
+          throw new Error(`Task not found: ${taskId}`);
         }
         const now = new Date();
-        const comment: IssueComment = {
+        const comment: TaskComment = {
           id: randomUUID(),
-          companyId: parentIssue.companyId,
-          issueId,
+          companyId: parentTask.companyId,
+          taskId,
           authorAgentId: options?.authorAgentId ?? null,
           authorUserId: null,
           body,
           createdAt: now,
           updatedAt: now,
         };
-        const current = issueComments.get(issueId) ?? [];
+        const current = taskComments.get(taskId) ?? [];
         current.push(comment);
-        issueComments.set(issueId, current);
+        taskComments.set(taskId, current);
         return comment;
       },
-      async createInteraction(issueId, interaction, companyId, options) {
-        requireCapability(manifest, capabilitySet, "issue.interactions.create");
-        const parentIssue = issues.get(issueId);
-        if (!isInCompany(parentIssue, companyId)) {
-          throw new Error(`Issue not found: ${issueId}`);
+      async createInteraction(taskId, interaction, companyId, options) {
+        requireCapability(manifest, capabilitySet, "task.interactions.create");
+        const parentTask = tasks.get(taskId);
+        if (!isInCompany(parentTask, companyId)) {
+          throw new Error(`Task not found: ${taskId}`);
         }
         const now = new Date();
-        const current = issueInteractions.get(issueId) ?? [];
+        const current = taskInteractions.get(taskId) ?? [];
         if (interaction.idempotencyKey) {
           const existing = current.find((entry) => entry.idempotencyKey === interaction.idempotencyKey);
           if (existing) return existing;
         }
-        const created: IssueThreadInteraction = {
+        const created: TaskThreadInteraction = {
           id: randomUUID(),
-          companyId: parentIssue.companyId,
-          issueId,
+          companyId: parentTask.companyId,
+          taskId,
           kind: interaction.kind,
           status: "pending",
           continuationPolicy: interaction.continuationPolicy ?? "wake_assignee",
@@ -851,45 +851,45 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
           result: null,
           createdAt: now,
           updatedAt: now,
-        } as IssueThreadInteraction;
+        } as TaskThreadInteraction;
         current.push(created);
-        issueInteractions.set(issueId, current);
+        taskInteractions.set(taskId, current);
         return created;
       },
-      async suggestTasks(issueId, interaction, companyId, options) {
-        return this.createInteraction(issueId, { ...interaction, kind: "suggest_tasks" }, companyId, options) as Promise<any>;
+      async suggestTasks(taskId, interaction, companyId, options) {
+        return this.createInteraction(taskId, { ...interaction, kind: "suggest_tasks" }, companyId, options) as Promise<any>;
       },
-      async askUserQuestions(issueId, interaction, companyId, options) {
-        return this.createInteraction(issueId, { ...interaction, kind: "ask_user_questions" }, companyId, options) as Promise<any>;
+      async askUserQuestions(taskId, interaction, companyId, options) {
+        return this.createInteraction(taskId, { ...interaction, kind: "ask_user_questions" }, companyId, options) as Promise<any>;
       },
-      async requestConfirmation(issueId, interaction, companyId, options) {
-        return this.createInteraction(issueId, { ...interaction, kind: "request_confirmation" }, companyId, options) as Promise<any>;
+      async requestConfirmation(taskId, interaction, companyId, options) {
+        return this.createInteraction(taskId, { ...interaction, kind: "request_confirmation" }, companyId, options) as Promise<any>;
       },
       documents: {
-        async list(issueId, companyId) {
-          requireCapability(manifest, capabilitySet, "issue.documents.read");
-          if (!isInCompany(issues.get(issueId), companyId)) return [];
-          return [...issueDocuments.values()]
-            .filter((document) => document.issueId === issueId && document.companyId === companyId)
+        async list(taskId, companyId) {
+          requireCapability(manifest, capabilitySet, "task.documents.read");
+          if (!isInCompany(tasks.get(taskId), companyId)) return [];
+          return [...taskDocuments.values()]
+            .filter((document) => document.taskId === taskId && document.companyId === companyId)
             .map(({ body: _body, ...summary }) => summary);
         },
-        async get(issueId, key, companyId) {
-          requireCapability(manifest, capabilitySet, "issue.documents.read");
-          if (!isInCompany(issues.get(issueId), companyId)) return null;
-          return issueDocuments.get(`${issueId}|${key}`) ?? null;
+        async get(taskId, key, companyId) {
+          requireCapability(manifest, capabilitySet, "task.documents.read");
+          if (!isInCompany(tasks.get(taskId), companyId)) return null;
+          return taskDocuments.get(`${taskId}|${key}`) ?? null;
         },
         async upsert(input) {
-          requireCapability(manifest, capabilitySet, "issue.documents.write");
-          const parentIssue = issues.get(input.issueId);
-          if (!isInCompany(parentIssue, input.companyId)) {
-            throw new Error(`Issue not found: ${input.issueId}`);
+          requireCapability(manifest, capabilitySet, "task.documents.write");
+          const parentTask = tasks.get(input.taskId);
+          if (!isInCompany(parentTask, input.companyId)) {
+            throw new Error(`Task not found: ${input.taskId}`);
           }
           const now = new Date();
-          const existing = issueDocuments.get(`${input.issueId}|${input.key}`);
-          const document: IssueDocument = {
+          const existing = taskDocuments.get(`${input.taskId}|${input.key}`);
+          const document: TaskDocument = {
             id: existing?.id ?? randomUUID(),
             companyId: input.companyId,
-            issueId: input.issueId,
+            taskId: input.taskId,
             key: input.key,
             title: input.title ?? existing?.title ?? null,
             format: "markdown",
@@ -903,101 +903,101 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
             updatedAt: now,
             body: input.body,
           };
-          issueDocuments.set(`${input.issueId}|${input.key}`, document);
+          taskDocuments.set(`${input.taskId}|${input.key}`, document);
           return document;
         },
-        async delete(issueId, _key, companyId) {
-          requireCapability(manifest, capabilitySet, "issue.documents.write");
-          const parentIssue = issues.get(issueId);
-          if (!isInCompany(parentIssue, companyId)) {
-            throw new Error(`Issue not found: ${issueId}`);
+        async delete(taskId, _key, companyId) {
+          requireCapability(manifest, capabilitySet, "task.documents.write");
+          const parentTask = tasks.get(taskId);
+          if (!isInCompany(parentTask, companyId)) {
+            throw new Error(`Task not found: ${taskId}`);
           }
-          issueDocuments.delete(`${issueId}|${_key}`);
+          taskDocuments.delete(`${taskId}|${_key}`);
         },
       },
       relations: {
-        async get(issueId, companyId) {
-          requireCapability(manifest, capabilitySet, "issue.relations.read");
-          if (!isInCompany(issues.get(issueId), companyId)) throw new Error(`Issue not found: ${issueId}`);
-          return issueRelationSummary(issueId);
+        async get(taskId, companyId) {
+          requireCapability(manifest, capabilitySet, "task.relations.read");
+          if (!isInCompany(tasks.get(taskId), companyId)) throw new Error(`Task not found: ${taskId}`);
+          return taskRelationSummary(taskId);
         },
-        async setBlockedBy(issueId, nextBlockedByIssueIds, companyId) {
-          requireCapability(manifest, capabilitySet, "issue.relations.write");
-          if (!isInCompany(issues.get(issueId), companyId)) throw new Error(`Issue not found: ${issueId}`);
-          blockedByIssueIds.set(issueId, [...new Set(nextBlockedByIssueIds)]);
-          return issueRelationSummary(issueId);
+        async setBlockedBy(taskId, nextBlockedByTaskIds, companyId) {
+          requireCapability(manifest, capabilitySet, "task.relations.write");
+          if (!isInCompany(tasks.get(taskId), companyId)) throw new Error(`Task not found: ${taskId}`);
+          blockedByTaskIds.set(taskId, [...new Set(nextBlockedByTaskIds)]);
+          return taskRelationSummary(taskId);
         },
-        async addBlockers(issueId, blockerIssueIds, companyId) {
-          requireCapability(manifest, capabilitySet, "issue.relations.write");
-          if (!isInCompany(issues.get(issueId), companyId)) throw new Error(`Issue not found: ${issueId}`);
-          const next = new Set(blockedByIssueIds.get(issueId) ?? []);
-          for (const blockerIssueId of blockerIssueIds) next.add(blockerIssueId);
-          blockedByIssueIds.set(issueId, [...next]);
-          return issueRelationSummary(issueId);
+        async addBlockers(taskId, blockerTaskIds, companyId) {
+          requireCapability(manifest, capabilitySet, "task.relations.write");
+          if (!isInCompany(tasks.get(taskId), companyId)) throw new Error(`Task not found: ${taskId}`);
+          const next = new Set(blockedByTaskIds.get(taskId) ?? []);
+          for (const blockerTaskId of blockerTaskIds) next.add(blockerTaskId);
+          blockedByTaskIds.set(taskId, [...next]);
+          return taskRelationSummary(taskId);
         },
-        async removeBlockers(issueId, blockerIssueIds, companyId) {
-          requireCapability(manifest, capabilitySet, "issue.relations.write");
-          if (!isInCompany(issues.get(issueId), companyId)) throw new Error(`Issue not found: ${issueId}`);
-          const removals = new Set(blockerIssueIds);
-          blockedByIssueIds.set(
-            issueId,
-            (blockedByIssueIds.get(issueId) ?? []).filter((blockerIssueId) => !removals.has(blockerIssueId)),
+        async removeBlockers(taskId, blockerTaskIds, companyId) {
+          requireCapability(manifest, capabilitySet, "task.relations.write");
+          if (!isInCompany(tasks.get(taskId), companyId)) throw new Error(`Task not found: ${taskId}`);
+          const removals = new Set(blockerTaskIds);
+          blockedByTaskIds.set(
+            taskId,
+            (blockedByTaskIds.get(taskId) ?? []).filter((blockerTaskId) => !removals.has(blockerTaskId)),
           );
-          return issueRelationSummary(issueId);
+          return taskRelationSummary(taskId);
         },
       },
-      async getSubtree(issueId, companyId, options) {
-        requireCapability(manifest, capabilitySet, "issue.subtree.read");
-        const root = issues.get(issueId);
-        if (!isInCompany(root, companyId)) throw new Error(`Issue not found: ${issueId}`);
+      async getSubtree(taskId, companyId, options) {
+        requireCapability(manifest, capabilitySet, "task.subtree.read");
+        const root = tasks.get(taskId);
+        if (!isInCompany(root, companyId)) throw new Error(`Task not found: ${taskId}`);
         const includeRoot = options?.includeRoot !== false;
         const allIds = [root.id];
         let frontier = [root.id];
         while (frontier.length > 0) {
-          const children = [...issues.values()]
-            .filter((issue) => issue.companyId === companyId && frontier.includes(issue.parentId ?? ""))
-            .map((issue) => issue.id)
+          const children = [...tasks.values()]
+            .filter((task) => task.companyId === companyId && frontier.includes(task.parentId ?? ""))
+            .map((task) => task.id)
             .filter((id) => !allIds.includes(id));
           allIds.push(...children);
           frontier = children;
         }
-        const issueIds = includeRoot ? allIds : allIds.filter((id) => id !== root.id);
-        const subtreeIssues = issueIds.map((id) => issues.get(id)).filter((candidate): candidate is Issue => Boolean(candidate));
+        const taskIds = includeRoot ? allIds : allIds.filter((id) => id !== root.id);
+        const subtreeTasks = taskIds.map((id) => tasks.get(id)).filter((candidate): candidate is Task => Boolean(candidate));
         return {
-          rootIssueId: root.id,
+          rootTaskId: root.id,
           companyId,
-          issueIds,
-          issues: subtreeIssues,
+          taskIds,
+          tasks: subtreeTasks,
           ...(options?.includeRelations
-            ? { relations: Object.fromEntries(issueIds.map((id) => [id, issueRelationSummary(id)])) }
+            ? { relations: Object.fromEntries(taskIds.map((id) => [id, taskRelationSummary(id)])) }
             : {}),
-          ...(options?.includeDocuments ? { documents: Object.fromEntries(issueIds.map((id) => [id, []])) } : {}),
-          ...(options?.includeActiveRuns ? { activeRuns: Object.fromEntries(issueIds.map((id) => [id, []])) } : {}),
+          ...(options?.includeDocuments ? { documents: Object.fromEntries(taskIds.map((id) => [id, []])) } : {}),
+          ...(options?.includeActiveRuns ? { activeRuns: Object.fromEntries(taskIds.map((id) => [id, []])) } : {}),
           ...(options?.includeAssignees ? { assignees: {} } : {}),
         };
       },
       summaries: {
         async getOrchestration(input) {
-          requireCapability(manifest, capabilitySet, "issues.orchestration.read");
-          const root = issues.get(input.issueId);
-          if (!isInCompany(root, input.companyId)) throw new Error(`Issue not found: ${input.issueId}`);
-          const subtreeIssueIds = [root.id];
+          requireCapability(manifest, capabilitySet, "tasks.orchestration.read");
+          const root = tasks.get(input.taskId);
+          if (!isInCompany(root, input.companyId)) throw new Error(`Task not found: ${input.taskId}`);
+          const subtreeTaskIds = [root.id];
           if (input.includeSubtree) {
             let frontier = [root.id];
             while (frontier.length > 0) {
-              const children = [...issues.values()]
-                .filter((issue) => issue.companyId === input.companyId && frontier.includes(issue.parentId ?? ""))
-                .map((issue) => issue.id)
-                .filter((id) => !subtreeIssueIds.includes(id));
-              subtreeIssueIds.push(...children);
+              const children = [...tasks.values()]
+                .filter((task) => task.companyId === input.companyId && frontier.includes(task.parentId ?? ""))
+                .map((task) => task.id)
+                .filter((id) => !subtreeTaskIds.includes(id));
+              subtreeTaskIds.push(...children);
               frontier = children;
             }
           }
           return {
-            issueId: root.id,
+            taskId: root.id,
             companyId: input.companyId,
-            subtreeIssueIds,
-            relations: Object.fromEntries(subtreeIssueIds.map((id) => [id, issueRelationSummary(id)])),
+            subtreeTaskIds,
+            relations: Object.fromEntries(subtreeTaskIds.map((id) => [id, taskRelationSummary(id)])),
             approvals: [],
             runs: [],
             costs: {
@@ -1218,16 +1218,16 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
     seed(input) {
       for (const row of input.companies ?? []) companies.set(row.id, row);
       for (const row of input.projects ?? []) projects.set(row.id, row);
-      for (const row of input.issues ?? []) {
-        issues.set(row.id, row);
+      for (const row of input.tasks ?? []) {
+        tasks.set(row.id, row);
         if (row.blockedBy) {
-          blockedByIssueIds.set(row.id, row.blockedBy.map((blocker) => blocker.id));
+          blockedByTaskIds.set(row.id, row.blockedBy.map((blocker) => blocker.id));
         }
       }
-      for (const row of input.issueComments ?? []) {
-        const list = issueComments.get(row.issueId) ?? [];
+      for (const row of input.taskComments ?? []) {
+        const list = taskComments.get(row.taskId) ?? [];
         list.push(row);
-        issueComments.set(row.issueId, list);
+        taskComments.set(row.taskId, list);
       }
       for (const row of input.agents ?? []) agents.set(row.id, row);
       for (const row of input.goals ?? []) goals.set(row.id, row);

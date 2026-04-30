@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
 import { useSidebar } from "../context/SidebarContext";
-import { issuesApi } from "../api/issues";
+import { tasksApi } from "../api/tasks";
 import { agentsApi } from "../api/agents";
 import { projectsApi } from "../api/projects";
 import { queryKeys } from "../lib/queryKeys";
@@ -37,7 +37,7 @@ export function CommandPalette() {
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
   const { selectedCompanyId } = useCompany();
-  const { openNewIssue, openNewAgent } = useDialog();
+  const { openNewTask, openNewAgent } = useDialog();
   const { isMobile, setSidebarOpen } = useSidebar();
   const searchQuery = query.trim();
 
@@ -57,15 +57,15 @@ export function CommandPalette() {
     if (!open) setQuery("");
   }, [open]);
 
-  const { data: issues = [] } = useQuery({
-    queryKey: queryKeys.issues.list(selectedCompanyId!),
-    queryFn: () => issuesApi.list(selectedCompanyId!),
+  const { data: tasks = [] } = useQuery({
+    queryKey: queryKeys.tasks.list(selectedCompanyId!),
+    queryFn: () => tasksApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId && open && searchQuery.length === 0,
   });
 
-  const { data: searchedIssues = [] } = useQuery({
-    queryKey: queryKeys.issues.search(selectedCompanyId!, searchQuery, undefined, 10),
-    queryFn: () => issuesApi.list(selectedCompanyId!, { q: searchQuery, limit: 10, includeRoutineExecutions: true }),
+  const { data: searchedTasks = [] } = useQuery({
+    queryKey: queryKeys.tasks.search(selectedCompanyId!, searchQuery, undefined, 10),
+    queryFn: () => tasksApi.list(selectedCompanyId!, { q: searchQuery, limit: 10, includeRoutineExecutions: true }),
     enabled: !!selectedCompanyId && open && searchQuery.length > 0,
   });
 
@@ -95,9 +95,9 @@ export function CommandPalette() {
     return agents.find((a) => a.id === id)?.name ?? null;
   };
 
-  const visibleIssues = useMemo(
-    () => (searchQuery.length > 0 ? searchedIssues : issues),
-    [issues, searchedIssues, searchQuery],
+  const visibleTasks = useMemo(
+    () => (searchQuery.length > 0 ? searchedTasks : tasks),
+    [tasks, searchedTasks, searchQuery],
   );
 
   return (
@@ -106,7 +106,7 @@ export function CommandPalette() {
         if (v && isMobile) setSidebarOpen(false);
       }}>
       <CommandInput
-        placeholder="Search issues, agents, projects..."
+        placeholder="Search tasks, agents, projects..."
         value={query}
         onValueChange={setQuery}
       />
@@ -117,11 +117,11 @@ export function CommandPalette() {
           <CommandItem
             onSelect={() => {
               setOpen(false);
-              openNewIssue();
+              openNewTask();
             }}
           >
             <SquarePen className="mr-2 h-4 w-4" />
-            Create new issue
+            Create new task
             <span className="ml-auto text-xs text-muted-foreground">C</span>
           </CommandItem>
           <CommandItem
@@ -150,9 +150,9 @@ export function CommandPalette() {
             <Inbox className="mr-2 h-4 w-4" />
             Inbox
           </CommandItem>
-          <CommandItem onSelect={() => go("/issues")}>
+          <CommandItem onSelect={() => go("/tasks")}>
             <CircleDot className="mr-2 h-4 w-4" />
-            Issues
+            Tasks
           </CommandItem>
           <CommandItem onSelect={() => go("/projects")}>
             <Hexagon className="mr-2 h-4 w-4" />
@@ -176,27 +176,27 @@ export function CommandPalette() {
           </CommandItem>
         </CommandGroup>
 
-        {visibleIssues.length > 0 && (
+        {visibleTasks.length > 0 && (
           <>
             <CommandSeparator />
-            <CommandGroup heading="Issues">
-              {visibleIssues.slice(0, 10).map((issue) => (
+            <CommandGroup heading="Tasks">
+              {visibleTasks.slice(0, 10).map((task) => (
                 <CommandItem
-                  key={issue.id}
+                  key={task.id}
                   value={
                     searchQuery.length > 0
-                      ? `${searchQuery} ${issue.identifier ?? ""} ${issue.title}`
+                      ? `${searchQuery} ${task.identifier ?? ""} ${task.title}`
                       : undefined
                   }
-                  onSelect={() => go(`/issues/${issue.identifier ?? issue.id}`)}
+                  onSelect={() => go(`/tasks/${task.identifier ?? task.id}`)}
                 >
                   <CircleDot className="mr-2 h-4 w-4" />
                   <span className="text-muted-foreground mr-2 font-mono text-xs">
-                    {issue.identifier ?? issue.id.slice(0, 8)}
+                    {task.identifier ?? task.id.slice(0, 8)}
                   </span>
-                  <span className="flex-1 truncate">{issue.title}</span>
-                  {issue.assigneeAgentId && (() => {
-                    const name = agentName(issue.assigneeAgentId);
+                  <span className="flex-1 truncate">{task.title}</span>
+                  {task.assigneeAgentId && (() => {
+                    const name = agentName(task.assigneeAgentId);
                     return name ? <Identity name={name} size="sm" className="ml-2 hidden sm:inline-flex" /> : null;
                   })()}
                 </CommandItem>

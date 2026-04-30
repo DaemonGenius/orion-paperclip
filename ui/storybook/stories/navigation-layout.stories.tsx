@@ -36,7 +36,7 @@ import { useNavigate } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import {
   storybookAgents,
-  storybookIssues,
+  storybookTasks,
   storybookProjects,
   storybookSidebarBadges,
 } from "../fixtures/paperclipData";
@@ -108,7 +108,7 @@ function BreadcrumbSnapshot({ breadcrumbs }: { breadcrumbs: Breadcrumb[] }) {
 
 const tabItems = [
   { value: "overview", label: "Overview" },
-  { value: "issues", label: "Issues" },
+  { value: "tasks", label: "Tasks" },
   { value: "runs", label: "Runs" },
   { value: "approvals", label: "Approvals" },
   { value: "budget", label: "Budget" },
@@ -119,7 +119,7 @@ const tabItems = [
 
 const mobileNavItems = [
   { label: "Home", icon: House },
-  { label: "Issues", icon: CircleDot },
+  { label: "Tasks", icon: CircleDot },
   { label: "Create", icon: SquarePen },
   { label: "Agents", icon: Users },
   { label: "Inbox", icon: Inbox, badge: storybookSidebarBadges.inbox },
@@ -164,23 +164,23 @@ function MobileBottomNavActiveStateMatrix() {
 function CommandResultsSurface() {
   return (
     <Command className="rounded-none border border-border">
-      <CommandInput value="story" readOnly placeholder="Search issues, agents, projects..." />
+      <CommandInput value="story" readOnly placeholder="Search tasks, agents, projects..." />
       <CommandList className="max-h-none">
         <CommandGroup heading="Actions">
           <CommandItem>
             <SquarePen className="mr-2 h-4 w-4" />
-            Create new issue
+            Create new task
             <span className="ml-auto text-xs text-muted-foreground">C</span>
           </CommandItem>
         </CommandGroup>
         <CommandSeparator />
-        <CommandGroup heading="Issues">
-          {storybookIssues.slice(0, 2).map((issue) => (
-            <CommandItem key={issue.id}>
+        <CommandGroup heading="Tasks">
+          {storybookTasks.slice(0, 2).map((task) => (
+            <CommandItem key={task.id}>
               <CircleDot className="mr-2 h-4 w-4" />
-              <span className="mr-2 font-mono text-xs text-muted-foreground">{issue.identifier}</span>
-              <span className="flex-1 truncate">{issue.title}</span>
-              <StatusBadge status={issue.status} />
+              <span className="mr-2 font-mono text-xs text-muted-foreground">{task.identifier}</span>
+              <span className="flex-1 truncate">{task.title}</span>
+              <StatusBadge status={task.status} />
             </CommandItem>
           ))}
         </CommandGroup>
@@ -211,7 +211,7 @@ function CommandResultsSurface() {
 function CommandEmptySurface() {
   return (
     <Command className="rounded-none border border-border">
-      <CommandInput value="no matching command" readOnly placeholder="Search issues, agents, projects..." />
+      <CommandInput value="no matching command" readOnly placeholder="Search tasks, agents, projects..." />
       <CommandList>
         <CommandEmpty>No results found.</CommandEmpty>
       </CommandList>
@@ -222,7 +222,7 @@ function CommandEmptySurface() {
 function NavigationLayoutStories() {
   return (
     <div className="paperclip-story">
-      <RouteSetter to="/PAP/projects/board-ui/issues" />
+      <RouteSetter to="/PAP/projects/board-ui/tasks" />
       <main className="paperclip-story__inner max-w-[1320px] space-y-6">
         <section className="paperclip-story__frame p-6">
           <div className="flex flex-wrap items-start justify-between gap-5">
@@ -279,13 +279,13 @@ function NavigationLayoutStories() {
           </div>
         </Section>
 
-        <Section eyebrow="Breadcrumbs" title="Home, project issue, and agent run depth levels">
+        <Section eyebrow="Breadcrumbs" title="Home, project task, and agent run depth levels">
           <div className="grid gap-4">
             <BreadcrumbSnapshot breadcrumbs={[{ label: "Dashboard", href: "/dashboard" }]} />
             <BreadcrumbSnapshot
               breadcrumbs={[
                 { label: "Projects", href: "/projects" },
-                { label: "Board UI", href: "/projects/board-ui/issues" },
+                { label: "Board UI", href: "/projects/board-ui/tasks" },
                 { label: "PAP-1641" },
               ]}
             />
@@ -301,8 +301,8 @@ function NavigationLayoutStories() {
 
         <Section eyebrow="Page tabs" title="Active and overflow tab bars">
           <div className="space-y-5">
-            <Tabs value="issues" className="overflow-x-auto">
-              <PageTabBar items={tabItems.slice(0, 4)} value="issues" align="start" />
+            <Tabs value="tasks" className="overflow-x-auto">
+              <PageTabBar items={tabItems.slice(0, 4)} value="tasks" align="start" />
             </Tabs>
             <Tabs value="activity" className="overflow-x-auto">
               <PageTabBar items={tabItems} value="activity" align="start" />

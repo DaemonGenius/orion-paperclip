@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   buildAgentMentionHref,
-  buildIssueReferenceHref,
+  buildTaskReferenceHref,
   buildProjectMentionHref,
   buildSkillMentionHref,
   buildUserMentionHref,
@@ -15,7 +15,7 @@ import { ThemeProvider } from "../context/ThemeContext";
 import { MarkdownBody } from "./MarkdownBody";
 import { queryKeys } from "../lib/queryKeys";
 
-const mockIssuesApi = vi.hoisted(() => ({
+const mockTasksApi = vi.hoisted(() => ({
   get: vi.fn(),
 }));
 
@@ -29,11 +29,11 @@ vi.mock("@/lib/router", () => ({
   ),
 }));
 
-vi.mock("../api/issues", () => ({
-  issuesApi: mockIssuesApi,
+vi.mock("../api/tasks", () => ({
+  tasksApi: mockTasksApi,
 }));
 
-function renderMarkdown(children: string, seededIssues: Array<{ identifier: string; status: string; title?: string }> = []) {
+function renderMarkdown(children: string, seededTasks: Array<{ identifier: string; status: string; title?: string }> = []) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -42,12 +42,12 @@ function renderMarkdown(children: string, seededIssues: Array<{ identifier: stri
     },
   });
 
-  for (const issue of seededIssues) {
-    queryClient.setQueryData(queryKeys.issues.detail(issue.identifier), {
-      id: issue.identifier,
-      identifier: issue.identifier,
-      status: issue.status,
-      title: issue.title,
+  for (const task of seededTasks) {
+    queryClient.setQueryData(queryKeys.tasks.detail(task.identifier), {
+      id: task.identifier,
+      identifier: task.identifier,
+      status: task.status,
+      title: task.title,
     });
   }
 
@@ -163,32 +163,32 @@ describe("MarkdownBody", () => {
     expect(html).toContain("<ul>");
   });
 
-  it("linkifies bare issue identifiers in markdown text", () => {
+  it("linkifies bare task identifiers in markdown text", () => {
     const html = renderMarkdown("Depends on PAP-1271 for the hover state.", [
       { identifier: "PAP-1271", status: "done" },
     ]);
 
-    expect(html).toContain('href="/issues/PAP-1271"');
+    expect(html).toContain('href="/tasks/PAP-1271"');
     expect(html).toContain("text-green-600");
     expect(html).toContain(">PAP-1271<");
-    expect(html).toContain('data-mention-kind="issue"');
-    expect(html).toContain("paperclip-markdown-issue-ref");
-    expect(html).not.toContain("paperclip-mention-chip--issue");
+    expect(html).toContain('data-mention-kind="task"');
+    expect(html).toContain("paperclip-markdown-task-ref");
+    expect(html).not.toContain("paperclip-mention-chip--task");
   });
 
-  it("uses concise issue aria labels until a distinct title is available", () => {
+  it("uses concise task aria labels until a distinct title is available", () => {
     const html = renderMarkdown("Depends on PAP-1271 and PAP-1272.", [
       { identifier: "PAP-1271", status: "done" },
       { identifier: "PAP-1272", status: "blocked", title: "Fix hover state" },
     ]);
 
-    expect(html).toContain('aria-label="Issue PAP-1271"');
-    expect(html).toContain('aria-label="Issue PAP-1272: Fix hover state"');
-    expect(html).not.toContain('aria-label="Issue PAP-1271: PAP-1271"');
+    expect(html).toContain('aria-label="Task PAP-1271"');
+    expect(html).toContain('aria-label="Task PAP-1272: Fix hover state"');
+    expect(html).not.toContain('aria-label="Task PAP-1271: PAP-1271"');
   });
 
-  it("preserves absolute issue URLs as external links", () => {
-    const url = "http://remote.example.test:3103/PAPA/issues/PAPA-115#comment-850083f3-24de-43e7-a8cd-bc01f7cc9f0d";
+  it("preserves absolute task URLs as external links", () => {
+    const url = "http://remote.example.test:3103/PAPA/tasks/PAPA-115#comment-850083f3-24de-43e7-a8cd-bc01f7cc9f0d";
     const html = renderMarkdown(`See ${url}.`, [
       { identifier: "PAPA-115", status: "blocked" },
     ]);
@@ -196,85 +196,85 @@ describe("MarkdownBody", () => {
     expect(html).toContain(`href="${url}"`);
     expect(html).toContain('target="_blank"');
     expect(html).toContain("lucide-external-link");
-    expect(html).not.toContain('href="/issues/PAPA-115"');
-    expect(html).not.toContain("paperclip-markdown-issue-ref");
+    expect(html).not.toContain('href="/tasks/PAPA-115"');
+    expect(html).not.toContain("paperclip-markdown-task-ref");
   });
 
-  it("linkifies plain internal issue paths in markdown text", () => {
-    const html = renderMarkdown("See /issues/PAP-1179 and /PAP/issues/pap-1180 for context.", [
+  it("linkifies plain internal task paths in markdown text", () => {
+    const html = renderMarkdown("See /tasks/PAP-1179 and /PAP/tasks/pap-1180 for context.", [
       { identifier: "PAP-1179", status: "blocked" },
       { identifier: "PAP-1180", status: "done" },
     ]);
 
-    expect(html).toContain('href="/issues/PAP-1179"');
-    expect(html).toContain('href="/issues/PAP-1180"');
-    expect(html).toContain(">/issues/PAP-1179<");
-    expect(html).toContain(">/PAP/issues/pap-1180<");
+    expect(html).toContain('href="/tasks/PAP-1179"');
+    expect(html).toContain('href="/tasks/PAP-1180"');
+    expect(html).toContain(">/tasks/PAP-1179<");
+    expect(html).toContain(">/PAP/tasks/pap-1180<");
     expect(html).toContain("text-red-600");
     expect(html).toContain("text-green-600");
   });
 
-  it("does not auto-link non-issue internal route paths", () => {
-    const html = renderMarkdown("Use /issues/new for the creation form, /issues/PAP-42extra as text, and /api/issues for data.");
+  it("does not auto-link non-task internal route paths", () => {
+    const html = renderMarkdown("Use /tasks/new for the creation form, /tasks/PAP-42extra as text, and /api/tasks for data.");
 
-    expect(html).toContain("Use /issues/new for the creation form, /issues/PAP-42extra as text, and /api/issues for data.");
-    expect(html).not.toContain('href="/issues/new"');
-    expect(html).not.toContain('href="/issues/PAP-42"');
-    expect(html).not.toContain('data-mention-kind="issue"');
+    expect(html).toContain("Use /tasks/new for the creation form, /tasks/PAP-42extra as text, and /api/tasks for data.");
+    expect(html).not.toContain('href="/tasks/new"');
+    expect(html).not.toContain('href="/tasks/PAP-42"');
+    expect(html).not.toContain('data-mention-kind="task"');
   });
 
-  it("rewrites issue scheme links to internal issue links", () => {
-    const html = renderMarkdown("See issue://PAP-1310 and issue://:PAP-1311.", [
+  it("rewrites task scheme links to internal task links", () => {
+    const html = renderMarkdown("See task://PAP-1310 and task://:PAP-1311.", [
       { identifier: "PAP-1310", status: "done" },
       { identifier: "PAP-1311", status: "blocked" },
     ]);
 
-    expect(html).toContain('href="/issues/PAP-1310"');
-    expect(html).toContain('href="/issues/PAP-1311"');
-    expect(html).toContain(">issue://PAP-1310<");
-    expect(html).toContain(">issue://:PAP-1311<");
+    expect(html).toContain('href="/tasks/PAP-1310"');
+    expect(html).toContain('href="/tasks/PAP-1311"');
+    expect(html).toContain(">task://PAP-1310<");
+    expect(html).toContain(">task://:PAP-1311<");
     expect(html).toContain("text-green-600");
     expect(html).toContain("text-red-600");
   });
 
-  it("linkifies issue identifiers inside inline code spans", () => {
+  it("linkifies task identifiers inside inline code spans", () => {
     const html = renderMarkdown("Reference `PAP-1271` here.", [
       { identifier: "PAP-1271", status: "done" },
     ]);
 
-    expect(html).toContain('href="/issues/PAP-1271"');
+    expect(html).toContain('href="/tasks/PAP-1271"');
     expect(html).toContain('<code style="overflow-wrap:anywhere;word-break:break-word">PAP-1271</code>');
     expect(html).toContain("text-green-600");
-    expect(html).toContain("paperclip-markdown-issue-ref");
+    expect(html).toContain("paperclip-markdown-task-ref");
   });
 
-  it("keeps trailing punctuation outside auto-linked issue references", () => {
-    const html = renderMarkdown("See PAP-1271: /issues/PAP-1272] and issue://PAP-1273.", [
+  it("keeps trailing punctuation outside auto-linked task references", () => {
+    const html = renderMarkdown("See PAP-1271: /tasks/PAP-1272] and task://PAP-1273.", [
       { identifier: "PAP-1271", status: "done" },
       { identifier: "PAP-1272", status: "blocked" },
       { identifier: "PAP-1273", status: "todo" },
     ]);
 
-    expect(html).toContain('<a href="/issues/PAP-1271"');
+    expect(html).toContain('<a href="/tasks/PAP-1271"');
     expect(html).toContain('>PAP-1271</a>:');
-    expect(html).toContain('<a href="/issues/PAP-1272"');
-    expect(html).toContain('>/issues/PAP-1272</a>]');
-    expect(html).toContain('<a href="/issues/PAP-1273"');
-    expect(html).toContain('>issue://PAP-1273</a>.');
+    expect(html).toContain('<a href="/tasks/PAP-1272"');
+    expect(html).toContain('>/tasks/PAP-1272</a>]');
+    expect(html).toContain('<a href="/tasks/PAP-1273"');
+    expect(html).toContain('>task://PAP-1273</a>.');
   });
 
-  it("can opt out of issue reference linkification for offline previews", () => {
+  it("can opt out of task reference linkification for offline previews", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={new QueryClient()}>
         <ThemeProvider>
-          <MarkdownBody linkIssueReferences={false}>
+          <MarkdownBody linkTaskReferences={false}>
             {"Depends on PAP-1271 and [manual link](PAP-1271)."}
           </MarkdownBody>
         </ThemeProvider>
       </QueryClientProvider>,
     );
 
-    expect(html).not.toContain('href="/issues/PAP-1271"');
+    expect(html).not.toContain('href="/tasks/PAP-1271"');
     expect(html).toContain("Depends on PAP-1271");
     expect(html).toContain('href="PAP-1271"');
   });
@@ -330,9 +330,9 @@ describe("MarkdownBody", () => {
   });
 
   it("prefixes GitHub autolinks with the GitHub icon", () => {
-    const html = renderMarkdown("See https://github.com/paperclipai/paperclip/issues/1778");
+    const html = renderMarkdown("See https://github.com/paperclipai/paperclip/tasks/1778");
 
-    expect(html).toContain('<a href="https://github.com/paperclipai/paperclip/issues/1778"');
+    expect(html).toContain('<a href="https://github.com/paperclipai/paperclip/tasks/1778"');
     expect(html).toContain('class="lucide lucide-github mr-1 inline h-3.5 w-3.5 align-[-0.125em]"');
   });
 
@@ -366,16 +366,16 @@ describe("MarkdownBody", () => {
     expect(html).toContain('style="max-width:100%;overflow-x:auto"');
   });
 
-  it("renders internal issue links and bare identifiers as inline issue refs", () => {
-    const html = renderMarkdown(`See PAP-42 and [linked task](${buildIssueReferenceHref("PAP-77")}) for follow-up.`, [
+  it("renders internal task links and bare identifiers as inline task refs", () => {
+    const html = renderMarkdown(`See PAP-42 and [linked task](${buildTaskReferenceHref("PAP-77")}) for follow-up.`, [
       { identifier: "PAP-42", status: "done" },
       { identifier: "PAP-77", status: "blocked" },
     ]);
 
-    expect(html).toContain('href="/issues/PAP-42"');
-    expect(html).toContain('href="/issues/PAP-77"');
-    expect(html).toContain('data-mention-kind="issue"');
-    expect(html).toContain("paperclip-markdown-issue-ref");
-    expect(html).not.toContain("paperclip-mention-chip--issue");
+    expect(html).toContain('href="/tasks/PAP-42"');
+    expect(html).toContain('href="/tasks/PAP-77"');
+    expect(html).toContain('data-mention-kind="task"');
+    expect(html).toContain("paperclip-markdown-task-ref");
+    expect(html).not.toContain("paperclip-mention-chip--task");
   });
 });

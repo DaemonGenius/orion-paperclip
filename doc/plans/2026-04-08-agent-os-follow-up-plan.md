@@ -1,7 +1,7 @@
 # PAP-1229 Agent OS Follow-up Plan
 
 Date: 2026-04-08
-Related issue: `PAP-1229`
+Related task: `PAP-1229`
 Companion analysis: `doc/plans/2026-04-08-agent-os-technical-report.md`
 
 ## Goal
@@ -33,7 +33,7 @@ This work is successful when Paperclip has:
 
 Do not:
 
-- replace Paperclip heartbeats, issues, comments, approvals, or budgets with `agent-os` primitives
+- replace Paperclip heartbeats, tasks, comments, approvals, or budgets with `agent-os` primitives
 - introduce Rust/sidecar requirements for all local execution paths
 - migrate all adapters at once
 - add runtime workflow/queue abstractions to Paperclip core
@@ -45,7 +45,7 @@ The plan should stay anchored to these existing surfaces:
 - `packages/adapter-utils/src/types.ts`
   - adapter contract, runtime service reporting, session metadata, and capability normalization targets
 - `server/src/services/heartbeat.ts`
-  - execution entry point, log capture, issue comment summaries, and cost reporting
+  - execution entry point, log capture, task comment summaries, and cost reporting
 - `server/src/services/execution-workspaces.ts`
   - current workspace lifecycle and git-oriented cleanup/readiness model
 - `server/src/services/plugin-loader.ts`
@@ -63,7 +63,7 @@ Objective:
 
 Deliverables:
 
-- short experiment brief added to this document or a child issue
+- short experiment brief added to this document or a child task
 - chosen first runtime target: `pi_local` or `opencode_local`
 - baseline metrics definition
 
@@ -97,7 +97,7 @@ Suggested scope:
 
 - implement a new experimental adapter, `agentos_local`, or a feature-flagged runtime path under one existing adapter
 - start with `pi_local` or `opencode_local`
-- keep Paperclip's existing heartbeat, issue, workspace, and comment flow authoritative
+- keep Paperclip's existing heartbeat, task, workspace, and comment flow authoritative
 
 Minimum implementation shape:
 
@@ -111,7 +111,7 @@ What to verify:
 - checkout and heartbeat flow still work end to end
 - resume across multiple heartbeats works
 - logs/transcripts remain readable in the UI
-- failure paths surface cleanly in issue comments and run logs
+- failure paths surface cleanly in task comments and run logs
 
 Exit criteria:
 
@@ -246,13 +246,13 @@ Reasoning:
 To keep this effort controlled:
 
 - keep all experiments behind a clearly experimental adapter or feature flag
-- do not change issue/comment/approval/budget semantics to suit the runtime
+- do not change task/comment/approval/budget semantics to suit the runtime
 - measure against current local adapters instead of judging in isolation
 - stop after Phase 1 if the operational burden is already clearly too high
 
 ## Proposed next action
 
-The next concrete action should be a small implementation spike issue:
+The next concrete action should be a small implementation spike task:
 
 - title: `Prototype experimental agentos_local runtime for one local adapter`
 - target adapter: `opencode_local` unless `pi_local` is materially easier

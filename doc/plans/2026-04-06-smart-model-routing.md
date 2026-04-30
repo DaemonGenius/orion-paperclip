@@ -84,7 +84,7 @@ V1 decision:
 
 Rationale:
 
-- Paperclip heartbeats are structured, issue-scoped, and already include wake metadata
+- Paperclip heartbeats are structured, task-scoped, and already include wake metadata
 - routing by execution phase is more reliable than routing by free-text prompt complexity
 - session semantics differ by adapter, so resume behavior must stay adapter-owned
 
@@ -120,7 +120,7 @@ Supported adapters should run cheap preflight only when all are true:
 
 - `smartModelRouting.enabled` is true
 - `cheapModel` is configured
-- the run is issue-scoped
+- the run is task-scoped
 - the adapter is starting a fresh session, not resuming a persisted one
 - the run is expected to do real task work rather than just resume an existing thread
 
@@ -128,7 +128,7 @@ Supported adapters should skip cheap preflight when any are true:
 
 - a persisted task session already exists
 - the adapter cannot safely isolate preflight from the primary session
-- the issue or wake type implies the task is already mid-flight and continuity matters more than first-response speed
+- the task or wake type implies the task is already mid-flight and continuity matters more than first-response speed
 
 This is intentionally phase-based, not text-heuristic-based.
 
@@ -138,7 +138,7 @@ The cheap phase should be narrow and bounded.
 
 Allowed responsibilities:
 
-- ingest wake context and issue summary
+- ingest wake context and task summary
 - inspect the workspace at a shallow level
 - leave a short "starting investigation" style comment when appropriate
 - collect a compact handoff summary for the primary phase
@@ -280,8 +280,8 @@ Hermes' cheap-route heuristic is useful precedent, but Paperclip should not star
 Reasons:
 
 - Hermes is optimizing free-form conversational turns
-- Paperclip agents run structured, issue-scoped heartbeats with explicit task and workspace context
-- Paperclip already knows whether a run is fresh vs resumed, issue-scoped vs approval follow-up, and what workspace/session exists
+- Paperclip agents run structured, task-scoped heartbeats with explicit task and workspace context
+- Paperclip already knows whether a run is fresh vs resumed, task-scoped vs approval follow-up, and what workspace/session exists
 - those execution facts are stronger routing signals than prompt keyword matching
 
 If Paperclip later wants a cheap-only completion path for trivial runs, that can be a second-stage feature built on observed run data, not the first implementation.
@@ -290,7 +290,7 @@ If Paperclip later wants a cheap-only completion path for trivial runs, that can
 
 ## 10.1 Duplicate or noisy comments
 
-If the cheap phase posts an update and the primary phase posts another near-identical update, the issue thread gets worse.
+If the cheap phase posts an update and the primary phase posts another near-identical update, the task thread gets worse.
 
 Mitigation:
 
@@ -335,11 +335,11 @@ Required tests:
 
 Manual checks:
 
-- create a fresh issue for a routed Codex or Claude agent
+- create a fresh task for a routed Codex or Claude agent
 - verify the run metadata shows both phases
 - verify only the primary session is persisted
 - verify cost rows reflect both models
-- verify the issue thread does not get duplicate kickoff comments
+- verify the task thread does not get duplicate kickoff comments
 
 ## 12. Recommended Sequence
 

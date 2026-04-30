@@ -29,7 +29,7 @@ CREATE TABLE "notion_sync_state" (
 CREATE TABLE "orion_decisions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,
-	"issue_id" uuid,
+	"task_id" uuid,
 	"run_id" uuid,
 	"kind" text NOT NULL,
 	"status" text DEFAULT 'open' NOT NULL,
@@ -46,7 +46,7 @@ CREATE TABLE "orion_decisions" (
 CREATE TABLE "orion_pr_receipts" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,
-	"issue_id" uuid NOT NULL,
+	"task_id" uuid NOT NULL,
 	"run_id" uuid NOT NULL,
 	"ledger_id" uuid NOT NULL,
 	"provider" text DEFAULT 'github' NOT NULL,
@@ -93,7 +93,7 @@ CREATE TABLE "orion_req_ledger_events" (
 CREATE TABLE "orion_req_ledgers" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,
-	"issue_id" uuid NOT NULL,
+	"task_id" uuid NOT NULL,
 	"run_id" uuid NOT NULL,
 	"mode" text NOT NULL,
 	"status" text DEFAULT 'new' NOT NULL,
@@ -110,7 +110,7 @@ CREATE TABLE "orion_req_ledgers" (
 CREATE TABLE "orion_task_policies" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,
-	"issue_id" uuid NOT NULL,
+	"task_id" uuid NOT NULL,
 	"mode" text NOT NULL,
 	"autonomy_envelope" jsonb,
 	"approved_by_user_id" text,
@@ -127,13 +127,13 @@ ALTER TABLE "notion_sync_state" ADD CONSTRAINT "notion_sync_state_company_id_com
 --> statement-breakpoint
 ALTER TABLE "orion_decisions" ADD CONSTRAINT "orion_decisions_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "orion_decisions" ADD CONSTRAINT "orion_decisions_issue_id_issues_id_fk" FOREIGN KEY ("issue_id") REFERENCES "public"."issues"("id") ON DELETE set null ON UPDATE no action;
+ALTER TABLE "orion_decisions" ADD CONSTRAINT "orion_decisions_task_id_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."tasks"("id") ON DELETE set null ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "orion_decisions" ADD CONSTRAINT "orion_decisions_run_id_heartbeat_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."heartbeat_runs"("id") ON DELETE set null ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "orion_pr_receipts" ADD CONSTRAINT "orion_pr_receipts_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "orion_pr_receipts" ADD CONSTRAINT "orion_pr_receipts_issue_id_issues_id_fk" FOREIGN KEY ("issue_id") REFERENCES "public"."issues"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "orion_pr_receipts" ADD CONSTRAINT "orion_pr_receipts_task_id_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."tasks"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "orion_pr_receipts" ADD CONSTRAINT "orion_pr_receipts_run_id_heartbeat_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."heartbeat_runs"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
@@ -153,13 +153,13 @@ ALTER TABLE "orion_req_ledger_events" ADD CONSTRAINT "orion_req_ledger_events_ru
 --> statement-breakpoint
 ALTER TABLE "orion_req_ledgers" ADD CONSTRAINT "orion_req_ledgers_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "orion_req_ledgers" ADD CONSTRAINT "orion_req_ledgers_issue_id_issues_id_fk" FOREIGN KEY ("issue_id") REFERENCES "public"."issues"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "orion_req_ledgers" ADD CONSTRAINT "orion_req_ledgers_task_id_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."tasks"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "orion_req_ledgers" ADD CONSTRAINT "orion_req_ledgers_run_id_heartbeat_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."heartbeat_runs"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "orion_task_policies" ADD CONSTRAINT "orion_task_policies_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "orion_task_policies" ADD CONSTRAINT "orion_task_policies_issue_id_issues_id_fk" FOREIGN KEY ("issue_id") REFERENCES "public"."issues"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "orion_task_policies" ADD CONSTRAINT "orion_task_policies_task_id_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."tasks"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
 CREATE UNIQUE INDEX "company_notion_bindings_company_uq" ON "company_notion_bindings" USING btree ("company_id");
 --> statement-breakpoint
@@ -171,11 +171,11 @@ CREATE INDEX "notion_sync_state_company_status_idx" ON "notion_sync_state" USING
 --> statement-breakpoint
 CREATE INDEX "orion_decisions_company_status_idx" ON "orion_decisions" USING btree ("company_id","status");
 --> statement-breakpoint
-CREATE INDEX "orion_decisions_issue_idx" ON "orion_decisions" USING btree ("company_id","issue_id");
+CREATE INDEX "orion_decisions_task_idx" ON "orion_decisions" USING btree ("company_id","task_id");
 --> statement-breakpoint
 CREATE UNIQUE INDEX "orion_pr_receipts_run_uq" ON "orion_pr_receipts" USING btree ("run_id");
 --> statement-breakpoint
-CREATE INDEX "orion_pr_receipts_issue_idx" ON "orion_pr_receipts" USING btree ("company_id","issue_id");
+CREATE INDEX "orion_pr_receipts_task_idx" ON "orion_pr_receipts" USING btree ("company_id","task_id");
 --> statement-breakpoint
 CREATE INDEX "orion_req_ledger_artifacts_phase_idx" ON "orion_req_ledger_artifacts" USING btree ("company_id","ledger_id","phase");
 --> statement-breakpoint
@@ -185,10 +185,10 @@ CREATE INDEX "orion_req_ledger_events_run_idx" ON "orion_req_ledger_events" USIN
 --> statement-breakpoint
 CREATE UNIQUE INDEX "orion_req_ledgers_run_uq" ON "orion_req_ledgers" USING btree ("run_id");
 --> statement-breakpoint
-CREATE INDEX "orion_req_ledgers_issue_idx" ON "orion_req_ledgers" USING btree ("company_id","issue_id");
+CREATE INDEX "orion_req_ledgers_task_idx" ON "orion_req_ledgers" USING btree ("company_id","task_id");
 --> statement-breakpoint
 CREATE INDEX "orion_req_ledgers_company_status_idx" ON "orion_req_ledgers" USING btree ("company_id","status");
 --> statement-breakpoint
-CREATE UNIQUE INDEX "orion_task_policies_issue_uq" ON "orion_task_policies" USING btree ("issue_id");
+CREATE UNIQUE INDEX "orion_task_policies_task_uq" ON "orion_task_policies" USING btree ("task_id");
 --> statement-breakpoint
 CREATE INDEX "orion_task_policies_company_mode_idx" ON "orion_task_policies" USING btree ("company_id","mode");

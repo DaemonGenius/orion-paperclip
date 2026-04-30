@@ -49,7 +49,7 @@ Fields:
 | `assigneeAgentId` | yes | Agent who receives each run |
 | `projectId` | yes | Project this routine belongs to |
 | `goalId` | no | Goal to link runs to |
-| `parentIssueId` | no | Parent issue for created run issues |
+| `parentTaskId` | no | Parent task for created run tasks |
 | `priority` | no | `critical`, `high`, `medium` (default), `low` |
 | `status` | no | `active` (default), `paused`, `archived` |
 | `concurrencyPolicy` | no | Behaviour when a run fires while a previous one is still active |
@@ -59,8 +59,8 @@ Fields:
 
 | Value | Behaviour |
 |-------|-----------|
-| `coalesce_if_active` (default) | Incoming run is immediately finalised as `coalesced` and linked to the active run — no new issue is created |
-| `skip_if_active` | Incoming run is immediately finalised as `skipped` and linked to the active run — no new issue is created |
+| `coalesce_if_active` (default) | Incoming run is immediately finalised as `coalesced` and linked to the active run — no new task is created |
+| `skip_if_active` | Incoming run is immediately finalised as `skipped` and linked to the active run — no new task is created |
 | `always_enqueue` | Always create a new run regardless of active runs |
 
 **Catch-up policies:**

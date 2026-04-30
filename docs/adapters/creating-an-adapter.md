@@ -134,7 +134,7 @@ Return structured diagnostics:
 | Level | Meaning | Effect |
 |-------|---------|--------|
 | `error` | Invalid or unusable setup | Blocks execution |
-| `warn` | Non-blocking issue | Shown with yellow indicator |
+| `warn` | Non-blocking task | Shown with yellow indicator |
 | `info` | Successful check | Shown in test results |
 
 ```ts

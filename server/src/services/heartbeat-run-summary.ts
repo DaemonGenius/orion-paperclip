@@ -92,7 +92,7 @@ export function summarizeHeartbeatRunResultJson(
   return Object.keys(summary).length > 0 ? summary : null;
 }
 
-export function buildHeartbeatRunIssueComment(
+export function buildHeartbeatRunTaskComment(
   resultJson: Record<string, unknown> | null | undefined,
 ): string | null {
   if (!resultJson || typeof resultJson !== "object" || Array.isArray(resultJson)) {

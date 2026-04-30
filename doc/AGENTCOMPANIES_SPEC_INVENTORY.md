@@ -28,7 +28,7 @@ These define the contract between server, CLI, and UI.
 
 | File | What it defines |
 |---|---|
-| `packages/shared/src/types/company-portability.ts` | TypeScript interfaces: `CompanyPortabilityManifest`, `CompanyPortabilityFileEntry`, `CompanyPortabilityEnvInput`, export/import/preview request and result types, manifest entry types for agents, skills, projects, issues, recurring routines, companies. |
+| `packages/shared/src/types/company-portability.ts` | TypeScript interfaces: `CompanyPortabilityManifest`, `CompanyPortabilityFileEntry`, `CompanyPortabilityEnvInput`, export/import/preview request and result types, manifest entry types for agents, skills, projects, tasks, recurring routines, companies. |
 | `packages/shared/src/validators/company-portability.ts` | Zod schemas for all portability request/response shapes — used by both server routes and CLI. |
 | `packages/shared/src/types/index.ts` | Re-exports portability types. |
 | `packages/shared/src/validators/index.ts` | Re-exports portability validators. |
@@ -61,7 +61,7 @@ Route registration lives in `server/src/app.ts` via `companyRoutes(db, storage)`
 
 | File | Commands |
 |---|---|
-| `cli/src/commands/client/company.ts` | `company export` — exports a company package to disk (flags: `--out`, `--include`, `--projects`, `--issues`, `--projectIssues`).<br>`company import <fromPathOrUrl>` — imports a company package from a file or folder (flags: positional source path/URL or GitHub shorthand, `--include`, `--target`, `--companyId`, `--newCompanyName`, `--agents`, `--collision`, `--ref`, `--dryRun`).<br>Reads/writes portable file entries and handles `.paperclip.yaml` filtering. |
+| `cli/src/commands/client/company.ts` | `company export` — exports a company package to disk (flags: `--out`, `--include`, `--projects`, `--tasks`, `--projectTasks`).<br>`company import <fromPathOrUrl>` — imports a company package from a file or folder (flags: positional source path/URL or GitHub shorthand, `--include`, `--target`, `--companyId`, `--newCompanyName`, `--agents`, `--collision`, `--ref`, `--dryRun`).<br>Reads/writes portable file entries and handles `.paperclip.yaml` filtering. |
 
 ## 7. UI — Pages
 

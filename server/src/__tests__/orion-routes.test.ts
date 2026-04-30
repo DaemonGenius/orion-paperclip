@@ -9,7 +9,7 @@ import {
   createDb,
   externalObjectRefs,
   getEmbeddedPostgresTestSupport,
-  issues,
+  tasks,
   startEmbeddedPostgresTestDatabase,
 } from "@paperclipai/db";
 import { errorHandler } from "../middleware/index.js";
@@ -84,7 +84,7 @@ describeEmbeddedPostgres("Orion routes", () => {
     await db.insert(companies).values({
       id: companyId,
       name: "Genesis",
-      issuePrefix: `O${companyId.replace(/-/g, "").slice(0, 5).toUpperCase()}`,
+      taskPrefix: `O${companyId.replace(/-/g, "").slice(0, 5).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(agents).values({
@@ -124,7 +124,7 @@ describeEmbeddedPostgres("Orion routes", () => {
         ],
       });
     expect(sync.status, JSON.stringify(sync.body)).toBe(200);
-    const issueId = sync.body.results[0].issueId;
+    const taskId = sync.body.results[0].taskId;
     expect(sync.body.results[0].status).toBe("created");
     expect(sync.body.results[0].refId).toBeTruthy();
 
@@ -134,16 +134,16 @@ describeEmbeddedPostgres("Orion routes", () => {
       ref.localObjectType === "company_workspace" && ref.externalObjectId === "notion-root-genesis",
     )).toBe(true);
     expect(refs.body.some((ref: { localObjectType: string; localObjectId: string; syncStatus: string }) =>
-      ref.localObjectType === "task" && ref.localObjectId === issueId && ref.syncStatus === "synced",
+      ref.localObjectType === "task" && ref.localObjectId === taskId && ref.syncStatus === "synced",
     )).toBe(true);
 
     const missingEnvelope = await request(app)
-      .post(`/api/orion/tasks/${issueId}/runs`)
+      .post(`/api/orion/tasks/${taskId}/runs`)
       .send({ agentId, mode: "auto_to_pr", planMarkdown: "Plan" });
     expect(missingEnvelope.status).toBe(422);
 
     const run = await request(app)
-      .post(`/api/orion/tasks/${issueId}/runs`)
+      .post(`/api/orion/tasks/${taskId}/runs`)
       .send({
         agentId,
         mode: "auto_to_pr",
@@ -208,10 +208,10 @@ describeEmbeddedPostgres("Orion routes", () => {
       .send({
         tasks: [{ notionPageId: "notion-task-workflow", title: "Ship a workflow task" }],
       });
-    const issueId = sync.body.results[0].issueId;
+    const taskId = sync.body.results[0].taskId;
 
     const binding = await request(app)
-      .post(`/api/orion/tasks/${issueId}/workflow-binding`)
+      .post(`/api/orion/tasks/${taskId}/workflow-binding`)
       .send({ workflowId: workflow.body.id, currentNodeKey: "notion_task" });
     expect(binding.status, JSON.stringify(binding.body)).toBe(201);
     expect(binding.body.currentNodeKey).toBe("notion_task");
@@ -247,13 +247,13 @@ describeEmbeddedPostgres("Orion routes", () => {
         ],
       });
     expect(firstSync.status, JSON.stringify(firstSync.body)).toBe(200);
-    const issueId = firstSync.body.results[0].issueId as string;
+    const taskId = firstSync.body.results[0].taskId as string;
 
     const orionEditAt = new Date(Date.now() + 60_000);
     await db
-      .update(issues)
+      .update(tasks)
       .set({ title: "Changed inside Orion", updatedAt: orionEditAt })
-      .where(eq(issues.id, issueId));
+      .where(eq(tasks.id, taskId));
 
     const conflictSync = await request(app)
       .post(`/api/orion/companies/${companyId}/notion/sync`)
@@ -273,13 +273,13 @@ describeEmbeddedPostgres("Orion routes", () => {
     const conflicts = await request(app).get(`/api/orion/companies/${companyId}/sync/conflicts`);
     expect(conflicts.status, JSON.stringify(conflicts.body)).toBe(200);
     expect(conflicts.body[0].provider).toBe("notion");
-    expect(conflicts.body[0].localObjectId).toBe(issueId);
+    expect(conflicts.body[0].localObjectId).toBe(taskId);
     expect(conflicts.body[0].externalObjectId).toBe("notion-task-conflict");
 
     const [ref] = await db
       .select()
       .from(externalObjectRefs)
-      .where(eq(externalObjectRefs.localObjectId, issueId))
+      .where(eq(externalObjectRefs.localObjectId, taskId))
       .limit(1);
     expect(ref?.syncStatus).toBe("conflict");
   });

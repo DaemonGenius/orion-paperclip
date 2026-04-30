@@ -252,7 +252,7 @@ Check levels:
 | Level | Meaning | Effect |
 |-------|---------|--------|
 | `info` | Informational | Shown in test results |
-| `warn` | Non-blocking issue | Shown with yellow indicator |
+| `warn` | Non-blocking task | Shown with yellow indicator |
 | `error` | Blocks execution | Prevents agent from running |
 
 ## Installation

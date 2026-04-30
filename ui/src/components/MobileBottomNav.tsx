@@ -37,14 +37,14 @@ type MobileNavItem = MobileNavLinkItem | MobileNavActionItem;
 export function MobileBottomNav({ visible }: MobileBottomNavProps) {
   const location = useLocation();
   const { selectedCompanyId } = useCompany();
-  const { openNewIssue } = useDialog();
+  const { openNewTask } = useDialog();
   const inboxBadge = useInboxBadge(selectedCompanyId);
 
   const items = useMemo<MobileNavItem[]>(
     () => [
       { type: "link", to: "/dashboard", label: "Home", icon: House },
-      { type: "link", to: "/issues", label: "Issues", icon: CircleDot },
-      { type: "action", label: "Create", icon: SquarePen, onClick: () => openNewIssue() },
+      { type: "link", to: "/tasks", label: "Tasks", icon: CircleDot },
+      { type: "action", label: "Create", icon: SquarePen, onClick: () => openNewTask() },
       { type: "link", to: "/agents/all", label: "Agents", icon: Users },
       {
         type: "link",
@@ -54,7 +54,7 @@ export function MobileBottomNav({ visible }: MobileBottomNavProps) {
         badge: inboxBadge.inbox,
       },
     ],
-    [openNewIssue, inboxBadge.inbox],
+    [openNewTask, inboxBadge.inbox],
   );
 
   return (
@@ -69,7 +69,7 @@ export function MobileBottomNav({ visible }: MobileBottomNavProps) {
         {items.map((item) => {
           if (item.type === "action") {
             const Icon = item.icon;
-            const active = /\/issues\/new(?:\/|$)/.test(location.pathname);
+            const active = /\/tasks\/new(?:\/|$)/.test(location.pathname);
             return (
               <button
                 key={item.label}

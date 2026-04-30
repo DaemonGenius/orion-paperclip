@@ -4,7 +4,7 @@ import type {
   DocumentRevision,
   ExecutionWorkspaceCloseReadiness,
   Goal,
-  IssueAttachment,
+  TaskAttachment,
 } from "@paperclipai/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,7 @@ import { ExecutionWorkspaceCloseDialog } from "@/components/ExecutionWorkspaceCl
 import { ImageGalleryModal } from "@/components/ImageGalleryModal";
 import { NewAgentDialog } from "@/components/NewAgentDialog";
 import { NewGoalDialog } from "@/components/NewGoalDialog";
-import { NewIssueDialog } from "@/components/NewIssueDialog";
+import { NewTaskDialog } from "@/components/NewTaskDialog";
 import { NewProjectDialog } from "@/components/NewProjectDialog";
 import { PathInstructionsModal } from "@/components/PathInstructionsModal";
 import { useCompany } from "@/context/CompanyContext";
@@ -24,15 +24,15 @@ import {
   storybookAuthSession,
   storybookCompanies,
   storybookExecutionWorkspaces,
-  storybookIssueDocuments,
-  storybookIssueLabels,
-  storybookIssues,
+  storybookTaskDocuments,
+  storybookTaskLabels,
+  storybookTasks,
   storybookProjects,
 } from "../fixtures/paperclipData";
 
 const COMPANY_ID = "company-storybook";
 const SELECTED_COMPANY_STORAGE_KEY = "paperclip.selectedCompanyId";
-const ISSUE_DRAFT_STORAGE_KEY = "paperclip:issue-draft";
+const TASK_DRAFT_STORAGE_KEY = "paperclip:task-draft";
 
 const storybookGoals: Goal[] = [
   {
@@ -78,7 +78,7 @@ const documentRevisions: DocumentRevision[] = [
     id: "revision-plan-1",
     companyId: COMPANY_ID,
     documentId: "document-plan-storybook",
-    issueId: "issue-storybook-1",
+    taskId: "task-storybook-1",
     key: "plan",
     revisionNumber: 1,
     title: "Plan",
@@ -87,7 +87,7 @@ const documentRevisions: DocumentRevision[] = [
       "# Plan",
       "",
       "- Add overview stories for the dashboard.",
-      "- Create issue list stories for filters and grouping.",
+      "- Create task list stories for filters and grouping.",
       "- Ask QA to review the final Storybook build.",
     ].join("\n"),
     changeSummary: "Initial plan",
@@ -99,7 +99,7 @@ const documentRevisions: DocumentRevision[] = [
     id: "revision-plan-2",
     companyId: COMPANY_ID,
     documentId: "document-plan-storybook",
-    issueId: "issue-storybook-1",
+    taskId: "task-storybook-1",
     key: "plan",
     revisionNumber: 2,
     title: "Plan",
@@ -108,8 +108,8 @@ const documentRevisions: DocumentRevision[] = [
       "# Plan",
       "",
       "- Add overview stories for the dashboard.",
-      "- Create issue list stories for filters, grouping, and workspace state.",
-      "- Add dialog stories for issue, goal, project, and workspace workflows.",
+      "- Create task list stories for filters, grouping, and workspace state.",
+      "- Add dialog stories for task, goal, project, and workspace workflows.",
       "- Ask QA to review the final Storybook build.",
     ].join("\n"),
     changeSummary: "Expanded component coverage",
@@ -121,13 +121,13 @@ const documentRevisions: DocumentRevision[] = [
     id: "revision-plan-3",
     companyId: COMPANY_ID,
     documentId: "document-plan-storybook",
-    issueId: "issue-storybook-1",
+    taskId: "task-storybook-1",
     key: "plan",
     revisionNumber: 3,
     title: "Plan",
     format: "markdown",
-    body: storybookIssueDocuments[0]?.body ?? "",
-    changeSummary: "Aligned with current issue scope",
+    body: storybookTaskDocuments[0]?.body ?? "",
+    changeSummary: "Aligned with current task scope",
     createdByAgentId: "agent-codex",
     createdByUserId: null,
     createdAt: new Date("2026-04-20T11:30:00.000Z"),
@@ -142,16 +142,16 @@ const closeReadinessReady: ExecutionWorkspaceCloseReadiness = {
     "The branch is still two commits ahead of master.",
     "One shared runtime service will be stopped during cleanup.",
   ],
-  linkedIssues: [
+  linkedTasks: [
     {
-      id: "issue-storybook-1",
+      id: "task-storybook-1",
       identifier: "PAP-1641",
       title: "Create super-detailed storybooks for the project",
       status: "done",
       isTerminal: true,
     },
     {
-      id: "issue-storybook-6",
+      id: "task-storybook-6",
       identifier: "PAP-1670",
       title: "Publish static Storybook preview",
       status: "todo",
@@ -168,7 +168,7 @@ const closeReadinessReady: ExecutionWorkspaceCloseReadiness = {
     {
       kind: "git_worktree_remove",
       label: "Remove git worktree",
-      description: "Removes the issue worktree from the local worktree parent directory.",
+      description: "Removes the task worktree from the local worktree parent directory.",
       command: "git worktree remove .paperclip/worktrees/PAP-1641-create-super-detailed-storybooks-for-our-project",
     },
     {
@@ -209,12 +209,12 @@ const closeReadinessBlocked: ExecutionWorkspaceCloseReadiness = {
   plannedActions: closeReadinessReady.plannedActions.slice(0, 1),
 };
 
-const galleryImages: IssueAttachment[] = [
+const galleryImages: TaskAttachment[] = [
   {
     id: "attachment-storybook-dashboard",
     companyId: COMPANY_ID,
-    issueId: "issue-storybook-1",
-    issueCommentId: null,
+    taskId: "task-storybook-1",
+    taskCommentId: null,
     assetId: "asset-dashboard",
     provider: "storybook",
     objectKey: "storybook/dashboard-preview.svg",
@@ -232,8 +232,8 @@ const galleryImages: IssueAttachment[] = [
   {
     id: "attachment-storybook-diff",
     companyId: COMPANY_ID,
-    issueId: "issue-storybook-1",
-    issueCommentId: null,
+    taskId: "task-storybook-1",
+    taskCommentId: null,
     assetId: "asset-diff",
     provider: "storybook",
     objectKey: "storybook/diff-preview.svg",
@@ -333,10 +333,10 @@ function hydrateDialogQueries(queryClient: ReturnType<typeof useQueryClient>) {
   queryClient.setQueryData(queryKeys.agents.list(COMPANY_ID), storybookAgents);
   queryClient.setQueryData(queryKeys.projects.list(COMPANY_ID), storybookProjects);
   queryClient.setQueryData(queryKeys.goals.list(COMPANY_ID), storybookGoals);
-  queryClient.setQueryData(queryKeys.issues.list(COMPANY_ID), storybookIssues);
-  queryClient.setQueryData(queryKeys.issues.labels(COMPANY_ID), storybookIssueLabels);
-  queryClient.setQueryData(queryKeys.issues.documents("issue-storybook-1"), storybookIssueDocuments);
-  queryClient.setQueryData(queryKeys.issues.documentRevisions("issue-storybook-1", "plan"), documentRevisions);
+  queryClient.setQueryData(queryKeys.tasks.list(COMPANY_ID), storybookTasks);
+  queryClient.setQueryData(queryKeys.tasks.labels(COMPANY_ID), storybookTaskLabels);
+  queryClient.setQueryData(queryKeys.tasks.documents("task-storybook-1"), storybookTaskDocuments);
+  queryClient.setQueryData(queryKeys.tasks.documentRevisions("task-storybook-1", "plan"), documentRevisions);
   queryClient.setQueryData(queryKeys.executionWorkspaces.closeReadiness("execution-workspace-storybook"), closeReadinessReady);
   queryClient.setQueryData(queryKeys.executionWorkspaces.closeReadiness("execution-workspace-blocked"), closeReadinessBlocked);
   queryClient.setQueryData(
@@ -410,7 +410,7 @@ function StorybookDialogFixtures({ children }: { children: ReactNode }) {
   const [ready] = useState(() => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(SELECTED_COMPANY_STORAGE_KEY, COMPANY_ID);
-      window.localStorage.removeItem(ISSUE_DRAFT_STORAGE_KEY);
+      window.localStorage.removeItem(TASK_DRAFT_STORAGE_KEY);
     }
     hydrateDialogQueries(queryClient);
     return true;
@@ -419,7 +419,7 @@ function StorybookDialogFixtures({ children }: { children: ReactNode }) {
   return ready ? children : null;
 }
 
-function useIssueCreateErrorMock(enabled: boolean) {
+function useTaskCreateErrorMock(enabled: boolean) {
   useLayoutEffect(() => {
     if (!enabled || typeof window === "undefined") return undefined;
 
@@ -432,7 +432,7 @@ function useIssueCreateErrorMock(enabled: boolean) {
             ? input.href
             : input.url;
       const url = new URL(rawUrl, window.location.origin);
-      if (url.pathname === `/api/companies/${COMPANY_ID}/issues` && init?.method === "POST") {
+      if (url.pathname === `/api/companies/${COMPANY_ID}/tasks` && init?.method === "POST") {
         return Response.json(
           { error: "Validation failed: add a reviewer before creating governed release work." },
           { status: 422 },
@@ -483,16 +483,16 @@ function useOpenWhenCompanyReady(open: () => void) {
   }, [open, selectedCompanyId, setSelectedCompanyId]);
 }
 
-function IssueDialogOpener({
+function TaskDialogOpener({
   variant,
 }: {
   variant: "empty" | "prefilled" | "validation";
 }) {
-  const { openNewIssue } = useDialog();
-  useIssueCreateErrorMock(variant === "validation");
+  const { openNewTask } = useDialog();
+  useTaskCreateErrorMock(variant === "validation");
 
   useOpenWhenCompanyReady(() => {
-    openNewIssue(
+    openNewTask(
       variant === "empty"
         ? {}
         : {
@@ -517,12 +517,12 @@ function IssueDialogOpener({
   useEffect(() => {
     if (variant !== "validation") return undefined;
     const timer = window.setTimeout(() => {
-      clickButtonByText("Create Issue");
+      clickButtonByText("Create Task");
     }, 500);
     return () => window.clearTimeout(timer);
   }, [variant]);
 
-  return <NewIssueDialog />;
+  return <NewTaskDialog />;
 }
 
 function AgentDialogOpener({ advanced }: { advanced?: boolean }) {
@@ -609,8 +609,8 @@ function ExecutionWorkspaceDialogStory({ blocked }: { blocked?: boolean }) {
     <DialogStory
       eyebrow="ExecutionWorkspaceCloseDialog"
       title={blocked ? "Blocked workspace close confirmation" : "Workspace close confirmation"}
-      description="The close dialog exposes linked issues, git state, runtime services, and planned cleanup actions before archiving an execution workspace."
-      badges={blocked ? ["blocked", "dirty worktree", "linked issue"] : ["ready with warnings", "cleanup actions"]}
+      description="The close dialog exposes linked tasks, git state, runtime services, and planned cleanup actions before archiving an execution workspace."
+      badges={blocked ? ["blocked", "dirty worktree", "linked task"] : ["ready with warnings", "cleanup actions"]}
     >
       <ExecutionWorkspaceCloseDialog
         workspaceId={blocked ? "execution-workspace-blocked" : workspace.id}
@@ -632,7 +632,7 @@ function DocumentDiffModalStory() {
       badges={["revision selector", "line diff", "document history"]}
     >
       <DocumentDiffModal
-        issueId="issue-storybook-1"
+        taskId="task-storybook-1"
         documentKey="plan"
         latestRevisionNumber={3}
         open
@@ -684,44 +684,44 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-export const NewIssueEmpty: Story = {
-  name: "New Issue - Empty",
+export const NewTaskEmpty: Story = {
+  name: "New Task - Empty",
   render: () => (
     <DialogStory
-      eyebrow="NewIssueDialog"
-      title="Empty issue form"
-      description="Default issue creation state with no assignee, project, priority, or workspace selected."
+      eyebrow="NewTaskDialog"
+      title="Empty task form"
+      description="Default task creation state with no assignee, project, priority, or workspace selected."
       badges={["empty", "creation", "draft"]}
     >
-      <IssueDialogOpener variant="empty" />
+      <TaskDialogOpener variant="empty" />
     </DialogStory>
   ),
 };
 
-export const NewIssuePrefilled: Story = {
-  name: "New Issue - Prefilled",
+export const NewTaskPrefilled: Story = {
+  name: "New Task - Prefilled",
   render: () => (
     <DialogStory
-      eyebrow="NewIssueDialog"
-      title="Prefilled issue form"
-      description="Populated issue creation state with project context, assignee, priority, description, and isolated workspace selection."
+      eyebrow="NewTaskDialog"
+      title="Prefilled task form"
+      description="Populated task creation state with project context, assignee, priority, description, and isolated workspace selection."
       badges={["populated", "assignee", "workspace"]}
     >
-      <IssueDialogOpener variant="prefilled" />
+      <TaskDialogOpener variant="prefilled" />
     </DialogStory>
   ),
 };
 
-export const NewIssueValidationError: Story = {
-  name: "New Issue - Validation Error",
+export const NewTaskValidationError: Story = {
+  name: "New Task - Validation Error",
   render: () => (
     <DialogStory
-      eyebrow="NewIssueDialog"
+      eyebrow="NewTaskDialog"
       title="Validation error after submit"
       description="The submit path is mocked to return a 422 so the footer error state remains visible for review."
       badges={["validation", "422", "error"]}
     >
-      <IssueDialogOpener variant="validation" />
+      <TaskDialogOpener variant="validation" />
     </DialogStory>
   ),
 };

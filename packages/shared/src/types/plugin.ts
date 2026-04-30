@@ -72,7 +72,7 @@ export interface PluginWebhookDeclaration {
 
 /**
  * Declares an agent tool contributed by the plugin. Tools are namespaced
- * by plugin ID at runtime (e.g. `linear:search-issues`).
+ * by plugin ID at runtime (e.g. `linear:search-tasks`).
  *
  * Requires the `agent.tools.register` capability.
  *
@@ -247,14 +247,14 @@ export interface PluginDatabaseDeclaration {
 export type PluginApiRouteCompanyResolution =
   | { from: "body"; key: string }
   | { from: "query"; key: string }
-  | { from: "issue"; param: string };
+  | { from: "task"; param: string };
 
 export interface PluginApiRouteDeclaration {
   /** Stable plugin-defined route key passed to the worker. */
   routeKey: string;
   /** HTTP method accepted by this route. */
   method: PluginApiRouteMethod;
-  /** Plugin-local path under `/api/plugins/:pluginId/api`, e.g. `/issues/:issueId/smoke`. */
+  /** Plugin-local path under `/api/plugins/:pluginId/api`, e.g. `/tasks/:taskId/smoke`. */
   path: string;
   /** Actor class allowed to call the route. */
   auth: PluginApiRouteAuthMode;
@@ -459,7 +459,7 @@ export interface PluginConfig {
  * Query filter for `ctx.entities.list`.
  */
 export interface PluginEntityQuery {
-  /** Optional filter by entity type (e.g. 'project', 'issue'). */
+  /** Optional filter by entity type (e.g. 'project', 'task'). */
   entityType?: string;
   /** Optional filter by external system identifier. */
   externalId?: string;

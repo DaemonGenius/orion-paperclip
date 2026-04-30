@@ -1,6 +1,6 @@
 # Paperclip Routines
 
-Routines are recurring tasks. Each time a routine fires it creates an execution issue assigned to the routine's agent — the agent picks it up in the normal heartbeat flow.
+Routines are recurring tasks. Each time a routine fires it creates an execution task assigned to the routine's agent — the agent picks it up in the normal heartbeat flow.
 
 A routine has:
 - One assigned agent and one project
@@ -33,7 +33,7 @@ POST /api/companies/{companyId}/routines
   "assigneeAgentId": "{agentId}",
   "projectId": "{projectId}",
   "goalId": "{goalId}",           // optional
-  "parentIssueId": "{issueId}",   // optional — parent for run issues
+  "parentTaskId": "{taskId}",   // optional — parent for run tasks
   "priority": "medium",
   "status": "active",
   "concurrencyPolicy": "coalesce_if_active",
@@ -47,8 +47,8 @@ POST /api/companies/{companyId}/routines
 | `description` | no | Human-readable description of the routine |
 | `assigneeAgentId` | yes | Agents: must be themselves |
 | `projectId` | yes | |
-| `goalId` | no | Inherited by run issues |
-| `parentIssueId` | no | Run issues become children of this issue |
+| `goalId` | no | Inherited by run tasks |
+| `parentTaskId` | no | Run tasks become children of this task |
 | `priority` | no | `critical` `high` `medium` (default) `low` |
 | `status` | no | `active` (default) `paused` `archived` |
 | `concurrencyPolicy` | no | See below |
@@ -58,13 +58,13 @@ POST /api/companies/{companyId}/routines
 
 ## Concurrency Policies
 
-Controls what happens when a trigger fires while the previous run issue is still open or active.
+Controls what happens when a trigger fires while the previous run task is still open or active.
 
 | Policy | Behaviour |
 |--------|-----------|
-| `coalesce_if_active` **(default)** | New run is marked `coalesced` and linked to the existing active run — no new issue created |
-| `skip_if_active` | New run is marked `skipped` and linked to the existing active run — no new issue created |
-| `always_enqueue` | Always create a new issue regardless of active runs |
+| `coalesce_if_active` **(default)** | New run is marked `coalesced` and linked to the existing active run — no new task created |
+| `skip_if_active` | New run is marked `skipped` and linked to the existing active run — no new task created |
+| `always_enqueue` | Always create a new task regardless of active runs |
 
 ---
 
@@ -158,7 +158,7 @@ POST /api/routines/{routineId}/run
 {
   "source": "manual",
   "triggerId": "{triggerId}",       // optional — attributes run to a specific trigger
-  "payload": { "context": "..." }, // optional — passed to the run issue
+  "payload": { "context": "..." }, // optional — passed to the run task
   "idempotencyKey": "unique-key"   // optional — prevents duplicate runs
 }
 ```

@@ -8,11 +8,15 @@ import {
 } from "@paperclipai/db";
 import {
   externalAppProviderSchema,
+  bitbucketExternalAppConfigSchema,
+  githubExternalAppConfigSchema,
   notionExternalAppConfigSchema,
   obsidianExternalAppConfigSchema,
+  type BitbucketExternalAppConfig,
   type CreateExternalAppBinding,
   type ExternalAppHealthCheckResult,
   type ExternalAppProvider,
+  type GithubExternalAppConfig,
   type NotionExternalAppConfig,
   type ObsidianExternalAppConfig,
   type UpdateExternalAppBinding,
@@ -21,9 +25,14 @@ import { badRequest, conflict, notFound, unprocessable } from "../errors.js";
 import { secretService } from "./secrets.js";
 
 const NOTION_SECRET_NAME = "notion.integration_token";
+const GITHUB_SECRET_NAME = "github.access_token";
+const BITBUCKET_SECRET_NAME = "bitbucket.app_password";
 
 function displayNameForProvider(provider: ExternalAppProvider) {
-  return provider === "notion" ? "Notion" : "Obsidian";
+  if (provider === "notion") return "Notion";
+  if (provider === "obsidian") return "Obsidian";
+  if (provider === "github") return "GitHub";
+  return "Bitbucket";
 }
 
 function asProvider(value: string): ExternalAppProvider {
@@ -35,6 +44,12 @@ function asProvider(value: string): ExternalAppProvider {
 function normalizeConfig(provider: ExternalAppProvider, value: Record<string, unknown>) {
   if (provider === "notion") {
     return notionExternalAppConfigSchema.parse(value);
+  }
+  if (provider === "github") {
+    return githubExternalAppConfigSchema.parse(value);
+  }
+  if (provider === "bitbucket") {
+    return bitbucketExternalAppConfigSchema.parse(value);
   }
   return obsidianExternalAppConfigSchema.parse(value);
 }
@@ -79,6 +94,42 @@ export function externalAppService(db: Db) {
       return input.secretId;
     }
     return null;
+  }
+
+  async function ensureTokenSecret(
+    companyId: string,
+    input: CreateExternalAppBinding | UpdateExternalAppBinding,
+    secretName: string,
+    description: string,
+  ) {
+    const token = typeof input.token === "string" ? input.token.trim() : "";
+    if (token.length > 0) {
+      const existing = await secrets.getByName(companyId, secretName);
+      if (existing) {
+        const rotated = await secrets.rotate(existing.id, { value: token }, { userId: "board", agentId: null });
+        return rotated.id;
+      }
+      const created = await secrets.create(
+        companyId,
+        {
+          name: secretName,
+          provider: "local_encrypted",
+          value: token,
+          description,
+        },
+        { userId: "board", agentId: null },
+      );
+      return created.id;
+    }
+    if (input.secretId) {
+      await secrets.assertSecretInCompany(companyId, input.secretId);
+      return input.secretId;
+    }
+    return null;
+  }
+
+  function normalizeHost(value: string) {
+    return value.trim().replace(/^https?:\/\//i, "").replace(/\/+$/g, "").toLowerCase();
   }
 
   async function runNotionHealthCheck(binding: typeof companyExternalAppBindings.$inferSelect): Promise<ExternalAppHealthCheckResult> {
@@ -182,6 +233,154 @@ export function externalAppService(db: Db) {
     }
   }
 
+  async function runGitHubHealthCheck(binding: typeof companyExternalAppBindings.$inferSelect): Promise<ExternalAppHealthCheckResult> {
+    const checkedAt = new Date().toISOString();
+    if (!binding.secretId) {
+      return {
+        provider: "github",
+        status: "error",
+        checkedAt,
+        message: "GitHub token is not configured.",
+        details: {},
+      };
+    }
+    const token = await secrets.resolveSecretValue(binding.companyId, binding.secretId, "latest");
+    const config = githubExternalAppConfigSchema.parse(binding.configJson ?? {});
+    const host = normalizeHost(config.host);
+    const apiBase = host === "github.com" || host === "www.github.com"
+      ? "https://api.github.com"
+      : `https://${host}/api/v3`;
+    const response = await fetch(`${apiBase}/user`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "User-Agent": "paperclip",
+      },
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      return {
+        provider: "github",
+        status: "error",
+        checkedAt,
+        message: `GitHub authentication failed with HTTP ${response.status}.`,
+        details: { host, status: response.status, response: body },
+      };
+    }
+    return {
+      provider: "github",
+      status: "healthy",
+      checkedAt,
+      message: "GitHub connection is healthy.",
+      details: { host, account: config.account ?? null, user: body },
+    };
+  }
+
+  async function listGitHubRepositories(binding: typeof companyExternalAppBindings.$inferSelect, query: string | null) {
+    if (!binding.secretId) {
+      throw unprocessable("GitHub token is not configured.");
+    }
+    const token = await secrets.resolveSecretValue(binding.companyId, binding.secretId, "latest");
+    const config = githubExternalAppConfigSchema.parse(binding.configJson ?? {});
+    const host = normalizeHost(config.host);
+    const apiBase = host === "github.com" || host === "www.github.com"
+      ? "https://api.github.com"
+      : `https://${host}/api/v3`;
+    const response = await fetch(`${apiBase}/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "User-Agent": "paperclip",
+      },
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !Array.isArray(body)) {
+      throw unprocessable(`Could not list GitHub repositories. GitHub returned HTTP ${response.status}.`);
+    }
+    const account = config.account?.trim().toLowerCase() || null;
+    const needle = query?.trim().toLowerCase() || "";
+    return body
+      .filter((repo) => repo && typeof repo === "object")
+      .map((repo) => {
+        const record = repo as Record<string, unknown>;
+        const owner = record.owner && typeof record.owner === "object"
+          ? (record.owner as Record<string, unknown>)
+          : {};
+        const fullName = typeof record.full_name === "string" ? record.full_name : "";
+        const ownerLogin = typeof owner.login === "string" ? owner.login : fullName.split("/")[0] ?? "";
+        const name = typeof record.name === "string" ? record.name : fullName.split("/")[1] ?? "";
+        const cloneUrl = typeof record.clone_url === "string"
+          ? record.clone_url
+          : `https://${host}/${fullName}`;
+        return {
+          provider: "github" as const,
+          host,
+          owner: ownerLogin,
+          name,
+          fullName,
+          cloneUrl,
+          defaultBranch: typeof record.default_branch === "string" ? record.default_branch : null,
+          private: record.private === true,
+          archived: record.archived === true,
+          description: typeof record.description === "string" ? record.description : null,
+          updatedAt: typeof record.updated_at === "string" ? record.updated_at : null,
+        };
+      })
+      .filter((repo) => repo.fullName && (!account || repo.owner.toLowerCase() === account))
+      .filter((repo) => !needle || repo.fullName.toLowerCase().includes(needle) || repo.name.toLowerCase().includes(needle))
+      .slice(0, 50);
+  }
+
+  async function runBitbucketHealthCheck(binding: typeof companyExternalAppBindings.$inferSelect): Promise<ExternalAppHealthCheckResult> {
+    const checkedAt = new Date().toISOString();
+    if (!binding.secretId) {
+      return {
+        provider: "bitbucket",
+        status: "error",
+        checkedAt,
+        message: "Bitbucket app password is not configured.",
+        details: {},
+      };
+    }
+    const token = await secrets.resolveSecretValue(binding.companyId, binding.secretId, "latest");
+    const config = bitbucketExternalAppConfigSchema.parse(binding.configJson ?? {});
+    const host = normalizeHost(config.host);
+    if (host !== "bitbucket.org") {
+      return {
+        provider: "bitbucket",
+        status: "healthy",
+        checkedAt,
+        message: "Bitbucket Server connection is configured. Repository access is verified from project repo linking.",
+        details: { host, username: config.username },
+      };
+    }
+    const basic = Buffer.from(`${config.username}:${token}`, "utf8").toString("base64");
+    const response = await fetch("https://api.bitbucket.org/2.0/user", {
+      headers: {
+        Authorization: `Basic ${basic}`,
+        Accept: "application/json",
+        "User-Agent": "paperclip",
+      },
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      return {
+        provider: "bitbucket",
+        status: "error",
+        checkedAt,
+        message: `Bitbucket authentication failed with HTTP ${response.status}.`,
+        details: { host, status: response.status, response: body },
+      };
+    }
+    return {
+      provider: "bitbucket",
+      status: "healthy",
+      checkedAt,
+      message: "Bitbucket connection is healthy.",
+      details: { host, user: body },
+    };
+  }
+
   return {
     getById,
 
@@ -201,11 +400,24 @@ export function externalAppService(db: Db) {
         .then((rows) => rows[0] ?? null);
       if (existing) throw conflict(`${displayNameForProvider(provider)} is already configured`);
 
-      const secretId = provider === "notion" ? await ensureSecretForNotion(companyId, input) : input.secretId ?? null;
+      const config = normalizeConfig(provider, input.config ?? {});
+      const secretId =
+        provider === "notion"
+          ? await ensureSecretForNotion(companyId, input)
+          : provider === "github"
+            ? await ensureTokenSecret(companyId, input, GITHUB_SECRET_NAME, "GitHub token for repository clone/fetch/push.")
+            : provider === "bitbucket"
+              ? await ensureTokenSecret(companyId, input, BITBUCKET_SECRET_NAME, "Bitbucket app password for repository clone/fetch/push.")
+              : input.secretId ?? null;
       if (provider === "notion" && !secretId) {
         throw unprocessable("Notion requires either a token or a saved secret");
       }
-      const config = normalizeConfig(provider, input.config ?? {});
+      if (provider === "github" && !secretId) {
+        throw unprocessable("GitHub requires either a token or a saved secret");
+      }
+      if (provider === "bitbucket" && !secretId) {
+        throw unprocessable("Bitbucket requires either an app password/token or a saved secret");
+      }
       if (provider === "obsidian" && !path.isAbsolute((config as ObsidianExternalAppConfig).vaultPath)) {
         throw unprocessable("Obsidian vaultPath must be absolute");
       }
@@ -231,11 +443,21 @@ export function externalAppService(db: Db) {
       const secretId =
         provider === "notion"
           ? (await ensureSecretForNotion(existing.companyId, input)) ?? existing.secretId
-          : input.secretId === undefined
-            ? existing.secretId
-            : input.secretId;
+          : provider === "github"
+            ? (await ensureTokenSecret(existing.companyId, input, GITHUB_SECRET_NAME, "GitHub token for repository clone/fetch/push.")) ?? existing.secretId
+            : provider === "bitbucket"
+              ? (await ensureTokenSecret(existing.companyId, input, BITBUCKET_SECRET_NAME, "Bitbucket app password for repository clone/fetch/push.")) ?? existing.secretId
+              : input.secretId === undefined
+                ? existing.secretId
+                : input.secretId;
       if (provider === "notion" && !secretId) {
         throw unprocessable("Notion requires either a token or a saved secret");
+      }
+      if (provider === "github" && !secretId) {
+        throw unprocessable("GitHub requires either a token or a saved secret");
+      }
+      if (provider === "bitbucket" && !secretId) {
+        throw unprocessable("Bitbucket requires either an app password/token or a saved secret");
       }
       const nextConfig = input.config === undefined
         ? existing.configJson
@@ -249,7 +471,7 @@ export function externalAppService(db: Db) {
         .set({
           displayName: input.displayName?.trim() || existing.displayName,
           secretId,
-          configJson: nextConfig as NotionExternalAppConfig | ObsidianExternalAppConfig,
+          configJson: nextConfig as NotionExternalAppConfig | ObsidianExternalAppConfig | GithubExternalAppConfig | BitbucketExternalAppConfig,
           status: "configured",
           lastError: null,
           updatedAt: new Date(),
@@ -272,7 +494,11 @@ export function externalAppService(db: Db) {
       const provider = asProvider(existing.provider);
       const result = provider === "notion"
         ? await runNotionHealthCheck(existing)
-        : await runObsidianHealthCheck(existing);
+        : provider === "github"
+          ? await runGitHubHealthCheck(existing)
+          : provider === "bitbucket"
+            ? await runBitbucketHealthCheck(existing)
+            : await runObsidianHealthCheck(existing);
       const updated = await db
         .update(companyExternalAppBindings)
         .set({
@@ -285,6 +511,16 @@ export function externalAppService(db: Db) {
         .returning()
         .then((rows) => rows[0] ?? existing);
       return { binding: redactBinding(updated), result };
+    },
+
+    listRepositories: async (bindingId: string, query: string | null) => {
+      const existing = await getById(bindingId);
+      if (!existing) throw notFound("External app binding not found");
+      const provider = asProvider(existing.provider);
+      if (provider === "github") {
+        return listGitHubRepositories(existing, query);
+      }
+      throw unprocessable("Repository search is not available for this provider yet.");
     },
   };
 }

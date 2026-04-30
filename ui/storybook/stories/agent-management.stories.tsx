@@ -22,7 +22,7 @@ import {
 import { AgentIcon, AgentIconPicker } from "@/components/AgentIconPicker";
 import { AgentProperties } from "@/components/AgentProperties";
 import { RunButton, PauseResumeButton } from "@/components/AgentActionButtons";
-import type { LiveRunForIssue } from "@/api/heartbeats";
+import type { LiveRunForTask } from "@/api/heartbeats";
 import type { AdapterInfo } from "@/api/adapters";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
@@ -37,7 +37,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { storybookAgents, storybookIssues } from "../fixtures/paperclipData";
+import { storybookAgents, storybookTasks } from "../fixtures/paperclipData";
 
 const COMPANY_ID = "company-storybook";
 const now = new Date("2026-04-20T12:00:00.000Z");
@@ -102,7 +102,7 @@ const agentManagementAgents: Agent[] = [
       search: true,
       dangerouslyBypassApprovalsAndSandbox: true,
       promptTemplate:
-        "You are {{ agent.name }}. Work only on the checked-out issue, keep comments concise, and verify before handoff.",
+        "You are {{ agent.name }}. Work only on the checked-out task, keep comments concise, and verify before handoff.",
       instructionsFilePath: "agents/codexcoder/AGENTS.md",
       extraArgs: ["--full-auto"],
       env: {
@@ -231,11 +231,11 @@ const runtimeState: AgentRuntimeState = {
   sessionId: "session-codex-storybook-management-20260420",
   sessionDisplayId: "codex-storybook-20260420",
   sessionParamsJson: {
-    issueIdentifier: "PAP-1670",
+    taskIdentifier: "PAP-1670",
     workspaceStrategy: "git_worktree",
   },
   stateJson: {
-    currentIssue: "PAP-1670",
+    currentTask: "PAP-1670",
     workspace: "PAP-1641-create-super-detailed-storybooks-for-our-project",
   },
   lastRunId: "run-agent-management-live",
@@ -323,19 +323,19 @@ const adapterFixtures: AdapterInfo[] = [
   },
 ];
 
-const liveRuns: LiveRunForIssue[] = [
+const liveRuns: LiveRunForTask[] = [
   {
     id: "run-agent-management-live",
     status: "running",
     invocationSource: "assignment",
-    triggerDetail: "issue_assigned",
+    triggerDetail: "task_assigned",
     startedAt: recent(8).toISOString(),
     finishedAt: null,
     createdAt: recent(8).toISOString(),
     agentId: "agent-codex",
     agentName: "CodexCoder",
     adapterType: "codex_local",
-    issueId: "issue-storybook-1",
+    taskId: "task-storybook-1",
     livenessState: "advanced",
     livenessReason: null,
     continuationAttempt: 0,
@@ -353,7 +353,7 @@ const liveRuns: LiveRunForIssue[] = [
     agentId: "agent-qa",
     agentName: "QAChecker",
     adapterType: "claude_local",
-    issueId: "issue-storybook-3",
+    taskId: "task-storybook-3",
     livenessState: null,
     livenessReason: "Waiting for current visual review to finish.",
     continuationAttempt: 0,
@@ -371,7 +371,7 @@ const liveRuns: LiveRunForIssue[] = [
     agentId: "agent-cto",
     agentName: "CTO",
     adapterType: "codex_local",
-    issueId: "issue-storybook-2",
+    taskId: "task-storybook-2",
     livenessState: "completed",
     livenessReason: null,
     continuationAttempt: 0,
@@ -389,7 +389,7 @@ const liveRuns: LiveRunForIssue[] = [
     agentId: "agent-observability",
     agentName: "OpsWatch",
     adapterType: "http",
-    issueId: null,
+    taskId: null,
     livenessState: "blocked",
     livenessReason: "Webhook returned 503 during local runtime restart.",
     continuationAttempt: 1,
@@ -404,8 +404,8 @@ function StorybookQueryFixtures({ children }: { children: ReactNode }) {
   queryClient.setQueryData(queryKeys.agents.list(COMPANY_ID), agentManagementAgents);
   queryClient.setQueryData(queryKeys.secrets.list(COMPANY_ID), storybookSecrets);
   queryClient.setQueryData(queryKeys.adapters.all, adapterFixtures);
-  queryClient.setQueryData(queryKeys.issues.list(COMPANY_ID), storybookIssues);
-  queryClient.setQueryData([...queryKeys.issues.list(COMPANY_ID), "with-routine-executions"], storybookIssues);
+  queryClient.setQueryData(queryKeys.tasks.list(COMPANY_ID), storybookTasks);
+  queryClient.setQueryData([...queryKeys.tasks.list(COMPANY_ID), "with-routine-executions"], storybookTasks);
   queryClient.setQueryData([...queryKeys.liveRuns(COMPANY_ID), "dashboard"], liveRuns);
   queryClient.setQueryData(queryKeys.instance.generalSettings, { censorUsernameInLogs: false });
   queryClient.setQueryData(queryKeys.agents.adapterModels(COMPANY_ID, "codex_local"), [
@@ -437,7 +437,7 @@ function AgentConfigFormStory() {
     search: true,
     dangerouslyBypassSandbox: true,
     promptTemplate:
-      "You are {{ agent.name }}. Read the assigned issue, make a small verified change, and update the task.",
+      "You are {{ agent.name }}. Read the assigned task, make a small verified change, and update the task.",
     extraArgs: "--full-auto, --search",
     envBindings: {
       OPENAI_API_KEY: { type: "secret_ref", secretId: "secret-openai", version: "latest" },

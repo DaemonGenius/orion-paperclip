@@ -9,15 +9,15 @@ import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
 function TestHarness({
-  onNewIssue,
+  onNewTask,
   onSearch,
 }: {
-  onNewIssue: () => void;
+  onNewTask: () => void;
   onSearch?: () => void;
 }) {
   useKeyboardShortcuts({
     enabled: true,
-    onNewIssue,
+    onNewTask,
     onSearch,
   });
 
@@ -38,10 +38,10 @@ describe("useKeyboardShortcuts", () => {
 
   it("ignores events already claimed by another handler", () => {
     const root = createRoot(container);
-    const onNewIssue = vi.fn();
+    const onNewTask = vi.fn();
 
     act(() => {
-      root.render(<TestHarness onNewIssue={onNewIssue} />);
+      root.render(<TestHarness onNewTask={onNewTask} />);
     });
 
     const event = new KeyboardEvent("keydown", {
@@ -52,7 +52,7 @@ describe("useKeyboardShortcuts", () => {
     event.preventDefault();
     document.dispatchEvent(event);
 
-    expect(onNewIssue).not.toHaveBeenCalled();
+    expect(onNewTask).not.toHaveBeenCalled();
 
     act(() => {
       root.unmount();
@@ -68,7 +68,7 @@ describe("useKeyboardShortcuts", () => {
     document.body.appendChild(input);
 
     act(() => {
-      root.render(<TestHarness onNewIssue={vi.fn()} onSearch={onSearch} />);
+      root.render(<TestHarness onNewTask={vi.fn()} onSearch={onSearch} />);
     });
 
     document.dispatchEvent(new KeyboardEvent("keydown", {
@@ -91,7 +91,7 @@ describe("useKeyboardShortcuts", () => {
     const onSearch = vi.fn();
 
     act(() => {
-      root.render(<TestHarness onNewIssue={vi.fn()} onSearch={onSearch} />);
+      root.render(<TestHarness onNewTask={vi.fn()} onSearch={onSearch} />);
     });
 
     document.dispatchEvent(new KeyboardEvent("keydown", {

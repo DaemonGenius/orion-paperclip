@@ -67,11 +67,11 @@ const mockHeartbeatService = vi.hoisted(() => ({
   cancelRun: vi.fn(),
 }));
 
-const mockIssueApprovalService = vi.hoisted(() => ({
+const mockTaskApprovalService = vi.hoisted(() => ({
   linkManyForApproval: vi.fn(),
 }));
 
-const mockIssueService = vi.hoisted(() => ({
+const mockTaskService = vi.hoisted(() => ({
   list: vi.fn(),
 }));
 
@@ -143,12 +143,12 @@ function registerModuleMocks() {
     heartbeatService: () => mockHeartbeatService,
   }));
 
-  vi.doMock("../services/issue-approvals.js", () => ({
-    issueApprovalService: () => mockIssueApprovalService,
+  vi.doMock("../services/task-approvals.js", () => ({
+    taskApprovalService: () => mockTaskApprovalService,
   }));
 
-  vi.doMock("../services/issues.js", () => ({
-    issueService: () => mockIssueService,
+  vi.doMock("../services/tasks.js", () => ({
+    taskService: () => mockTaskService,
   }));
 
   vi.doMock("../services/secrets.js", () => ({
@@ -184,9 +184,9 @@ function registerModuleMocks() {
     companySkillService: () => mockCompanySkillService,
     budgetService: () => mockBudgetService,
     heartbeatService: () => mockHeartbeatService,
-    ISSUE_LIST_DEFAULT_LIMIT: 500,
-    issueApprovalService: () => mockIssueApprovalService,
-    issueService: () => mockIssueService,
+    TASK_LIST_DEFAULT_LIMIT: 500,
+    taskApprovalService: () => mockTaskApprovalService,
+    taskService: () => mockTaskService,
     logActivity: mockLogActivity,
     secretService: () => mockSecretService,
     syncInstructionsBundleConfigFromFilePath: mockSyncInstructionsBundleConfigFromFilePath,
@@ -274,8 +274,8 @@ describe.sequential("agent permission routes", () => {
     vi.doUnmock("../services/heartbeat.js");
     vi.doUnmock("../services/index.js");
     vi.doUnmock("../services/instance-settings.js");
-    vi.doUnmock("../services/issue-approvals.js");
-    vi.doUnmock("../services/issues.js");
+    vi.doUnmock("../services/task-approvals.js");
+    vi.doUnmock("../services/tasks.js");
     vi.doUnmock("../services/secrets.js");
     vi.doUnmock("../services/environments.js");
     vi.doUnmock("../services/workspace-operations.js");
@@ -307,8 +307,8 @@ describe.sequential("agent permission routes", () => {
     mockHeartbeatService.resetRuntimeSession.mockReset();
     mockHeartbeatService.getRun.mockReset();
     mockHeartbeatService.cancelRun.mockReset();
-    mockIssueApprovalService.linkManyForApproval.mockReset();
-    mockIssueService.list.mockReset();
+    mockTaskApprovalService.linkManyForApproval.mockReset();
+    mockTaskService.list.mockReset();
     mockSecretService.normalizeAdapterConfigForPersistence.mockReset();
     mockSecretService.resolveAdapterConfigForRuntime.mockReset();
     mockAgentInstructionsService.materializeManagedBundle.mockReset();
@@ -1140,9 +1140,9 @@ describe.sequential("agent permission routes", () => {
   });
 
   it("exposes a dedicated agent route for the inbox mine view", async () => {
-    mockIssueService.list.mockResolvedValue([
+    mockTaskService.list.mockResolvedValue([
       {
-        id: "issue-1",
+        id: "task-1",
         identifier: "PAP-910",
         title: "Inbox follow-up",
         status: "todo",
@@ -1164,13 +1164,13 @@ describe.sequential("agent permission routes", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual([
       {
-        id: "issue-1",
+        id: "task-1",
         identifier: "PAP-910",
         title: "Inbox follow-up",
         status: "todo",
       },
     ]);
-    expect(mockIssueService.list).toHaveBeenCalledWith(companyId, {
+    expect(mockTaskService.list).toHaveBeenCalledWith(companyId, {
       touchedByUserId: "board-user",
       inboxArchivedByUserId: "board-user",
       status: "backlog,todo,in_progress,in_review,blocked,done",

@@ -824,7 +824,7 @@ export function normalizeAgentDefaultsForJoin(input: {
   const sessionKeyStrategy = nonEmptyTrimmedString(defaults.sessionKeyStrategy);
   if (
     sessionKeyStrategy === "fixed" ||
-    sessionKeyStrategy === "issue" ||
+    sessionKeyStrategy === "task" ||
     sessionKeyStrategy === "run"
   ) {
     normalized.sessionKeyStrategy = sessionKeyStrategy;
@@ -1696,7 +1696,7 @@ export function buildInviteOnboardingTextDocument(
           paperclipApiUrl: "http://host.docker.internal:3100",
           headers: { "x-openclaw-token": token },
           waitTimeoutMs: 120000,
-          sessionKeyStrategy: "issue",
+          sessionKeyStrategy: "task",
           role: "operator",
           scopes: ["operator.admin"]
         }
@@ -1729,7 +1729,7 @@ export function buildInviteOnboardingTextDocument(
         "paperclipApiUrl": "https://paperclip-hostname-your-agent-can-reach:3100",
         "headers": { "x-openclaw-token": "replace-me" },
         "waitTimeoutMs": 120000,
-        "sessionKeyStrategy": "issue",
+        "sessionKeyStrategy": "task",
         "role": "operator",
         "scopes": ["operator.admin"]
       }
@@ -4241,7 +4241,7 @@ export function accessRoutes(
         entityId: memberId,
         details: {
           principalId: result.member.principalId,
-          reassignedIssueCount: result.reassignedIssueCount,
+          reassignedTaskCount: result.reassignedTaskCount,
           reassignment: req.body.reassignment ?? null,
         },
       });
@@ -4252,7 +4252,7 @@ export function accessRoutes(
       if (!member) throw notFound("Member not found");
       res.json({
         member,
-        reassignedIssueCount: result.reassignedIssueCount,
+        reassignedTaskCount: result.reassignedTaskCount,
       });
     }
   );

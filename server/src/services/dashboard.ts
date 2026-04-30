@@ -1,6 +1,6 @@
 import { and, eq, gte, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agents, approvals, companies, costEvents, heartbeatRuns, issues } from "@paperclipai/db";
+import { agents, approvals, companies, costEvents, heartbeatRuns, tasks } from "@paperclipai/db";
 import { notFound } from "../errors.js";
 import { budgetService } from "./budgets.js";
 
@@ -41,10 +41,10 @@ export function dashboardService(db: Db) {
         .groupBy(agents.status);
 
       const taskRows = await db
-        .select({ status: issues.status, count: sql<number>`count(*)` })
-        .from(issues)
-        .where(eq(issues.companyId, companyId))
-        .groupBy(issues.status);
+        .select({ status: tasks.status, count: sql<number>`count(*)` })
+        .from(tasks)
+        .where(eq(tasks.companyId, companyId))
+        .groupBy(tasks.status);
 
       const pendingApprovals = await db
         .select({ count: sql<number>`count(*)` })

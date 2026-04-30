@@ -17,7 +17,7 @@ export const projectExecutionWorkspacePolicySchema = z
   .object({
     enabled: z.boolean(),
     defaultMode: z.enum(["shared_workspace", "isolated_workspace", "operator_branch", "adapter_default"]).optional(),
-    allowIssueOverride: z.boolean().optional(),
+    allowTaskOverride: z.boolean().optional(),
     defaultProjectWorkspaceId: z.string().uuid().optional().nullable(),
     environmentId: z.string().uuid().optional().nullable(),
     workspaceStrategy: executionWorkspaceStrategySchema.optional().nullable(),
@@ -37,6 +37,7 @@ export const projectWorkspaceRuntimeConfigSchema = z.object({
 
 const projectWorkspaceSourceTypeSchema = z.enum(["local_path", "git_repo", "remote_managed", "non_git_path"]);
 const projectWorkspaceVisibilitySchema = z.enum(["default", "advanced"]);
+const gitRepositoryProviderSchema = z.enum(["github", "bitbucket"]);
 
 const projectWorkspaceFields = {
   name: z.string().min(1).optional(),
@@ -94,6 +95,15 @@ export const updateProjectWorkspaceSchema = z.object({
 }).partial();
 
 export type UpdateProjectWorkspace = z.infer<typeof updateProjectWorkspaceSchema>;
+
+export const connectProjectRepositorySchema = z.object({
+  provider: gitRepositoryProviderSchema,
+  repoUrl: z.string().trim().url(),
+  defaultRef: z.string().trim().optional().nullable(),
+  branchTemplate: z.string().trim().min(1).max(200).optional().nullable(),
+});
+
+export type ConnectProjectRepository = z.infer<typeof connectProjectRepositorySchema>;
 
 const projectFields = {
   /** @deprecated Use goalIds instead */

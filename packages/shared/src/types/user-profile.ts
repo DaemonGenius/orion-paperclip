@@ -1,4 +1,4 @@
-import type { IssuePriority, IssueStatus } from "../constants.js";
+import type { TaskPriority, TaskStatus } from "../constants.js";
 
 export interface UserProfileIdentity {
   id: string;
@@ -14,10 +14,10 @@ export interface UserProfileIdentity {
 export interface UserProfileWindowStats {
   key: "last7" | "last30" | "all";
   label: string;
-  touchedIssues: number;
-  createdIssues: number;
-  completedIssues: number;
-  assignedOpenIssues: number;
+  touchedTasks: number;
+  createdTasks: number;
+  completedTasks: number;
+  assignedOpenTasks: number;
   commentCount: number;
   activityCount: number;
   costCents: number;
@@ -30,19 +30,19 @@ export interface UserProfileWindowStats {
 export interface UserProfileDailyPoint {
   date: string;
   activityCount: number;
-  completedIssues: number;
+  completedTasks: number;
   costCents: number;
   inputTokens: number;
   cachedInputTokens: number;
   outputTokens: number;
 }
 
-export interface UserProfileIssueSummary {
+export interface UserProfileTaskSummary {
   id: string;
   identifier: string | null;
   title: string;
-  status: IssueStatus;
-  priority: IssuePriority;
+  status: TaskStatus;
+  priority: TaskPriority;
   assigneeAgentId: string | null;
   assigneeUserId: string | null;
   updatedAt: Date;
@@ -81,7 +81,7 @@ export interface UserProfileResponse {
   user: UserProfileIdentity;
   stats: UserProfileWindowStats[];
   daily: UserProfileDailyPoint[];
-  recentIssues: UserProfileIssueSummary[];
+  recentTasks: UserProfileTaskSummary[];
   recentActivity: UserProfileActivitySummary[];
   topAgents: UserProfileAgentUsage[];
   topProviders: UserProfileProviderUsage[];

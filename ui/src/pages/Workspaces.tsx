@@ -1,10 +1,10 @@
 import { useEffect, useMemo } from "react";
 import { Link, Navigate } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
-import type { ExecutionWorkspace, Issue, Project } from "@paperclipai/shared";
+import type { ExecutionWorkspace, Task, Project } from "@paperclipai/shared";
 import { executionWorkspacesApi } from "../api/execution-workspaces";
 import { instanceSettingsApi } from "../api/instanceSettings";
-import { issuesApi } from "../api/issues";
+import { tasksApi } from "../api/tasks";
 import { projectsApi } from "../api/projects";
 import { ProjectWorkspacesContent } from "../components/ProjectWorkspacesContent";
 import { PageSkeleton } from "../components/PageSkeleton";
@@ -24,15 +24,15 @@ type ProjectWorkspaceGroup = {
 
 function buildProjectWorkspaceGroups(input: {
   projects: Project[];
-  issues: Issue[];
+  tasks: Task[];
   executionWorkspaces: ExecutionWorkspace[];
 }): ProjectWorkspaceGroup[] {
-  const issuesByProjectId = new Map<string, Issue[]>();
-  for (const issue of input.issues) {
-    if (!issue.projectId) continue;
-    const existing = issuesByProjectId.get(issue.projectId) ?? [];
-    existing.push(issue);
-    issuesByProjectId.set(issue.projectId, existing);
+  const tasksByProjectId = new Map<string, Task[]>();
+  for (const task of input.tasks) {
+    if (!task.projectId) continue;
+    const existing = tasksByProjectId.get(task.projectId) ?? [];
+    existing.push(task);
+    tasksByProjectId.set(task.projectId, existing);
   }
 
   const executionWorkspacesByProjectId = new Map<string, ExecutionWorkspace[]>();
@@ -47,7 +47,7 @@ function buildProjectWorkspaceGroups(input: {
     .map((project) => {
       const summaries = buildProjectWorkspaceSummaries({
         project,
-        issues: issuesByProjectId.get(project.id) ?? [],
+        tasks: tasksByProjectId.get(project.id) ?? [],
         executionWorkspaces: executionWorkspacesByProjectId.get(project.id) ?? [],
       });
       if (summaries.length === 0) return null;
@@ -85,9 +85,9 @@ export function Workspaces() {
     queryFn: () => projectsApi.list(selectedCompanyId!),
     enabled: Boolean(selectedCompanyId && isolatedWorkspacesEnabled),
   });
-  const { data: issues = [], isLoading: issuesLoading, error: issuesError } = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.issues.list(selectedCompanyId) : ["issues", "__workspaces__", "disabled"],
-    queryFn: () => issuesApi.list(selectedCompanyId!),
+  const { data: tasks = [], isLoading: tasksLoading, error: tasksError } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.tasks.list(selectedCompanyId) : ["tasks", "__workspaces__", "disabled"],
+    queryFn: () => tasksApi.list(selectedCompanyId!),
     enabled: Boolean(selectedCompanyId && isolatedWorkspacesEnabled),
   });
   const {
@@ -107,14 +107,14 @@ export function Workspaces() {
   }, [setBreadcrumbs]);
 
   const groups = useMemo(
-    () => buildProjectWorkspaceGroups({ projects, issues, executionWorkspaces }),
-    [executionWorkspaces, issues, projects],
+    () => buildProjectWorkspaceGroups({ projects, tasks, executionWorkspaces }),
+    [executionWorkspaces, tasks, projects],
   );
-  const dataLoading = projectsLoading || issuesLoading || executionWorkspacesLoading;
-  const error = (projectsError ?? issuesError ?? executionWorkspacesError) as Error | null;
+  const dataLoading = projectsLoading || tasksLoading || executionWorkspacesLoading;
+  const error = (projectsError ?? tasksError ?? executionWorkspacesError) as Error | null;
 
   if (experimentalSettingsQuery.isLoading) return <PageSkeleton variant="detail" />;
-  if (!isolatedWorkspacesEnabled) return <Navigate to="/issues" replace />;
+  if (!isolatedWorkspacesEnabled) return <Navigate to="/tasks" replace />;
   if (dataLoading) return <PageSkeleton variant="list" />;
   if (error) return <p className="text-sm text-destructive">{error.message}</p>;
 

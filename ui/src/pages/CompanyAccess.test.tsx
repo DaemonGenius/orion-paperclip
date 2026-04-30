@@ -11,7 +11,7 @@ const listJoinRequestsMock = vi.hoisted(() => vi.fn());
 const updateMemberAccessMock = vi.hoisted(() => vi.fn());
 const archiveMemberMock = vi.hoisted(() => vi.fn());
 const listAgentsMock = vi.hoisted(() => vi.fn());
-const listIssuesMock = vi.hoisted(() => vi.fn());
+const listTasksMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/api/access", () => ({
   accessApi: {
@@ -34,9 +34,9 @@ vi.mock("@/api/agents", () => ({
   },
 }));
 
-vi.mock("@/api/issues", () => ({
-  issuesApi: {
-    list: (companyId: string, filters: unknown) => listIssuesMock(companyId, filters),
+vi.mock("@/api/tasks", () => ({
+  tasksApi: {
+    list: (companyId: string, filters: unknown) => listTasksMock(companyId, filters),
   },
 }));
 
@@ -147,7 +147,7 @@ describe("CompanyAccess", () => {
       },
     ]);
     updateMemberAccessMock.mockResolvedValue({});
-    archiveMemberMock.mockResolvedValue({ reassignedIssueCount: 1 });
+    archiveMemberMock.mockResolvedValue({ reassignedTaskCount: 1 });
     listAgentsMock.mockResolvedValue([
       {
         id: "agent-1",
@@ -156,9 +156,9 @@ describe("CompanyAccess", () => {
         status: "active",
       },
     ]);
-    listIssuesMock.mockResolvedValue([
+    listTasksMock.mockResolvedValue([
       {
-        id: "issue-1",
+        id: "task-1",
         identifier: "PAP-1",
         title: "Assigned to removed user",
         status: "todo",
@@ -268,7 +268,7 @@ describe("CompanyAccess", () => {
     });
   });
 
-  it("removes a member with an issue reassignment target", async () => {
+  it("removes a member with an task reassignment target", async () => {
     const root = createRoot(container);
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },

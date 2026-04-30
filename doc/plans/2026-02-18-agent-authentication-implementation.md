@@ -19,7 +19,7 @@
 - New config/env settings:
   - `PAPERCLIP_AGENT_JWT_SECRET`
   - `PAPERCLIP_AGENT_JWT_TTL_SECONDS` (default: `172800`)
-  - `PAPERCLIP_AGENT_JWT_ISSUER` (default: `paperclip`)
+  - `PAPERCLIP_AGENT_JWT_TASKR` (default: `paperclip`)
   - `PAPERCLIP_AGENT_JWT_AUDIENCE` (default: `paperclip-api`)
 
 ## 2) Dual authentication path in `actorMiddleware`

@@ -39,7 +39,7 @@ Request behavior fields:
 - claimedApiKeyPath (string, optional): path to the claimed API key JSON file read by the agent at wake time (default ~/.openclaw/workspace/paperclip-claimed-api-key.json)
 
 Session routing fields:
-- sessionKeyStrategy (string, optional): issue (default), fixed, or run
+- sessionKeyStrategy (string, optional): task (default), fixed, or run
 - sessionKey (string, optional): fixed session key when strategy=fixed (default paperclip)
 
 Standard outbound payload additions:

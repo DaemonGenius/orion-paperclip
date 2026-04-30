@@ -34,7 +34,7 @@ describe("resolveRouteOnboardingOptions", () => {
       resolveRouteOnboardingOptions({
         pathname: "/pap/onboarding",
         companyPrefix: "pap",
-        companies: [{ id: "company-1", issuePrefix: "PAP" }],
+        companies: [{ id: "company-1", taskPrefix: "PAP" }],
       }),
     ).toEqual({ initialStep: 2, companyId: "company-1" });
   });
@@ -72,7 +72,7 @@ describe("shouldRedirectCompanylessRouteToOnboarding", () => {
   it("does not redirect when companies exist", () => {
     expect(
       shouldRedirectCompanylessRouteToOnboarding({
-        pathname: "/issues",
+        pathname: "/tasks",
         hasCompanies: true,
       }),
     ).toBe(false);

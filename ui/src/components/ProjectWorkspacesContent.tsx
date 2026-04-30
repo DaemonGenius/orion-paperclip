@@ -45,8 +45,8 @@ export function ProjectWorkspacesContent({
       queryClient.invalidateQueries({ queryKey: queryKeys.executionWorkspaces.list(companyId, { projectId }) });
       queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(projectId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.projects.list(companyId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(companyId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.listByProject(companyId, projectId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.listByProject(companyId, projectId) });
     },
   });
 
@@ -108,8 +108,8 @@ export function ProjectWorkspacesContent({
             queryClient.invalidateQueries({ queryKey: queryKeys.executionWorkspaces.list(companyId, { projectId }) });
             queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(projectId) });
             queryClient.invalidateQueries({ queryKey: queryKeys.projects.list(companyId) });
-            queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(companyId) });
-            queryClient.invalidateQueries({ queryKey: queryKeys.issues.listByProject(companyId, projectId) });
+            queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(companyId) });
+            queryClient.invalidateQueries({ queryKey: queryKeys.tasks.listByProject(companyId, projectId) });
             setClosingWorkspace(null);
           }}
         />

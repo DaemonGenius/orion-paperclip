@@ -12,9 +12,9 @@ import {
   costEvents,
   heartbeatRunEvents,
   heartbeatRuns,
-  issueExecutionDecisions,
-  issues,
-  issueComments,
+  taskExecutionDecisions,
+  tasks,
+  taskComments,
 } from "@paperclipai/db";
 import { AGENT_DEFAULT_MAX_CONCURRENT_RUNS, isUuidLike, normalizeAgentUrlKey } from "@paperclipai/shared";
 import { conflict, notFound, unprocessable } from "../errors.js";
@@ -505,9 +505,9 @@ export function agentService(db: Db) {
       return db.transaction(async (tx) => {
         await tx.update(agents).set({ reportsTo: null }).where(eq(agents.reportsTo, id));
         await tx
-          .update(issues)
+          .update(tasks)
           .set({ assigneeAgentId: null, createdByAgentId: null })
-          .where(or(eq(issues.assigneeAgentId, id), eq(issues.createdByAgentId, id)));
+          .where(or(eq(tasks.assigneeAgentId, id), eq(tasks.createdByAgentId, id)));
         await tx.delete(heartbeatRunEvents).where(eq(heartbeatRunEvents.agentId, id));
         await tx.delete(agentTaskSessions).where(eq(agentTaskSessions.agentId, id));
         await tx.delete(activityLog).where(
@@ -516,8 +516,8 @@ export function agentService(db: Db) {
             sql`${activityLog.runId} in (select ${heartbeatRuns.id} from ${heartbeatRuns} where ${heartbeatRuns.agentId} = ${id})`,
           ),
         );
-        await tx.delete(issueExecutionDecisions).where(eq(issueExecutionDecisions.actorAgentId, id));
-        await tx.delete(issueComments).where(eq(issueComments.authorAgentId, id));
+        await tx.delete(taskExecutionDecisions).where(eq(taskExecutionDecisions.actorAgentId, id));
+        await tx.delete(taskComments).where(eq(taskComments.authorAgentId, id));
         await tx.delete(heartbeatRuns).where(eq(heartbeatRuns.agentId, id));
         await tx.delete(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, id));
         await tx.delete(agentApiKeys).where(eq(agentApiKeys.agentId, id));

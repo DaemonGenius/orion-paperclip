@@ -10,7 +10,7 @@ import { ShieldCheck, Trash2, Users } from "lucide-react";
 import { accessApi, type CompanyMember } from "@/api/access";
 import { agentsApi } from "@/api/agents";
 import { ApiError } from "@/api/client";
-import { issuesApi } from "@/api/issues";
+import { tasksApi } from "@/api/tasks";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -50,7 +50,7 @@ const implicitRoleGrantMap: Record<NonNullable<CompanyMember["membershipRole"]>,
   viewer: [],
 };
 
-const reassignmentIssueStatuses = "backlog,todo,in_progress,in_review,blocked,failed,timed_out";
+const reassignmentTaskStatuses = "backlog,todo,in_progress,in_review,blocked,failed,timed_out";
 type EditableMemberStatus = "pending" | "active" | "suspended";
 
 function getImplicitGrantKeys(role: CompanyMember["membershipRole"]) {
@@ -172,12 +172,12 @@ export function CompanyAccess() {
     [removingMemberId, membersQuery.data?.members],
   );
 
-  const assignedIssuesQuery = useQuery({
-    queryKey: ["access", "member-assigned-issues", selectedCompanyId ?? "", removingMember?.principalId ?? ""],
+  const assignedTasksQuery = useQuery({
+    queryKey: ["access", "member-assigned-tasks", selectedCompanyId ?? "", removingMember?.principalId ?? ""],
     queryFn: () =>
-      issuesApi.list(selectedCompanyId!, {
+      tasksApi.list(selectedCompanyId!, {
         assigneeUserId: removingMember!.principalId,
-        status: reassignmentIssueStatuses,
+        status: reassignmentTaskStatuses,
       }),
     enabled: !!selectedCompanyId && !!removingMember,
   });
@@ -197,15 +197,15 @@ export function CompanyAccess() {
       setReassignmentTarget("__unassigned");
       await refreshAccessData();
       if (selectedCompanyId) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(selectedCompanyId) });
-        await queryClient.invalidateQueries({ queryKey: queryKeys.issues.listAssignedToMe(selectedCompanyId) });
-        await queryClient.invalidateQueries({ queryKey: queryKeys.issues.listTouchedByMe(selectedCompanyId) });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(selectedCompanyId) });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.tasks.listAssignedToMe(selectedCompanyId) });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.tasks.listTouchedByMe(selectedCompanyId) });
       }
       pushToast({
         title: "Member removed",
         body:
-          result.reassignedIssueCount > 0
-            ? `${result.reassignedIssueCount} assigned issue${result.reassignedIssueCount === 1 ? "" : "s"} cleaned up.`
+          result.reassignedTaskCount > 0
+            ? `${result.reassignedTaskCount} assigned task${result.reassignedTaskCount === 1 ? "" : "s"} cleaned up.`
             : undefined,
         tone: "success",
       });
@@ -264,7 +264,7 @@ export function CompanyAccess() {
       member.id !== removingMemberId,
   );
   const activeReassignmentAgents = (agentsQuery.data ?? []).filter(isAssignableAgent);
-  const assignedIssues = assignedIssuesQuery.data ?? [];
+  const assignedTasks = assignedTasksQuery.data ?? [];
 
   return (
     <div className="max-w-6xl space-y-8">
@@ -541,15 +541,15 @@ export function CompanyAccess() {
                 <div className="text-sm font-medium">{memberDisplayName(removingMember)}</div>
                 <div className="text-sm text-muted-foreground">{removingMember.user?.email || removingMember.principalId}</div>
                 <div className="mt-2 text-sm text-muted-foreground">
-                  {assignedIssuesQuery.isLoading
-                    ? "Checking assigned issues..."
-                    : `${assignedIssues.length} open assigned issue${assignedIssues.length === 1 ? "" : "s"}`}
+                  {assignedTasksQuery.isLoading
+                    ? "Checking assigned tasks..."
+                    : `${assignedTasks.length} open assigned task${assignedTasks.length === 1 ? "" : "s"}`}
                 </div>
               </div>
 
-              {assignedIssues.length > 0 ? (
+              {assignedTasks.length > 0 ? (
                 <div className="space-y-2">
-                  <div className="text-sm font-medium">Issue reassignment</div>
+                  <div className="text-sm font-medium">Task reassignment</div>
                   <select
                     className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                     value={reassignmentTarget}
@@ -576,15 +576,15 @@ export function CompanyAccess() {
                     ) : null}
                   </select>
                   <div className="max-h-36 overflow-auto rounded-lg border border-border">
-                    {assignedIssues.slice(0, 6).map((issue) => (
-                      <div key={issue.id} className="border-b border-border px-3 py-2 text-sm last:border-b-0">
-                        <div className="font-medium">{issue.identifier ?? issue.id.slice(0, 8)}</div>
-                        <div className="truncate text-muted-foreground">{issue.title}</div>
+                    {assignedTasks.slice(0, 6).map((task) => (
+                      <div key={task.id} className="border-b border-border px-3 py-2 text-sm last:border-b-0">
+                        <div className="font-medium">{task.identifier ?? task.id.slice(0, 8)}</div>
+                        <div className="truncate text-muted-foreground">{task.title}</div>
                       </div>
                     ))}
-                    {assignedIssues.length > 6 ? (
+                    {assignedTasks.length > 6 ? (
                       <div className="px-3 py-2 text-sm text-muted-foreground">
-                        {assignedIssues.length - 6} more issue{assignedIssues.length - 6 === 1 ? "" : "s"}
+                        {assignedTasks.length - 6} more task{assignedTasks.length - 6 === 1 ? "" : "s"}
                       </div>
                     ) : null}
                   </div>
@@ -605,7 +605,7 @@ export function CompanyAccess() {
                   target: reassignmentTarget,
                 });
               }}
-              disabled={archiveMemberMutation.isPending || assignedIssuesQuery.isLoading}
+              disabled={archiveMemberMutation.isPending || assignedTasksQuery.isLoading}
             >
               {archiveMemberMutation.isPending ? "Removing..." : "Remove member"}
             </Button>

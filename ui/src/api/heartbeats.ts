@@ -14,7 +14,7 @@ export interface RunLivenessFields {
   nextAction: string | null;
 }
 
-export interface ActiveRunForIssue {
+export interface ActiveRunForTask {
   id: string;
   status: string;
   invocationSource: string;
@@ -27,7 +27,7 @@ export interface ActiveRunForIssue {
   adapterType: string;
   logBytes?: number | null;
   lastOutputBytes?: number | null;
-  issueId?: string | null;
+  taskId?: string | null;
   livenessState?: RunLivenessFields["livenessState"];
   livenessReason?: string | null;
   continuationAttempt?: number;
@@ -36,7 +36,7 @@ export interface ActiveRunForIssue {
   outputSilence?: HeartbeatRun["outputSilence"];
 }
 
-export interface LiveRunForIssue {
+export interface LiveRunForTask {
   id: string;
   status: string;
   invocationSource: string;
@@ -49,7 +49,7 @@ export interface LiveRunForIssue {
   adapterType: string;
   logBytes?: number | null;
   lastOutputBytes?: number | null;
-  issueId?: string | null;
+  taskId?: string | null;
   livenessState?: RunLivenessFields["livenessState"];
   livenessReason?: string | null;
   continuationAttempt?: number;
@@ -61,7 +61,7 @@ export interface LiveRunForIssue {
 export interface WatchdogDecisionInput {
   runId: string;
   decision: "snooze" | "continue" | "dismissed_false_positive";
-  evaluationIssueId?: string | null;
+  evaluationTaskId?: string | null;
   reason?: string | null;
   snoozedUntil?: string | null;
 }
@@ -93,14 +93,14 @@ export const heartbeatsApi = {
   recordWatchdogDecision: (input: WatchdogDecisionInput) =>
     api.post(`/heartbeat-runs/${input.runId}/watchdog-decisions`, {
       decision: input.decision,
-      evaluationIssueId: input.evaluationIssueId ?? null,
+      evaluationTaskId: input.evaluationTaskId ?? null,
       reason: input.reason ?? null,
       snoozedUntil: input.snoozedUntil ?? null,
     }),
-  liveRunsForIssue: (issueId: string) =>
-    api.get<LiveRunForIssue[]>(`/issues/${issueId}/live-runs`),
-  activeRunForIssue: (issueId: string) =>
-    api.get<ActiveRunForIssue | null>(`/issues/${issueId}/active-run`),
+  liveRunsForTask: (taskId: string) =>
+    api.get<LiveRunForTask[]>(`/tasks/${taskId}/live-runs`),
+  activeRunForTask: (taskId: string) =>
+    api.get<ActiveRunForTask | null>(`/tasks/${taskId}/active-run`),
   liveRunsForCompany: (
     companyId: string,
     options?: number | { minCount?: number; limit?: number },
@@ -113,7 +113,7 @@ export const heartbeatsApi = {
       if (options.limit) searchParams.set("limit", String(options.limit));
     }
     const qs = searchParams.toString();
-    return api.get<LiveRunForIssue[]>(`/companies/${companyId}/live-runs${qs ? `?${qs}` : ""}`);
+    return api.get<LiveRunForTask[]>(`/companies/${companyId}/live-runs${qs ? `?${qs}` : ""}`);
   },
   listInstanceSchedulerAgents: () =>
     api.get<InstanceSchedulerHeartbeatAgent[]>("/instance/scheduler-heartbeats"),

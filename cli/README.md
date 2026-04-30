@@ -278,7 +278,7 @@ We welcome contributions. See the [contributing guide](https://github.com/paperc
 ## Community
 
 - [Discord](https://discord.gg/m4HZY7xNG3) — Join the community
-- [GitHub Issues](https://github.com/paperclipai/paperclip/issues) — bugs and feature requests
+- [GitHub Tasks](https://github.com/paperclipai/paperclip/tasks) — bugs and feature requests
 - [GitHub Discussions](https://github.com/paperclipai/paperclip/discussions) — ideas and RFC
 
 <br/>

@@ -73,7 +73,7 @@ describe.sequential("execution workspace routes", () => {
     expect(mockExecutionWorkspaceService.listSummaries).toHaveBeenCalledWith("company-1", {
       projectId: undefined,
       projectWorkspaceId: undefined,
-      issueId: undefined,
+      taskId: undefined,
       status: undefined,
       reuseEligible: true,
     });

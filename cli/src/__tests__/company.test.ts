@@ -117,7 +117,7 @@ describe("renderCompanyImportPreview", () => {
         company: true,
         agents: true,
         projects: true,
-        issues: true,
+        tasks: true,
         skills: true,
       },
       targetCompanyId: "company-123",
@@ -138,7 +138,7 @@ describe("renderCompanyImportPreview", () => {
         projectPlans: [
           { slug: "alpha", action: "create", plannedName: "Alpha", existingProjectId: null, reason: null },
         ],
-        issuePlans: [
+        taskPlans: [
           { slug: "kickoff", action: "create", plannedTitle: "Kickoff", reason: null },
         ],
       },
@@ -153,7 +153,7 @@ describe("renderCompanyImportPreview", () => {
           company: true,
           agents: true,
           projects: true,
-          issues: true,
+          tasks: true,
           skills: true,
         },
         company: {
@@ -224,12 +224,12 @@ describe("renderCompanyImportPreview", () => {
             metadata: null,
           },
         ],
-        issues: [
+        tasks: [
           {
             slug: "kickoff",
             identifier: null,
             title: "Kickoff",
-            path: "projects/alpha/issues/kickoff/TASK.md",
+            path: "projects/alpha/tasks/kickoff/TASK.md",
             projectSlug: "alpha",
             projectWorkspaceKey: null,
             assigneeAgentSlug: "ceo",
@@ -344,7 +344,7 @@ describe("import selection catalog", () => {
         company: true,
         agents: true,
         projects: true,
-        issues: true,
+        tasks: true,
         skills: true,
       },
       targetCompanyId: "company-123",
@@ -355,7 +355,7 @@ describe("import selection catalog", () => {
         companyAction: "create",
         agentPlans: [],
         projectPlans: [],
-        issuePlans: [],
+        taskPlans: [],
       },
       manifest: {
         schemaVersion: 1,
@@ -368,7 +368,7 @@ describe("import selection catalog", () => {
           company: true,
           agents: true,
           projects: true,
-          issues: true,
+          tasks: true,
           skills: true,
         },
         company: {
@@ -439,12 +439,12 @@ describe("import selection catalog", () => {
             metadata: null,
           },
         ],
-        issues: [
+        tasks: [
           {
             slug: "kickoff",
             identifier: null,
             title: "Kickoff",
-            path: "projects/alpha/issues/kickoff/TASK.md",
+            path: "projects/alpha/tasks/kickoff/TASK.md",
             projectSlug: "alpha",
             projectWorkspaceKey: null,
             assigneeAgentSlug: "ceo",
@@ -474,8 +474,8 @@ describe("import selection catalog", () => {
         },
         "projects/alpha/PROJECT.md": "# Alpha",
         "projects/alpha/notes.md": "project notes",
-        "projects/alpha/issues/kickoff/TASK.md": "# Kickoff",
-        "projects/alpha/issues/kickoff/details.md": "task details",
+        "projects/alpha/tasks/kickoff/TASK.md": "# Kickoff",
+        "projects/alpha/tasks/kickoff/details.md": "task details",
         "agents/ceo/AGENT.md": "# CEO",
         "agents/ceo/prompt.md": "prompt",
         "skills/skill-a/SKILL.md": "# Skill A",
@@ -491,12 +491,12 @@ describe("import selection catalog", () => {
 
     expect(state.company).toBe(true);
     expect(state.projects.has("alpha")).toBe(true);
-    expect(state.issues.has("kickoff")).toBe(true);
+    expect(state.tasks.has("kickoff")).toBe(true);
     expect(state.agents.has("ceo")).toBe(true);
     expect(state.skills.has("skill-a")).toBe(true);
 
     state.company = false;
-    state.issues.clear();
+    state.tasks.clear();
     state.agents.clear();
     state.skills.clear();
 
@@ -505,8 +505,8 @@ describe("import selection catalog", () => {
     expect(selectedFiles).toContain(".paperclip.yaml");
     expect(selectedFiles).toContain("projects/alpha/PROJECT.md");
     expect(selectedFiles).toContain("projects/alpha/notes.md");
-    expect(selectedFiles).not.toContain("projects/alpha/issues/kickoff/TASK.md");
-    expect(selectedFiles).not.toContain("projects/alpha/issues/kickoff/details.md");
+    expect(selectedFiles).not.toContain("projects/alpha/tasks/kickoff/TASK.md");
+    expect(selectedFiles).not.toContain("projects/alpha/tasks/kickoff/details.md");
   });
 });
 
@@ -517,7 +517,7 @@ describe("default adapter overrides", () => {
         company: false,
         agents: true,
         projects: false,
-        issues: false,
+        tasks: false,
         skills: false,
       },
       targetCompanyId: null,
@@ -528,7 +528,7 @@ describe("default adapter overrides", () => {
         companyAction: "none",
         agentPlans: [],
         projectPlans: [],
-        issuePlans: [],
+        taskPlans: [],
       },
       manifest: {
         schemaVersion: 1,
@@ -538,7 +538,7 @@ describe("default adapter overrides", () => {
           company: false,
           agents: true,
           projects: false,
-          issues: false,
+          tasks: false,
           skills: false,
         },
         company: null,
@@ -581,7 +581,7 @@ describe("default adapter overrides", () => {
         ],
         skills: [],
         projects: [],
-        issues: [],
+        tasks: [],
         envInputs: [],
       },
       files: {},

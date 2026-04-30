@@ -71,7 +71,7 @@ Templates support variables like `{{agent.id}}`, `{{agent.name}}`, and run conte
 ## 4. Session resume behavior
 
 Paperclip stores resumable session state per `(agent, taskKey, adapterType)`.
-`taskKey` is derived from wakeup context (`taskKey`, `taskId`, or `issueId`).
+`taskKey` is derived from wakeup context (`taskKey`, `taskId`, or `taskId`).
 
 - A heartbeat for the same task key reuses the previous session for that task.
 - Different task keys for the same agent keep separate session state.
@@ -121,7 +121,7 @@ If the connection drops, the UI reconnects automatically.
 
 1. Disable timer or set a long interval
 2. Keep wake-on-assignment enabled
-3. Use child issues, comments, and on-demand wakeups for handoffs instead of loops that poll agents, sessions, or processes
+3. Use child tasks, comments, and on-demand wakeups for handoffs instead of loops that poll agents, sessions, or processes
 
 ## 7.3 Safety-first loop
 

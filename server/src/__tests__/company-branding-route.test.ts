@@ -33,10 +33,10 @@ const mockCompanyPortabilityService = vi.hoisted(() => ({
 
 const mockLogActivity = vi.hoisted(() => vi.fn());
 const mockFeedbackService = vi.hoisted(() => ({
-  listIssueVotesForUser: vi.fn(),
+  listTaskVotesForUser: vi.fn(),
   listFeedbackTraces: vi.fn(),
   getFeedbackTraceById: vi.fn(),
-  saveIssueVote: vi.fn(),
+  saveTaskVote: vi.fn(),
 }));
 
 vi.mock("../services/index.js", () => ({
@@ -56,8 +56,8 @@ function createCompany() {
     name: "Paperclip",
     description: null,
     status: "active",
-    issuePrefix: "PAP",
-    issueCounter: 568,
+    taskPrefix: "PAP",
+    taskCounter: 568,
     budgetMonthlyCents: 0,
     spentMonthlyCents: 0,
     requireBoardApprovalForNewAgents: false,

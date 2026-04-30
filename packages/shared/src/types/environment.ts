@@ -72,7 +72,7 @@ export interface EnvironmentLease {
   companyId: string;
   environmentId: string;
   executionWorkspaceId: string | null;
-  issueId: string | null;
+  taskId: string | null;
   heartbeatRunId: string | null;
   status: EnvironmentLeaseStatus;
   leasePolicy: EnvironmentLeasePolicy;

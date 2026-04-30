@@ -6,44 +6,44 @@ import type {
   DashboardSummary,
   ExecutionWorkspace,
   HeartbeatRun,
-  Issue,
+  Task,
   JoinRequest,
   ProjectWorkspace,
 } from "@paperclipai/shared";
 import {
-  DEFAULT_INBOX_ISSUE_COLUMNS,
+  DEFAULT_INBOX_TASK_COLUMNS,
   buildGroupedInboxSections,
   buildInboxKeyboardNavEntries,
   buildInboxDismissedAtByKey,
   computeInboxBadgeData,
-  filterInboxIssues,
-  getArchivedInboxSearchIssues,
-  getAvailableInboxIssueColumns,
+  filterInboxTasks,
+  getArchivedInboxSearchTasks,
+  getAvailableInboxTaskColumns,
   getInboxWorkItemKey,
   getApprovalsForTab,
   getInboxWorkItems,
   getInboxKeyboardSelectionIndex,
-  getInboxSearchSupplementIssues,
-  getRecentTouchedIssues,
-  getUnreadTouchedIssues,
+  getInboxSearchSupplementTasks,
+  getRecentTouchedTasks,
+  getUnreadTouchedTasks,
   groupInboxWorkItems,
   isInboxEntityDismissed,
   isMineInboxTab,
   loadInboxFilterPreferences,
-  loadInboxIssueColumns,
+  loadInboxTaskColumns,
   loadInboxWorkItemGroupBy,
   loadCollapsedInboxGroupKeys,
   loadLastInboxTab,
-  matchesInboxIssueSearch,
-  normalizeInboxIssueColumns,
-  RECENT_ISSUES_LIMIT,
+  matchesInboxTaskSearch,
+  normalizeInboxTaskColumns,
+  RECENT_TASKS_LIMIT,
   resolveInboxNestingEnabled,
-  resolveIssueWorkspaceName,
-  resolveIssueWorkspaceGroup,
+  resolveTaskWorkspaceName,
+  resolveTaskWorkspaceGroup,
   resolveInboxSelectionIndex,
   saveInboxFilterPreferences,
   saveCollapsedInboxGroupKeys,
-  saveInboxIssueColumns,
+  saveInboxTaskColumns,
   saveInboxWorkItemGroupBy,
   saveLastInboxTab,
   shouldShowCompanyAlerts,
@@ -51,6 +51,7 @@ import {
   shouldShowInboxSection,
   type InboxWorkItem,
 } from "./inbox";
+import { defaultTaskFilterState } from "./task-filters";
 
 const storage = new Map<string, string>();
 
@@ -173,7 +174,7 @@ function makeRun(id: string, status: HeartbeatRun["status"], createdAt: string, 
   };
 }
 
-function makeIssue(id: string, isUnreadForMe: boolean): Issue {
+function makeTask(id: string, isUnreadForMe: boolean): Task {
   return {
     id,
     companyId: "company-1",
@@ -181,7 +182,7 @@ function makeIssue(id: string, isUnreadForMe: boolean): Issue {
     projectWorkspaceId: null,
     goalId: null,
     parentId: null,
-    title: `Issue ${id}`,
+    title: `Task ${id}`,
     description: null,
     status: "todo",
     priority: "medium",
@@ -189,7 +190,7 @@ function makeIssue(id: string, isUnreadForMe: boolean): Issue {
     assigneeUserId: null,
     createdByAgentId: null,
     createdByUserId: null,
-    issueNumber: 1,
+    taskNumber: 1,
     identifier: `PAP-${id}`,
     requestDepth: 0,
     billingCode: null,
@@ -248,7 +249,7 @@ function makeExecutionWorkspace(overrides: Partial<ExecutionWorkspace> = {}): Ex
     companyId: "company-1",
     projectId: "project-1",
     projectWorkspaceId: "project-workspace-1",
-    sourceIssueId: "issue-1",
+    sourceTaskId: "task-1",
     mode: "isolated_workspace",
     strategyType: "git_worktree",
     name: "PAP-1 branch",
@@ -320,7 +321,7 @@ describe("inbox helpers", () => {
         makeRun("run-latest", "timed_out", "2026-03-11T01:00:00.000Z"),
         makeRun("run-other-agent", "failed", "2026-03-11T02:00:00.000Z", "agent-2"),
       ],
-      mineIssues: [makeIssue("1", true)],
+      mineTasks: [makeTask("1", true)],
       dismissedAlerts: new Set<string>(),
       dismissedAtByKey: new Map<string, number>(),
       currentUserId: "user-1",
@@ -331,7 +332,7 @@ describe("inbox helpers", () => {
       approvals: 1,
       failedRuns: 2,
       joinRequests: 1,
-      mineIssues: 1,
+      mineTasks: 1,
       alerts: 1,
     });
   });
@@ -342,7 +343,7 @@ describe("inbox helpers", () => {
       joinRequests: [],
       dashboard,
       heartbeatRuns: [makeRun("run-1", "failed", "2026-03-11T00:00:00.000Z")],
-      mineIssues: [],
+      mineTasks: [],
       dismissedAlerts: new Set<string>(["alert:budget", "alert:agent-errors"]),
       dismissedAtByKey: new Map<string, number>([["run:run-1", new Date("2026-03-11T00:00:00.000Z").getTime()]]),
       currentUserId: "user-1",
@@ -353,29 +354,29 @@ describe("inbox helpers", () => {
       approvals: 0,
       failedRuns: 0,
       joinRequests: 0,
-      mineIssues: 0,
+      mineTasks: 0,
       alerts: 0,
     });
   });
 
-  it("excludes read mine issues from the inbox badge count", () => {
+  it("excludes read mine tasks from the inbox badge count", () => {
     const result = computeInboxBadgeData({
       approvals: [],
       joinRequests: [],
       dashboard,
       heartbeatRuns: [],
-      mineIssues: [makeIssue("1", false), makeIssue("2", false), makeIssue("3", true)],
+      mineTasks: [makeTask("1", false), makeTask("2", false), makeTask("3", true)],
       dismissedAlerts: new Set<string>(),
       dismissedAtByKey: new Map(),
       currentUserId: "user-1",
     });
 
-    expect(result.mineIssues).toBe(1);
+    expect(result.mineTasks).toBe(1);
     expect(result.inbox).toBe(1);
     expect(result.alerts).toBe(2);
   });
 
-  it("resurfaces non-issue items when they change after dismissal", () => {
+  it("resurfaces non-task items when they change after dismissal", () => {
     const dismissedAtByKey = buildInboxDismissedAtByKey([
       {
         id: "dismissal-1",
@@ -404,11 +405,11 @@ describe("inbox helpers", () => {
     ).toBe(false);
   });
 
-  it("keeps read issues in the touched list but excludes them from unread counts", () => {
-    const issues = [makeIssue("1", true), makeIssue("2", false)];
+  it("keeps read tasks in the touched list but excludes them from unread counts", () => {
+    const tasks = [makeTask("1", true), makeTask("2", false)];
 
-    expect(getUnreadTouchedIssues(issues).map((issue) => issue.id)).toEqual(["1"]);
-    expect(issues).toHaveLength(2);
+    expect(getUnreadTouchedTasks(tasks).map((task) => task.id)).toEqual(["1"]);
+    expect(tasks).toHaveLength(2);
   });
 
   it("shows actionable approvals on mine, while recent and unread stay company-wide", () => {
@@ -467,7 +468,7 @@ describe("inbox helpers", () => {
       joinRequests: [],
       dashboard,
       heartbeatRuns: [],
-      mineIssues: [],
+      mineTasks: [],
       dismissedAlerts: new Set<string>(),
       dismissedAtByKey: new Map(),
       currentUserId: "user-1",
@@ -482,7 +483,7 @@ describe("inbox helpers", () => {
       joinRequests: [],
       dashboard,
       heartbeatRuns: [],
-      mineIssues: [],
+      mineTasks: [],
       dismissedAlerts: new Set<string>(),
       dismissedAtByKey: new Map(),
       currentUserId: "user-1",
@@ -493,11 +494,11 @@ describe("inbox helpers", () => {
   });
 
   it("mixes approvals into the inbox feed by most recent activity", () => {
-    const newerIssue = makeIssue("1", true);
-    newerIssue.lastActivityAt = new Date("2026-03-11T04:00:00.000Z");
+    const newerTask = makeTask("1", true);
+    newerTask.lastActivityAt = new Date("2026-03-11T04:00:00.000Z");
 
-    const olderIssue = makeIssue("2", false);
-    olderIssue.lastActivityAt = new Date("2026-03-11T02:00:00.000Z");
+    const olderTask = makeTask("2", false);
+    olderTask.lastActivityAt = new Date("2026-03-11T02:00:00.000Z");
 
     const approval = makeApprovalWithTimestamps(
       "approval-between",
@@ -507,36 +508,36 @@ describe("inbox helpers", () => {
 
     expect(
       getInboxWorkItems({
-        issues: [olderIssue, newerIssue],
+        tasks: [olderTask, newerTask],
         approvals: [approval],
       }).map((item) => {
-        if (item.kind === "issue") return `issue:${item.issue.id}`;
+        if (item.kind === "task") return `task:${item.task.id}`;
         if (item.kind === "approval") return `approval:${item.approval.id}`;
         if (item.kind === "join_request") return `join:${item.joinRequest.id}`;
         return `run:${item.run.id}`;
       }),
     ).toEqual([
-      "issue:1",
+      "task:1",
       "approval:approval-between",
-      "issue:2",
+      "task:2",
     ]);
   });
 
   it("prefers canonical lastActivityAt over comment-only timestamps", () => {
-    const activityIssue = makeIssue("1", true);
-    activityIssue.lastExternalCommentAt = new Date("2026-03-11T01:00:00.000Z");
-    activityIssue.lastActivityAt = new Date("2026-03-11T05:00:00.000Z");
+    const activityTask = makeTask("1", true);
+    activityTask.lastExternalCommentAt = new Date("2026-03-11T01:00:00.000Z");
+    activityTask.lastActivityAt = new Date("2026-03-11T05:00:00.000Z");
 
-    const commentIssue = makeIssue("2", true);
-    commentIssue.lastExternalCommentAt = new Date("2026-03-11T04:00:00.000Z");
-    commentIssue.lastActivityAt = new Date("2026-03-11T04:00:00.000Z");
+    const commentTask = makeTask("2", true);
+    commentTask.lastExternalCommentAt = new Date("2026-03-11T04:00:00.000Z");
+    commentTask.lastActivityAt = new Date("2026-03-11T04:00:00.000Z");
 
-    expect(getRecentTouchedIssues([commentIssue, activityIssue]).map((issue) => issue.id)).toEqual(["1", "2"]);
+    expect(getRecentTouchedTasks([commentTask, activityTask]).map((task) => task.id)).toEqual(["1", "2"]);
   });
 
   it("mixes join requests into the inbox feed by most recent activity", () => {
-    const issue = makeIssue("1", true);
-    issue.lastActivityAt = new Date("2026-03-11T04:00:00.000Z");
+    const task = makeTask("1", true);
+    task.lastActivityAt = new Date("2026-03-11T04:00:00.000Z");
 
     const joinRequest = makeJoinRequest("join-1");
     joinRequest.createdAt = new Date("2026-03-11T03:00:00.000Z");
@@ -549,41 +550,41 @@ describe("inbox helpers", () => {
 
     expect(
       getInboxWorkItems({
-        issues: [issue],
+        tasks: [task],
         approvals: [approval],
         joinRequests: [joinRequest],
       }).map((item) => {
-        if (item.kind === "issue") return `issue:${item.issue.id}`;
+        if (item.kind === "task") return `task:${item.task.id}`;
         if (item.kind === "approval") return `approval:${item.approval.id}`;
         if (item.kind === "join_request") return `join:${item.joinRequest.id}`;
         return `run:${item.run.id}`;
       }),
     ).toEqual([
-      "issue:1",
+      "task:1",
       "join:join-1",
       "approval:approval-oldest",
     ]);
   });
 
   it("skips hidden groups when building keyboard navigation entries", () => {
-    const visibleIssue = makeIssue("visible", true);
-    const hiddenIssue = makeIssue("hidden", true);
+    const visibleTask = makeTask("visible", true);
+    const hiddenTask = makeTask("hidden", true);
     const approval = makeApprovalWithTimestamps("approval-1", "pending", "2026-03-11T03:00:00.000Z");
 
     const entries = buildInboxKeyboardNavEntries(
       [
         {
           key: "visible-group",
-          displayItems: [{ kind: "issue", timestamp: 3, issue: visibleIssue }],
-          childrenByIssueId: new Map(),
+          displayItems: [{ kind: "task", timestamp: 3, task: visibleTask }],
+          childrenByTaskId: new Map(),
         },
         {
           key: "hidden-group",
           displayItems: [
-            { kind: "issue", timestamp: 2, issue: hiddenIssue },
+            { kind: "task", timestamp: 2, task: hiddenTask },
             { kind: "approval", timestamp: 1, approval },
           ],
-          childrenByIssueId: new Map(),
+          childrenByTaskId: new Map(),
         },
       ],
       new Set(["hidden-group"]),
@@ -593,22 +594,22 @@ describe("inbox helpers", () => {
     expect(entries).toEqual([
       {
         type: "top",
-        itemKey: `visible-group:${getInboxWorkItemKey({ kind: "issue", timestamp: 3, issue: visibleIssue })}`,
-        item: { kind: "issue", timestamp: 3, issue: visibleIssue },
+        itemKey: `visible-group:${getInboxWorkItemKey({ kind: "task", timestamp: 3, task: visibleTask })}`,
+        item: { kind: "task", timestamp: 3, task: visibleTask },
       },
     ]);
   });
 
-  it("includes child issues only when their parent row is expanded", () => {
-    const parentIssue = makeIssue("parent", true);
-    const childIssue = makeIssue("child", true);
-    childIssue.parentId = parentIssue.id;
+  it("includes child tasks only when their parent row is expanded", () => {
+    const parentTask = makeTask("parent", true);
+    const childTask = makeTask("child", true);
+    childTask.parentId = parentTask.id;
 
     const groupedSections = [
       {
         key: "workspace:default",
-        displayItems: [{ kind: "issue", timestamp: 2, issue: parentIssue } satisfies InboxWorkItem],
-        childrenByIssueId: new Map([[parentIssue.id, [childIssue]]]),
+        displayItems: [{ kind: "task", timestamp: 2, task: parentTask } satisfies InboxWorkItem],
+        childrenByTaskId: new Map([[parentTask.id, [childTask]]]),
       },
     ];
 
@@ -616,39 +617,39 @@ describe("inbox helpers", () => {
       buildInboxKeyboardNavEntries(groupedSections, new Set(), new Set()).map((entry) => entry.type === "top"
         ? entry.itemKey
         : entry.type === "child"
-          ? entry.issueId
+          ? entry.taskId
           : entry.groupKey),
     ).toEqual([
-      `workspace:default:${getInboxWorkItemKey({ kind: "issue", timestamp: 2, issue: parentIssue })}`,
-      childIssue.id,
+      `workspace:default:${getInboxWorkItemKey({ kind: "task", timestamp: 2, task: parentTask })}`,
+      childTask.id,
     ]);
 
     expect(
-      buildInboxKeyboardNavEntries(groupedSections, new Set(), new Set([parentIssue.id])).map((entry) => entry.type === "top"
+      buildInboxKeyboardNavEntries(groupedSections, new Set(), new Set([parentTask.id])).map((entry) => entry.type === "top"
         ? entry.itemKey
         : entry.type === "child"
-          ? entry.issueId
+          ? entry.taskId
           : entry.groupKey),
     ).toEqual([
-      `workspace:default:${getInboxWorkItemKey({ kind: "issue", timestamp: 2, issue: parentIssue })}`,
+      `workspace:default:${getInboxWorkItemKey({ kind: "task", timestamp: 2, task: parentTask })}`,
     ]);
   });
 
   it("emits a group nav entry for labeled groups and omits children when the group is collapsed", () => {
-    const visibleIssue = makeIssue("visible", true);
-    const hiddenIssue = makeIssue("hidden", true);
+    const visibleTask = makeTask("visible", true);
+    const hiddenTask = makeTask("hidden", true);
     const groupedSections = [
       {
         key: "priority:high",
         label: "High priority",
-        displayItems: [{ kind: "issue", timestamp: 3, issue: visibleIssue } satisfies InboxWorkItem],
-        childrenByIssueId: new Map(),
+        displayItems: [{ kind: "task", timestamp: 3, task: visibleTask } satisfies InboxWorkItem],
+        childrenByTaskId: new Map(),
       },
       {
         key: "priority:medium",
         label: "Medium priority",
-        displayItems: [{ kind: "issue", timestamp: 2, issue: hiddenIssue } satisfies InboxWorkItem],
-        childrenByIssueId: new Map(),
+        displayItems: [{ kind: "task", timestamp: 2, task: hiddenTask } satisfies InboxWorkItem],
+        childrenByTaskId: new Map(),
       },
     ];
 
@@ -675,21 +676,21 @@ describe("inbox helpers", () => {
     });
   });
 
-  it("sorts self-touched issues without external comments by updatedAt", () => {
-    const recentSelfTouched = makeIssue("recent", false);
+  it("sorts self-touched tasks without external comments by updatedAt", () => {
+    const recentSelfTouched = makeTask("recent", false);
     recentSelfTouched.lastExternalCommentAt = null as unknown as Date;
     recentSelfTouched.updatedAt = new Date("2026-03-11T05:00:00.000Z");
     recentSelfTouched.myLastTouchAt = new Date("2026-03-11T05:00:00.000Z");
 
-    const olderCommented = makeIssue("older", false);
+    const olderCommented = makeTask("older", false);
     olderCommented.lastExternalCommentAt = new Date("2026-03-11T03:00:00.000Z");
 
     const items = getInboxWorkItems({
-      issues: [olderCommented, recentSelfTouched],
+      tasks: [olderCommented, recentSelfTouched],
       approvals: [],
     });
 
-    expect(items.map((item) => (item.kind === "issue" ? item.issue.id : ""))).toEqual([
+    expect(items.map((item) => (item.kind === "task" ? item.task.id : ""))).toEqual([
       "recent",
       "older",
     ]);
@@ -735,27 +736,27 @@ describe("inbox helpers", () => {
     expect(shouldShowCompanyAlerts("all")).toBe(true);
   });
 
-  it("limits recent touched issues before unread badge counting", () => {
-    const issues = Array.from({ length: RECENT_ISSUES_LIMIT + 5 }, (_, index) => {
-      const issue = makeIssue(String(index + 1), index < 3);
-      issue.lastActivityAt = new Date(Date.UTC(2026, 2, 31, 0, 0, 0, 0) - index * 60_000);
-      return issue;
+  it("limits recent touched tasks before unread badge counting", () => {
+    const tasks = Array.from({ length: RECENT_TASKS_LIMIT + 5 }, (_, index) => {
+      const task = makeTask(String(index + 1), index < 3);
+      task.lastActivityAt = new Date(Date.UTC(2026, 2, 31, 0, 0, 0, 0) - index * 60_000);
+      return task;
     });
 
-    const recentIssues = getRecentTouchedIssues(issues);
+    const recentTasks = getRecentTouchedTasks(tasks);
 
-    expect(recentIssues).toHaveLength(RECENT_ISSUES_LIMIT);
-    expect(getUnreadTouchedIssues(recentIssues).map((issue) => issue.id)).toEqual(["1", "2", "3"]);
+    expect(recentTasks).toHaveLength(RECENT_TASKS_LIMIT);
+    expect(getUnreadTouchedTasks(recentTasks).map((task) => task.id)).toEqual(["1", "2", "3"]);
   });
 
-  it("matches workspace names when inbox issue search includes workspace labels", () => {
-    const issue = makeIssue("workspace", false);
-    issue.projectId = "project-1";
-    issue.projectWorkspaceId = "project-workspace-1";
-    issue.executionWorkspaceId = "execution-workspace-1";
+  it("matches workspace names when inbox task search includes workspace labels", () => {
+    const task = makeTask("workspace", false);
+    task.projectId = "project-1";
+    task.projectWorkspaceId = "project-workspace-1";
+    task.executionWorkspaceId = "execution-workspace-1";
 
-    expect(matchesInboxIssueSearch(
-      issue,
+    expect(matchesInboxTaskSearch(
+      task,
       "feature",
       {
         isolatedWorkspacesEnabled: true,
@@ -771,11 +772,11 @@ describe("inbox helpers", () => {
   });
 
   it("resolves the default workspace into an explicit grouping label", () => {
-    const issue = makeIssue("default", false);
-    issue.projectId = "project-1";
-    issue.projectWorkspaceId = "project-workspace-1";
+    const task = makeTask("default", false);
+    task.projectId = "project-1";
+    task.projectWorkspaceId = "project-workspace-1";
 
-    expect(resolveIssueWorkspaceGroup(issue, {
+    expect(resolveTaskWorkspaceGroup(task, {
       projectWorkspaceById: new Map([
         ["project-workspace-1", { name: "Primary workspace" }],
       ]),
@@ -787,101 +788,81 @@ describe("inbox helpers", () => {
   });
 
   it("returns archived search matches that are not already visible in the inbox", () => {
-    const visibleIssue = makeIssue("visible", false);
-    visibleIssue.title = "Alpha visible task";
+    const visibleTask = makeTask("visible", false);
+    visibleTask.title = "Alpha visible task";
 
-    const archivedMatch = makeIssue("archived-match", false);
+    const archivedMatch = makeTask("archived-match", false);
     archivedMatch.title = "Alpha archived task";
 
-    const archivedMiss = makeIssue("archived-miss", false);
+    const archivedMiss = makeTask("archived-miss", false);
     archivedMiss.title = "Different task";
 
     expect(
-      getArchivedInboxSearchIssues({
-        visibleIssues: [visibleIssue],
-        searchableIssues: [visibleIssue, archivedMatch, archivedMiss],
+      getArchivedInboxSearchTasks({
+        visibleTasks: [visibleTask],
+        searchableTasks: [visibleTask, archivedMatch, archivedMiss],
         query: "alpha",
-      }).map((issue) => issue.id),
+      }).map((task) => task.id),
     ).toEqual(["archived-match"]);
   });
 
   it("sorts archived search matches by most recent activity", () => {
-    const older = makeIssue("older", false);
+    const older = makeTask("older", false);
     older.title = "Alpha older";
     older.lastActivityAt = new Date("2026-03-11T02:00:00.000Z");
 
-    const newer = makeIssue("newer", false);
+    const newer = makeTask("newer", false);
     newer.title = "Alpha newer";
     newer.lastActivityAt = new Date("2026-03-11T03:00:00.000Z");
 
     expect(
-      getArchivedInboxSearchIssues({
-        visibleIssues: [],
-        searchableIssues: [older, newer],
+      getArchivedInboxSearchTasks({
+        visibleTasks: [],
+        searchableTasks: [older, newer],
         query: "alpha",
-      }).map((issue) => issue.id),
+      }).map((task) => task.id),
     ).toEqual(["newer", "older"]);
   });
 
-  it("adds remote issue results that are not already present in inbox search results", () => {
-    const remoteMatch = makeIssue("remote-match", false);
+  it("adds remote task results that are not already present in inbox search results", () => {
+    const remoteMatch = makeTask("remote-match", false);
     remoteMatch.status = "in_progress";
 
     expect(
-      getInboxSearchSupplementIssues({
+      getInboxSearchSupplementTasks({
         query: "pull/3303",
         filteredWorkItems: [],
-        archivedSearchIssues: [],
-        remoteIssues: [remoteMatch],
-        issueFilters: {
+        archivedSearchTasks: [],
+        remoteTasks: [remoteMatch],
+        taskFilters: {
+          ...defaultTaskFilterState,
           statuses: ["in_progress"],
-          priorities: [],
-          assignees: [],
-          creators: [],
-          labels: [],
-          projects: [],
-          workspaces: [],
-          liveOnly: false,
           hideRoutineExecutions: true,
         },
-      }).map((issue) => issue.id),
+      }).map((task) => task.id),
     ).toEqual(["remote-match"]);
 
     expect(
-      getInboxSearchSupplementIssues({
+      getInboxSearchSupplementTasks({
         query: "pull/3303",
-        filteredWorkItems: [{ kind: "issue", timestamp: 1, issue: makeIssue("remote-match", false) }],
-        archivedSearchIssues: [],
-        remoteIssues: [remoteMatch],
-        issueFilters: {
-          statuses: [],
-          priorities: [],
-          assignees: [],
-          creators: [],
-          labels: [],
-          projects: [],
-          workspaces: [],
-          liveOnly: false,
+        filteredWorkItems: [{ kind: "task", timestamp: 1, task: makeTask("remote-match", false) }],
+        archivedSearchTasks: [],
+        remoteTasks: [remoteMatch],
+        taskFilters: {
+          ...defaultTaskFilterState,
           hideRoutineExecutions: true,
         },
       }),
     ).toEqual([]);
 
     expect(
-      getInboxSearchSupplementIssues({
+      getInboxSearchSupplementTasks({
         query: "pull/3303",
         filteredWorkItems: [],
-        archivedSearchIssues: [makeIssue("remote-match", false)],
-        remoteIssues: [remoteMatch],
-        issueFilters: {
-          statuses: [],
-          priorities: [],
-          assignees: [],
-          creators: [],
-          labels: [],
-          projects: [],
-          workspaces: [],
-          liveOnly: false,
+        archivedSearchTasks: [makeTask("remote-match", false)],
+        remoteTasks: [remoteMatch],
+        taskFilters: {
+          ...defaultTaskFilterState,
           hideRoutineExecutions: true,
         },
       }),
@@ -889,29 +870,29 @@ describe("inbox helpers", () => {
   });
 
   it("keeps inbox search matches ahead of archived and other result sections", () => {
-    const inboxIssue = makeIssue("inbox", false);
-    inboxIssue.lastActivityAt = new Date("2026-03-11T04:00:00.000Z");
+    const inboxTask = makeTask("inbox", false);
+    inboxTask.lastActivityAt = new Date("2026-03-11T04:00:00.000Z");
 
-    const archivedIssue = makeIssue("archived", false);
-    archivedIssue.lastActivityAt = new Date("2026-03-11T03:00:00.000Z");
+    const archivedTask = makeTask("archived", false);
+    archivedTask.lastActivityAt = new Date("2026-03-11T03:00:00.000Z");
 
-    const otherIssue = makeIssue("other", false);
-    otherIssue.lastActivityAt = new Date("2026-03-11T05:00:00.000Z");
+    const otherTask = makeTask("other", false);
+    otherTask.lastActivityAt = new Date("2026-03-11T05:00:00.000Z");
 
     const sections = [
       ...buildGroupedInboxSections(
-        getInboxWorkItems({ issues: [inboxIssue], approvals: [] }),
+        getInboxWorkItems({ tasks: [inboxTask], approvals: [] }),
         "none",
         {},
       ),
       ...buildGroupedInboxSections(
-        getInboxWorkItems({ issues: [archivedIssue], approvals: [] }),
+        getInboxWorkItems({ tasks: [archivedTask], approvals: [] }),
         "none",
         {},
         { keyPrefix: "archived-search:", searchSection: "archived" },
       ),
       ...buildGroupedInboxSections(
-        getInboxWorkItems({ issues: [otherIssue], approvals: [] }),
+        getInboxWorkItems({ tasks: [otherTask], approvals: [] }),
         "none",
         {},
         { keyPrefix: "other-search:", searchSection: "other" },
@@ -922,7 +903,7 @@ describe("inbox helpers", () => {
     expect(
       sections.map((section) => {
         const [item] = section.displayItems;
-        return item?.kind === "issue" ? item.issue.id : null;
+        return item?.kind === "task" ? item.task.id : null;
       }),
     ).toEqual(["inbox", "archived", "other"]);
   });
@@ -939,7 +920,8 @@ describe("inbox helpers", () => {
     saveInboxFilterPreferences("company-1", {
       allCategoryFilter: "approvals",
       allApprovalFilter: "resolved",
-      issueFilters: {
+      taskFilters: {
+        ...defaultTaskFilterState,
         statuses: ["todo"],
         priorities: ["high"],
         assignees: ["agent-1"],
@@ -954,15 +936,9 @@ describe("inbox helpers", () => {
     saveInboxFilterPreferences("company-2", {
       allCategoryFilter: "failed_runs",
       allApprovalFilter: "actionable",
-      issueFilters: {
+      taskFilters: {
+        ...defaultTaskFilterState,
         statuses: ["done"],
-        priorities: [],
-        assignees: [],
-        creators: [],
-        labels: [],
-        projects: [],
-        workspaces: [],
-        liveOnly: false,
         hideRoutineExecutions: true,
       },
     });
@@ -970,7 +946,8 @@ describe("inbox helpers", () => {
     expect(loadInboxFilterPreferences("company-1")).toEqual({
       allCategoryFilter: "approvals",
       allApprovalFilter: "resolved",
-      issueFilters: {
+      taskFilters: {
+        ...defaultTaskFilterState,
         statuses: ["todo"],
         priorities: ["high"],
         assignees: ["agent-1"],
@@ -985,15 +962,9 @@ describe("inbox helpers", () => {
     expect(loadInboxFilterPreferences("company-2")).toEqual({
       allCategoryFilter: "failed_runs",
       allApprovalFilter: "actionable",
-      issueFilters: {
+      taskFilters: {
+        ...defaultTaskFilterState,
         statuses: ["done"],
-        priorities: [],
-        assignees: [],
-        creators: [],
-        labels: [],
-        projects: [],
-        workspaces: [],
-        liveOnly: false,
         hideRoutineExecutions: true,
       },
     });
@@ -1003,7 +974,7 @@ describe("inbox helpers", () => {
     localStorage.setItem("paperclip:inbox:filters:company-1", JSON.stringify({
       allCategoryFilter: "bogus",
       allApprovalFilter: "bogus",
-      issueFilters: {
+      taskFilters: {
         statuses: ["todo", 123],
         priorities: "high",
         assignees: ["agent-1"],
@@ -1019,16 +990,13 @@ describe("inbox helpers", () => {
     expect(loadInboxFilterPreferences("company-1")).toEqual({
       allCategoryFilter: "everything",
       allApprovalFilter: "all",
-      issueFilters: {
+      taskFilters: {
+        ...defaultTaskFilterState,
         statuses: ["todo"],
-        priorities: [],
         assignees: ["agent-1"],
         creators: ["user:user-1"],
-        labels: [],
         projects: ["project-1"],
         workspaces: ["workspace-1"],
-        liveOnly: false,
-        hideRoutineExecutions: false,
       },
     });
   });
@@ -1046,41 +1014,65 @@ describe("inbox helpers", () => {
     expect(resolveInboxNestingEnabled(false, true)).toBe(false);
   });
 
-  it("defaults issue columns to the current inbox layout", () => {
-    expect(loadInboxIssueColumns()).toEqual(DEFAULT_INBOX_ISSUE_COLUMNS);
+  it("defaults task columns to the current inbox layout", () => {
+    expect(loadInboxTaskColumns()).toEqual(DEFAULT_INBOX_TASK_COLUMNS);
   });
 
-  it("normalizes saved issue columns to valid values in canonical order", () => {
-    saveInboxIssueColumns(["labels", "updated", "status", "workspace", "labels", "assignee"]);
+  it("normalizes saved task columns to valid values in canonical order", () => {
+    saveInboxTaskColumns(["labels", "updated", "status", "workspace", "labels", "assignee"]);
 
-    expect(loadInboxIssueColumns()).toEqual(["status", "assignee", "workspace", "labels", "updated"]);
-    expect(normalizeInboxIssueColumns(["project", "workspace", "wat", "id"])).toEqual(["id", "project", "workspace"]);
+    expect(loadInboxTaskColumns()).toEqual(["status", "assignee", "workspace", "labels", "updated"]);
+    expect(normalizeInboxTaskColumns(["project", "workspace", "wat", "id"])).toEqual(["id", "project", "workspace"]);
   });
 
   it("hides the workspace column option unless isolated workspaces are enabled", () => {
-    expect(getAvailableInboxIssueColumns(false)).toEqual(["status", "id", "assignee", "project", "parent", "labels", "updated"]);
-    expect(getAvailableInboxIssueColumns(true)).toEqual([
+    const expectedWithoutWorkspace = [
+      "status",
+      "id",
+      "assignee",
+      "project",
+      "parent",
+      "labels",
+      "updated",
+      "taskKey",
+      "dueDate",
+      "layer",
+      "module",
+      "repoPath",
+      "riskLevel",
+      "sprintPhase",
+      "taskType",
+      "routeMode",
+      "reqId",
+      "prState",
+      "prUrl",
+      "agentConfidence",
+      "wikiDocs",
+      "implementationPlans",
+      "reviewChecks",
+      "decisions",
+    ];
+    expect(getAvailableInboxTaskColumns(false)).toEqual(expectedWithoutWorkspace);
+    expect(getAvailableInboxTaskColumns(true)).toEqual([
       "status",
       "id",
       "assignee",
       "project",
       "workspace",
-      "parent",
-      "labels",
-      "updated",
+      ...expectedWithoutWorkspace.slice(4),
     ]);
   });
 
-  it("allows hiding every optional issue column down to the title-only view", () => {
-    saveInboxIssueColumns([]);
-    expect(loadInboxIssueColumns()).toEqual([]);
+  it("allows hiding every optional task column down to the title-only view", () => {
+    saveInboxTaskColumns([]);
+    expect(loadInboxTaskColumns()).toEqual([]);
   });
 
   it("shows explicit workspace names but leaves the default workspace blank", () => {
-    const issue = makeIssue("1", true);
-    issue.projectId = "project-1";
-    issue.projectWorkspaceId = "project-workspace-1";
-    issue.executionWorkspaceId = "execution-workspace-1";
+    const task = makeTask("1", true);
+    task.projectId = "project-1";
+    task.projectWorkspaceId = "project-workspace-1";
+    task.executionWorkspaceId = "execution-workspace-1";
 
     const executionWorkspace = makeExecutionWorkspace();
     const defaultWorkspace = makeProjectWorkspace();
@@ -1091,57 +1083,57 @@ describe("inbox helpers", () => {
     });
 
     expect(
-      resolveIssueWorkspaceName(issue, {
+      resolveTaskWorkspaceName(task, {
         executionWorkspaceById: new Map([[executionWorkspace.id, executionWorkspace]]),
         projectWorkspaceById: new Map([
           [defaultWorkspace.id, defaultWorkspace],
           [secondaryWorkspace.id, secondaryWorkspace],
         ]),
-        defaultProjectWorkspaceIdByProjectId: new Map([[issue.projectId!, defaultWorkspace.id]]),
+        defaultProjectWorkspaceIdByProjectId: new Map([[task.projectId!, defaultWorkspace.id]]),
       }),
     ).toBe("PAP-1 branch");
 
-    issue.executionWorkspaceId = null;
+    task.executionWorkspaceId = null;
     expect(
-      resolveIssueWorkspaceName(issue, {
+      resolveTaskWorkspaceName(task, {
         projectWorkspaceById: new Map([
           [defaultWorkspace.id, defaultWorkspace],
           [secondaryWorkspace.id, secondaryWorkspace],
         ]),
-        defaultProjectWorkspaceIdByProjectId: new Map([[issue.projectId!, defaultWorkspace.id]]),
+        defaultProjectWorkspaceIdByProjectId: new Map([[task.projectId!, defaultWorkspace.id]]),
       }),
     ).toBeNull();
 
-    issue.projectWorkspaceId = secondaryWorkspace.id;
+    task.projectWorkspaceId = secondaryWorkspace.id;
     expect(
-      resolveIssueWorkspaceName(issue, {
+      resolveTaskWorkspaceName(task, {
         projectWorkspaceById: new Map([
           [defaultWorkspace.id, defaultWorkspace],
           [secondaryWorkspace.id, secondaryWorkspace],
         ]),
-        defaultProjectWorkspaceIdByProjectId: new Map([[issue.projectId!, defaultWorkspace.id]]),
+        defaultProjectWorkspaceIdByProjectId: new Map([[task.projectId!, defaultWorkspace.id]]),
       }),
     ).toBe("Secondary workspace");
 
-    issue.projectWorkspaceId = null;
+    task.projectWorkspaceId = null;
     expect(
-      resolveIssueWorkspaceName(issue, {
+      resolveTaskWorkspaceName(task, {
         projectWorkspaceById: new Map([
           [defaultWorkspace.id, defaultWorkspace],
           [secondaryWorkspace.id, secondaryWorkspace],
         ]),
-        defaultProjectWorkspaceIdByProjectId: new Map([[issue.projectId!, defaultWorkspace.id]]),
+        defaultProjectWorkspaceIdByProjectId: new Map([[task.projectId!, defaultWorkspace.id]]),
       }),
     ).toBeNull();
 
-    issue.executionWorkspaceId = "execution-workspace-shared-default";
-    issue.projectWorkspaceId = defaultWorkspace.id;
+    task.executionWorkspaceId = "execution-workspace-shared-default";
+    task.projectWorkspaceId = defaultWorkspace.id;
     expect(
-      resolveIssueWorkspaceName(issue, {
+      resolveTaskWorkspaceName(task, {
         executionWorkspaceById: new Map([[
-          issue.executionWorkspaceId,
+          task.executionWorkspaceId,
           makeExecutionWorkspace({
-            id: issue.executionWorkspaceId,
+            id: task.executionWorkspaceId,
             mode: "shared_workspace",
             strategyType: "project_primary",
             projectWorkspaceId: defaultWorkspace.id,
@@ -1152,7 +1144,7 @@ describe("inbox helpers", () => {
           [defaultWorkspace.id, defaultWorkspace],
           [secondaryWorkspace.id, secondaryWorkspace],
         ]),
-        defaultProjectWorkspaceIdByProjectId: new Map([[issue.projectId!, defaultWorkspace.id]]),
+        defaultProjectWorkspaceIdByProjectId: new Map([[task.projectId!, defaultWorkspace.id]]),
       }),
     ).toBeNull();
   });
@@ -1182,57 +1174,57 @@ describe("inbox helpers", () => {
     expect(getInboxKeyboardSelectionIndex(0, 3, "previous")).toBe(0);
   });
 
-  it("hides routine execution issues when the hide toggle is enabled", () => {
-    const manualIssue = { ...makeIssue("manual", true), originKind: "manual" as const };
-    const routineIssue = { ...makeIssue("routine", true), originKind: "routine_execution" as const };
+  it("hides routine execution tasks when the hide toggle is enabled", () => {
+    const manualTask = { ...makeTask("manual", true), originKind: "manual" as const };
+    const routineTask = { ...makeTask("routine", true), originKind: "routine_execution" as const };
 
-    expect(filterInboxIssues([manualIssue, routineIssue], false)).toEqual([manualIssue, routineIssue]);
-    expect(filterInboxIssues([manualIssue, routineIssue], true)).toEqual([manualIssue]);
+    expect(filterInboxTasks([manualTask, routineTask], false)).toEqual([manualTask, routineTask]);
+    expect(filterInboxTasks([manualTask, routineTask], true)).toEqual([manualTask]);
   });
 
   it("groups mixed inbox items by type while preserving item order within each group", () => {
     const items: InboxWorkItem[] = [
       { kind: "approval", timestamp: 4, approval: makeApproval("pending") },
-      { kind: "issue", timestamp: 3, issue: makeIssue("1", true) },
-      { kind: "issue", timestamp: 2, issue: makeIssue("2", false) },
+      { kind: "task", timestamp: 3, task: makeTask("1", true) },
+      { kind: "task", timestamp: 2, task: makeTask("2", false) },
       { kind: "failed_run", timestamp: 1, run: makeRun("run-1", "failed", "2026-03-11T00:00:00.000Z") },
       { kind: "join_request", timestamp: 0, joinRequest: makeJoinRequest("join-1") },
     ];
 
     expect(groupInboxWorkItems(items, "none")).toEqual([{ key: "__all", label: null, items }]);
     expect(groupInboxWorkItems(items, "type")).toEqual([
-      { key: "issue", label: "Issues", items: [items[1], items[2]] },
+      { key: "task", label: "Tasks", items: [items[1], items[2]] },
       { key: "approval", label: "Approvals", items: [items[0]] },
       { key: "failed_run", label: "Failed runs", items: [items[3]] },
       { key: "join_request", label: "Join requests", items: [items[4]] },
     ]);
   });
 
-  it("groups workspace sections by latest issue activity while preserving non-issue sections", () => {
-    const defaultIssue = makeIssue("default", true);
-    defaultIssue.projectId = "project-1";
-    defaultIssue.projectWorkspaceId = "project-workspace-1";
+  it("groups workspace sections by latest task activity while preserving non-task sections", () => {
+    const defaultTask = makeTask("default", true);
+    defaultTask.projectId = "project-1";
+    defaultTask.projectWorkspaceId = "project-workspace-1";
 
-    const sharedDefaultIssue = makeIssue("shared-default", true);
-    sharedDefaultIssue.projectId = "project-1";
-    sharedDefaultIssue.projectWorkspaceId = "project-workspace-1";
-    sharedDefaultIssue.executionWorkspaceId = "execution-workspace-shared-default";
+    const sharedDefaultTask = makeTask("shared-default", true);
+    sharedDefaultTask.projectId = "project-1";
+    sharedDefaultTask.projectWorkspaceId = "project-workspace-1";
+    sharedDefaultTask.executionWorkspaceId = "execution-workspace-shared-default";
 
-    const featureIssue = makeIssue("feature", false);
-    featureIssue.projectId = "project-1";
-    featureIssue.projectWorkspaceId = "project-workspace-2";
+    const featureTask = makeTask("feature", false);
+    featureTask.projectId = "project-1";
+    featureTask.projectWorkspaceId = "project-workspace-2";
 
-    const execIssue = makeIssue("exec", false);
-    execIssue.projectId = "project-1";
-    execIssue.projectWorkspaceId = "project-workspace-1";
-    execIssue.executionWorkspaceId = "execution-workspace-1";
+    const execTask = makeTask("exec", false);
+    execTask.projectId = "project-1";
+    execTask.projectWorkspaceId = "project-workspace-1";
+    execTask.executionWorkspaceId = "execution-workspace-1";
 
     const items: InboxWorkItem[] = [
-      { kind: "issue", timestamp: 5, issue: defaultIssue },
+      { kind: "task", timestamp: 5, task: defaultTask },
       { kind: "approval", timestamp: 2, approval: makeApproval("pending") },
-      { kind: "issue", timestamp: 4, issue: sharedDefaultIssue },
-      { kind: "issue", timestamp: 7, issue: featureIssue },
-      { kind: "issue", timestamp: 9, issue: execIssue },
+      { kind: "task", timestamp: 4, task: sharedDefaultTask },
+      { kind: "task", timestamp: 7, task: featureTask },
+      { kind: "task", timestamp: 9, task: execTask },
     ];
 
     expect(groupInboxWorkItems(items, "workspace", {

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { StatusIcon } from "./StatusIcon";
 
 describe("StatusIcon", () => {
-  it("renders covered blocked issues with the cyan covered state visual", () => {
+  it("renders covered blocked tasks with the cyan covered state visual", () => {
     const html = renderToStaticMarkup(
       <StatusIcon
         status="blocked"
@@ -23,8 +23,8 @@ describe("StatusIcon", () => {
     );
 
     expect(html).toContain('data-blocker-attention-state="covered"');
-    expect(html).toContain('aria-label="Blocked · waiting on active sub-issue PAP-2"');
-    expect(html).toContain('title="Blocked · waiting on active sub-issue PAP-2"');
+    expect(html).toContain('aria-label="Blocked · waiting on active sub-task PAP-2"');
+    expect(html).toContain('title="Blocked · waiting on active sub-task PAP-2"');
     expect(html).toContain("border-cyan-600");
     expect(html).not.toContain("border-red-600");
     expect(html).not.toContain("border-dashed");
@@ -53,7 +53,7 @@ describe("StatusIcon", () => {
     expect(html).not.toContain("border-dashed");
   });
 
-  it("keeps normal blocked issues on the attention-required visual", () => {
+  it("keeps normal blocked tasks on the attention-required visual", () => {
     const html = renderToStaticMarkup(
       <StatusIcon
         status="blocked"

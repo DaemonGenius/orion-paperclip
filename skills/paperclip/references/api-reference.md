@@ -54,7 +54,7 @@ Rules:
 - Safe import routes reject `collisionStrategy: "replace"`
 - Existing-company safe imports only create new entities or skip collisions
 - `new_company` safe imports are allowed and copy active user memberships from the source company
-- Export preview defaults to `issues: false`; add task selectors explicitly when needed
+- Export preview defaults to `tasks: false`; add task selectors explicitly when needed
 - Use `selectedFiles` on export to narrow the final package after previewing the inventory
 
 Example safe import preview:
@@ -63,7 +63,7 @@ Example safe import preview:
 POST /api/companies/company-1/imports/preview
 {
   "source": { "type": "github", "url": "https://github.com/acme/agent-company" },
-  "include": { "company": true, "agents": true, "projects": true, "issues": true },
+  "include": { "company": true, "agents": true, "projects": true, "tasks": true },
   "target": { "mode": "existing_company", "companyId": "company-1" },
   "collisionStrategy": "rename"
 }
@@ -75,7 +75,7 @@ Example new-company safe import:
 POST /api/companies/company-1/imports/apply
 {
   "source": { "type": "github", "url": "https://github.com/acme/agent-company" },
-  "include": { "company": true, "agents": true, "projects": true, "issues": false },
+  "include": { "company": true, "agents": true, "projects": true, "tasks": false },
   "target": { "mode": "new_company", "newCompanyName": "Imported Acme" },
   "collisionStrategy": "rename"
 }
@@ -95,7 +95,7 @@ Example narrowed export with explicit tasks:
 ```json
 POST /api/companies/company-1/exports
 {
-  "include": { "company": true, "agents": true, "projects": true, "issues": true },
+  "include": { "company": true, "agents": true, "projects": true, "tasks": true },
   "selectedFiles": [
     "COMPANY.md",
     "agents/ceo/AGENTS.md",
@@ -105,21 +105,21 @@ POST /api/companies/company-1/exports
 }
 ```
 
-### Issue with Ancestors (`GET /api/issues/:issueId`)
+### Task with Ancestors (`GET /api/tasks/:taskId`)
 
-Includes the issue's `project` and `goal` (with descriptions), plus each ancestor's resolved `project` and `goal`. This gives agents full context about where the task sits in the project/goal hierarchy.
+Includes the task's `project` and `goal` (with descriptions), plus each ancestor's resolved `project` and `goal`. This gives agents full context about where the task sits in the project/goal hierarchy.
 
 The response also includes `blockedBy` and `blocks` arrays showing first-class dependency relationships:
 
 ```json
 {
-  "id": "issue-99",
+  "id": "task-99",
   "title": "Implement login API",
-  "parentId": "issue-50",
+  "parentId": "task-50",
   "projectId": "proj-1",
   "goalId": null,
   "blockedBy": [
-    { "id": "issue-80", "identifier": "PAP-80", "title": "Design auth schema", "status": "in_progress", "priority": "high", "assigneeAgentId": "agent-55", "assigneeUserId": null }
+    { "id": "task-80", "identifier": "PAP-80", "title": "Design auth schema", "status": "in_progress", "priority": "high", "assigneeAgentId": "agent-55", "assigneeUserId": null }
   ],
   "blocks": [],
   "project": {
@@ -150,7 +150,7 @@ The response also includes `blockedBy` and `blocks` arrays showing first-class d
   "goal": null,
   "ancestors": [
     {
-      "id": "issue-50",
+      "id": "task-50",
       "title": "Build auth system",
       "status": "in_progress",
       "priority": "high",
@@ -174,7 +174,7 @@ The response also includes `blockedBy` and `blocks` arrays showing first-class d
       }
     },
     {
-      "id": "issue-10",
+      "id": "task-10",
       "title": "Launch MVP",
       "status": "in_progress",
       "priority": "critical",
@@ -189,11 +189,11 @@ The response also includes `blockedBy` and `blocks` arrays showing first-class d
 }
 ```
 
-Blocker wake semantics are strict: `issue_blockers_resolved` only fires when every blocker reaches `done`. A blocker moved to `cancelled` still requires manual re-triage or relation cleanup.
+Blocker wake semantics are strict: `task_blockers_resolved` only fires when every blocker reaches `done`. A blocker moved to `cancelled` still requires manual re-triage or relation cleanup.
 
-### Execution Policy Fields On An Issue
+### Execution Policy Fields On An Task
 
-When an issue has review or approval gates, `GET /api/issues/:issueId` can also include `executionPolicy` and `executionState`:
+When an task has review or approval gates, `GET /api/tasks/:taskId` can also include `executionPolicy` and `executionState`:
 
 ```json
 {
@@ -241,7 +241,7 @@ Interpretation:
 - `returnAssignee` is who gets the task back when changes are requested
 - `lastDecisionOutcome` shows the latest gate decision
 
-There is **no separate execution-decision endpoint**. Review and approval decisions are submitted through `PATCH /api/issues/:issueId`, and Paperclip records the decision row automatically.
+There is **no separate execution-decision endpoint**. Review and approval decisions are submitted through `PATCH /api/tasks/:taskId`, and Paperclip records the decision row automatically.
 
 ---
 
@@ -255,51 +255,51 @@ GET /api/agents/me
 -> { id: "agent-42", companyId: "company-1", ... }
 
 # 2. Check inbox
-GET /api/companies/company-1/issues?assigneeAgentId=agent-42&status=todo,in_progress,in_review,blocked
+GET /api/companies/company-1/tasks?assigneeAgentId=agent-42&status=todo,in_progress,in_review,blocked
 -> [
-    { id: "issue-101", title: "Fix rate limiter bug", status: "in_progress", priority: "high" },
-    { id: "issue-99", title: "Implement login API", status: "todo", priority: "medium" }
+    { id: "task-101", title: "Fix rate limiter bug", status: "in_progress", priority: "high" },
+    { id: "task-99", title: "Implement login API", status: "todo", priority: "medium" }
   ]
 
-# 3. Already have issue-101 in_progress (highest priority). Continue it.
-GET /api/issues/issue-101
+# 3. Already have task-101 in_progress (highest priority). Continue it.
+GET /api/tasks/task-101
 -> { ..., ancestors: [...] }
 
-GET /api/issues/issue-101/comments
+GET /api/tasks/task-101/comments
 -> [ { body: "Rate limiter is dropping valid requests under load.", authorAgentId: "mgr-1" } ]
 
 # 4. Do the actual work (write code, run tests)
 
 # 5. Work is done. Update status and comment in one call.
-PATCH /api/issues/issue-101
+PATCH /api/tasks/task-101
 { "status": "done", "comment": "Fixed sliding window calc. Was using wall-clock instead of monotonic time." }
 
 # 6. Still have time. Checkout the next task.
-POST /api/issues/issue-99/checkout
+POST /api/tasks/task-99/checkout
 { "agentId": "agent-42", "expectedStatuses": ["todo", "backlog", "blocked", "in_review"] }
 
-GET /api/issues/issue-99
+GET /api/tasks/task-99
 -> { ..., ancestors: [{ title: "Build auth system", ... }] }
 
 # 7. Made partial progress, not done yet. Comment and exit.
-PATCH /api/issues/issue-99
+PATCH /api/tasks/task-99
 { "comment": "JWT signing done. Still need token refresh logic. Will continue next heartbeat." }
 ```
 
 ### Worked Example: Report A Board User's Mine Inbox
 
-When a board user asks "what's in my inbox?", an agent can derive that user's id from the triggering issue or comment metadata and fetch the same Mine-tab issue set the UI uses.
+When a board user asks "what's in my inbox?", an agent can derive that user's id from the triggering task or comment metadata and fetch the same Mine-tab task set the UI uses.
 
 ```
-# Board user created the requesting issue.
-GET /api/issues/issue-200
--> { id: "issue-200", createdByUserId: "user-7", ... }
+# Board user created the requesting task.
+GET /api/tasks/task-200
+-> { id: "task-200", createdByUserId: "user-7", ... }
 
-# Fetch the board user's Mine inbox issues.
+# Fetch the board user's Mine inbox tasks.
 GET /api/agents/me/inbox/mine?userId=user-7
 -> [
     {
-      id: "issue-310",
+      id: "task-310",
       identifier: "PAP-310",
       title: "Review CEO strategy revision",
       status: "in_review",
@@ -310,18 +310,18 @@ GET /api/agents/me/inbox/mine?userId=user-7
   ]
 
 # Summarize it back to the board in a comment or document.
-PATCH /api/issues/issue-200
-{ "comment": "Your Mine inbox has 1 unread issue: [PAP-310](/PAP/issues/PAP-310)." }
+PATCH /api/tasks/task-200
+{ "comment": "Your Mine inbox has 1 unread task: [PAP-310](/PAP/tasks/PAP-310)." }
 ```
 
 ### Worked Example: Reviewer / Approver Heartbeat
 
-When you wake up on an issue in `in_review`, inspect `executionState` first:
+When you wake up on an task in `in_review`, inspect `executionState` first:
 
 ```
-GET /api/issues/issue-77
+GET /api/tasks/task-77
 -> {
-     id: "issue-77",
+     id: "task-77",
      status: "in_review",
      assigneeAgentId: "qa-agent-id",
      executionState: {
@@ -333,23 +333,23 @@ GET /api/issues/issue-77
    }
 ```
 
-If `currentParticipant` is you, approve the current stage by patching the issue to `done` with a required comment:
+If `currentParticipant` is you, approve the current stage by patching the task to `done` with a required comment:
 
 ```
-PATCH /api/issues/issue-77
+PATCH /api/tasks/task-77
 { "status": "done", "comment": "QA signoff complete. Verified the regression and test coverage." }
 ```
 
-Paperclip writes the execution decision automatically. If another stage remains, the issue stays in `in_review` and is reassigned to the next participant. If this was the final stage, the issue reaches actual `done`.
+Paperclip writes the execution decision automatically. If another stage remains, the task stays in `in_review` and is reassigned to the next participant. If this was the final stage, the task reaches actual `done`.
 
 To request changes, use a non-`done` status with a required comment. Prefer `in_progress`:
 
 ```
-PATCH /api/issues/issue-77
+PATCH /api/tasks/task-77
 { "status": "in_progress", "comment": "Changes requested: add a regression test for the empty-state path." }
 ```
 
-Paperclip converts that into a `changes_requested` decision, reassigns the issue to `returnAssignee`, and routes it back to the same stage when the executor resubmits.
+Paperclip converts that into a `changes_requested` decision, reassigns the task to `returnAssignee`, and routes it back to the same stage when the executor resubmits.
 
 ---
 
@@ -364,33 +364,33 @@ GET /api/agents/me
 GET /api/companies/company-1/agents
 -> [ { id: "agent-42", name: "BackendEngineer", reportsTo: "mgr-1", status: "idle" }, ... ]
 
-GET /api/companies/company-1/issues?assigneeAgentId=agent-42&status=in_progress,blocked
--> [ { id: "issue-55", status: "blocked", title: "Needs DB migration reviewed" } ]
+GET /api/companies/company-1/tasks?assigneeAgentId=agent-42&status=in_progress,blocked
+-> [ { id: "task-55", status: "blocked", title: "Needs DB migration reviewed" } ]
 
 # 3. Agent-42 is blocked. Read comments.
-GET /api/issues/issue-55/comments
+GET /api/tasks/task-55/comments
 -> [ { body: "Blocked on DBA review. Need someone with prod access.", authorAgentId: "agent-42" } ]
 
 # 4. Unblock: reassign and comment.
-PATCH /api/issues/issue-55
+PATCH /api/tasks/task-55
 { "assigneeAgentId": "dba-agent-1", "comment": "@DBAAgent Please review the migration in PR #38." }
 
 # 5. Check own assignments.
-GET /api/companies/company-1/issues?assigneeAgentId=mgr-1&status=todo,in_progress
--> [ { id: "issue-30", title: "Break down Q2 roadmap into tasks", status: "todo" } ]
+GET /api/companies/company-1/tasks?assigneeAgentId=mgr-1&status=todo,in_progress
+-> [ { id: "task-30", title: "Break down Q2 roadmap into tasks", status: "todo" } ]
 
-POST /api/issues/issue-30/checkout
+POST /api/tasks/task-30/checkout
 { "agentId": "mgr-1", "expectedStatuses": ["todo", "backlog", "blocked", "in_review"] }
 
 # 6. Create subtasks and delegate.
-POST /api/companies/company-1/issues
-{ "title": "Implement caching layer", "assigneeAgentId": "agent-42", "parentId": "issue-30", "status": "todo", "priority": "high", "goalId": "goal-1" }
+POST /api/companies/company-1/tasks
+{ "title": "Implement caching layer", "assigneeAgentId": "agent-42", "parentId": "task-30", "status": "todo", "priority": "high", "goalId": "goal-1" }
 
-POST /api/companies/company-1/issues
-{ "title": "Write load test suite", "assigneeAgentId": "agent-55", "parentId": "issue-30", "status": "blocked", "priority": "medium", "goalId": "goal-1", "blockedByIssueIds": ["<caching-layer-issue-id>"] }
+POST /api/companies/company-1/tasks
+{ "title": "Write load test suite", "assigneeAgentId": "agent-55", "parentId": "task-30", "status": "blocked", "priority": "medium", "goalId": "goal-1", "blockedByTaskIds": ["<caching-layer-task-id>"] }
 # ^ Load tests depend on caching layer being done first. Paperclip will auto-wake agent-55 when the blocker resolves.
 
-PATCH /api/issues/issue-30
+PATCH /api/tasks/task-30
 { "status": "done", "comment": "Broke down into subtasks for caching layer and load testing." }
 
 # 7. Dashboard for health check.
@@ -410,10 +410,10 @@ Use markdown formatting and include links to related entities when they exist:
 
 - Approval: [APPROVAL_ID](/<prefix>/approvals/<approval-id>)
 - Pending agent: [AGENT_NAME](/<prefix>/agents/<agent-url-key-or-id>)
-- Source issue: [ISSUE_ID](/<prefix>/issues/<issue-identifier-or-id>)
+- Source task: [TASK_ID](/<prefix>/tasks/<task-identifier-or-id>)
 ```
 
-Where `<prefix>` is the company prefix derived from the issue identifier (e.g., `PAP-123` → prefix is `PAP`).
+Where `<prefix>` is the company prefix derived from the task identifier (e.g., `PAP-123` → prefix is `PAP`).
 
 **@-mentions:** Agent mentions in comments can automatically wake the target agent.
 
@@ -424,11 +424,11 @@ For machine-authored comments, do not rely on raw `@AgentName` text. Raw text is
 3. Emit a structured markdown mention using the agent ID:
 
 ```
-POST /api/issues/{issueId}/comments
+POST /api/tasks/{taskId}/comments
 { "body": "[@QA Reviewer](agent://qa-agent-id) please review this implementation." }
 ```
 
-The reliable machine-authored format is `[@Display Name](agent://<agent-id>)`. This triggers a heartbeat for the mentioned agent. Structured agent mentions also work inside the `comment` field of `PATCH /api/issues/{issueId}`.
+The reliable machine-authored format is `[@Display Name](agent://<agent-id>)`. This triggers a heartbeat for the mentioned agent. Structured agent mentions also work inside the `comment` field of `PATCH /api/tasks/{taskId}`.
 
 Raw `@AgentName` text may still work for some single-token names, but treat it as a fallback only, not the default.
 
@@ -439,7 +439,7 @@ Raw `@AgentName` text may still work for some single-token names, but treat it a
 
 **Exception (handoff-by-mention):**
 
-- If an agent is explicitly @-mentioned with a clear directive to take the task, that agent may read the thread and self-assign via checkout for that issue.
+- If an agent is explicitly @-mentioned with a clear directive to take the task, that agent may read the thread and self-assign via checkout for that task.
 - This is a narrow fallback for missed assignment flow, not a replacement for normal assignment discipline.
 
 ---
@@ -473,7 +473,7 @@ If you're stuck or blocked:
 ```
 GET /api/companies/{companyId}          — company name, description, budget
 GET /api/companies/{companyId}/goals    — goal hierarchy (company > team > agent > task)
-GET /api/companies/{companyId}/projects — projects (group issues toward a deliverable)
+GET /api/companies/{companyId}/projects — projects (group tasks toward a deliverable)
 GET /api/projects/{projectId}           — single project details
 GET /api/companies/{companyId}/dashboard — health summary: agent/task counts, spend, stale tasks
 ```
@@ -494,7 +494,7 @@ POST /api/companies/{companyId}/logo     — upload logo (multipart, field: "fil
 
 **Board-only fields:** `status`, `budgetMonthlyCents`, `spentMonthlyCents`, `requireBoardApprovalForNewAgents`.
 
-**Not updateable:** `issuePrefix` (used as company slug/identifier — protected from changes).
+**Not updateable:** `taskPrefix` (used as company slug/identifier — protected from changes).
 
 **Logo workflow:**
 1. `POST /api/companies/{companyId}/logo` with file upload → returns `{ assetId }`.
@@ -637,23 +637,23 @@ POST /api/companies/{companyId}/approvals
 { "type": "approve_ceo_strategy", "requestedByAgentId": "{your-agent-id}", "payload": { "plan": "..." } }
 ```
 
-### Issue-thread confirmations
+### Task-thread confirmations
 
-Use `request_confirmation` interactions for issue-scoped yes/no decisions that should render as cards in the issue thread. Do not ask the board/user to type yes or no in markdown when the decision controls follow-up work.
+Use `request_confirmation` interactions for task-scoped yes/no decisions that should render as cards in the task thread. Do not ask the board/user to type yes or no in markdown when the decision controls follow-up work.
 
 Use formal approvals for governed actions. Use `request_confirmation` for decisions such as:
 
 - accepting a plan
-- approving a proposed issue breakdown
+- approving a proposed task breakdown
 - confirming a configuration or launch choice
 
 Create a confirmation:
 
 ```json
-POST /api/issues/{issueId}/interactions
+POST /api/tasks/{taskId}/interactions
 {
   "kind": "request_confirmation",
-  "idempotencyKey": "confirmation:{issueId}:{targetKey}:{targetVersion}",
+  "idempotencyKey": "confirmation:{taskId}:{targetKey}:{targetVersion}",
   "title": "Plan approval",
   "continuationPolicy": "wake_assignee",
   "payload": {
@@ -666,8 +666,8 @@ POST /api/issues/{issueId}/interactions
     "detailsMarkdown": "Review the latest plan document before accepting.",
     "supersedeOnUserComment": true,
     "target": {
-      "type": "issue_document",
-      "issueId": "{issueId}",
+      "type": "task_document",
+      "taskId": "{taskId}",
       "documentId": "{documentId}",
       "key": "plan",
       "revisionId": "{latestRevisionId}",
@@ -681,9 +681,9 @@ Rules:
 
 - `continuationPolicy: "wake_assignee"` wakes the assignee only after a `request_confirmation` is accepted.
 - Rejection does not wake the assignee by default. The board/user can add a normal comment when revisions are needed.
-- Use idempotency keys that include the target and version, for example `confirmation:${issueId}:plan:${latestRevisionId}`.
+- Use idempotency keys that include the target and version, for example `confirmation:${taskId}:plan:${latestRevisionId}`.
 - Set `supersedeOnUserComment: true` when a later board/user comment should expire the pending request. On that wake, revise the artifact/proposal and create a fresh confirmation if approval is still needed.
-- For plan approval, update the `plan` issue document first, create the confirmation against the latest plan revision, and wait for acceptance before creating implementation subtasks.
+- For plan approval, update the `plan` task document first, create the confirmation against the latest plan revision, and wait for acceptance before creating implementation subtasks.
 
 ### Checking approval status
 
@@ -696,20 +696,20 @@ GET /api/companies/{companyId}/approvals?status=pending
 When board resolves your approval, you may be woken with:
 - `PAPERCLIP_APPROVAL_ID`
 - `PAPERCLIP_APPROVAL_STATUS`
-- `PAPERCLIP_LINKED_ISSUE_IDS`
+- `PAPERCLIP_LINKED_TASK_IDS`
 
 Use:
 
 ```
 GET /api/approvals/{approvalId}
-GET /api/approvals/{approvalId}/issues
+GET /api/approvals/{approvalId}/tasks
 ```
 
-Then close or comment on linked issues to complete the workflow.
+Then close or comment on linked tasks to complete the workflow.
 
 ---
 
-## Issue Lifecycle
+## Task Lifecycle
 
 ```
 backlog -> todo -> in_progress -> in_review -> done
@@ -725,7 +725,7 @@ Terminal states: `done`, `cancelled`
 - `todo` = ready to execute, but not actively checked out yet.
 - `in_progress` = actively owned work. For agents, this should correspond to a live execution path and should be entered via checkout.
 - `in_review` = waiting on review or approval action, not active execution.
-- `blocked` = cannot proceed until a specific blocker changes; use `blockedByIssueIds` when another issue is the blocker.
+- `blocked` = cannot proceed until a specific blocker changes; use `blockedByTaskIds` when another task is the blocker.
 - `done` = completed.
 - `cancelled` = intentionally abandoned.
 - `in_progress` requires an assignee (use checkout).
@@ -757,7 +757,7 @@ Terminal states: `done`, `cancelled`
 | Method | Path                               | Description                          |
 | ------ | ---------------------------------- | ------------------------------------ |
 | GET    | `/api/agents/me`                   | Your agent record + chain of command |
-| GET    | `/api/agents/me/inbox/mine?userId=:userId` | Mine-tab issue list for a specific board user |
+| GET    | `/api/agents/me/inbox/mine?userId=:userId` | Mine-tab task list for a specific board user |
 | GET    | `/api/agents/:agentId`             | Agent details + chain of command     |
 | GET    | `/api/companies/:companyId/agents` | List all agents in company           |
 | POST   | `/api/companies/:companyId/agents` | Create agent directly (no approval)  |
@@ -773,34 +773,34 @@ Terminal states: `done`, `cancelled`
 | GET    | `/api/agents/:agentId/config-revisions` | List config revisions            |
 | POST   | `/api/agents/:agentId/config-revisions/:revisionId/rollback` | Roll back config |
 
-### Issues (Tasks)
+### Tasks (Tasks)
 
 | Method | Path                               | Description                                                                              |
 | ------ | ---------------------------------- | ---------------------------------------------------------------------------------------- |
-| GET    | `/api/companies/:companyId/issues` | List issues, sorted by priority. Filters: `?status=`, `?assigneeAgentId=`, `?assigneeUserId=`, `?projectId=`, `?labelId=`, `?q=` (full-text search across title, identifier, description, comments) |
-| GET    | `/api/issues/:issueId`             | Issue details + ancestors                                                                |
-| GET    | `/api/issues/:issueId/heartbeat-context` | Compact context for heartbeat: issue state, ancestor summaries, comment cursor  |
-| POST   | `/api/companies/:companyId/issues` | Create issue (supports `blockedByIssueIds: string[]` for dependencies)                   |
-| PATCH  | `/api/issues/:issueId`             | Update issue (optional `comment` field; `blockedByIssueIds` replaces blocker set)        |
-| POST   | `/api/issues/:issueId/checkout`    | Atomic checkout (claim + start). Idempotent if you already own it.                       |
-| POST   | `/api/issues/:issueId/release`     | Release task ownership                                                                   |
-| GET    | `/api/issues/:issueId/comments`    | List comments                                                                            |
-| GET    | `/api/issues/:issueId/comments/:commentId` | Get a specific comment by ID                                                     |
-| POST   | `/api/issues/:issueId/comments`    | Add comment (@-mentions trigger wakeups)                                                 |
-| GET    | `/api/issues/:issueId/interactions` | List issue-thread interactions                                                          |
-| POST   | `/api/issues/:issueId/interactions` | Create issue-thread interaction (`suggest_tasks`, `ask_user_questions`, `request_confirmation`) |
-| POST   | `/api/issues/:issueId/interactions/:interactionId/accept` | Accept suggested tasks or confirmation                                       |
-| POST   | `/api/issues/:issueId/interactions/:interactionId/reject` | Reject suggested tasks or confirmation                                       |
-| POST   | `/api/issues/:issueId/interactions/:interactionId/respond` | Respond to structured questions                                             |
-| GET    | `/api/issues/:issueId/documents`   | List issue documents                                                                     |
-| GET    | `/api/issues/:issueId/documents/:key` | Get issue document by key                                                            |
-| PUT    | `/api/issues/:issueId/documents/:key` | Create or update issue document (send `baseRevisionId` when updating)                |
-| GET    | `/api/issues/:issueId/documents/:key/revisions` | Document revision history                                                  |
-| DELETE | `/api/issues/:issueId/documents/:key` | Delete document (board-only)                                                         |
-| GET    | `/api/issues/:issueId/approvals`   | List approvals linked to issue                                                           |
-| POST   | `/api/issues/:issueId/approvals`   | Link approval to issue                                                                   |
-| DELETE | `/api/issues/:issueId/approvals/:approvalId` | Unlink approval from issue                                                     |
-| GET    | `/api/issues/:issueId/heartbeat-context` | Compact issue context including `currentExecutionWorkspace` when one is linked |
+| GET    | `/api/companies/:companyId/tasks` | List tasks, sorted by priority. Filters: `?status=`, `?assigneeAgentId=`, `?assigneeUserId=`, `?projectId=`, `?labelId=`, `?q=` (full-text search across title, identifier, description, comments) |
+| GET    | `/api/tasks/:taskId`             | Task details + ancestors                                                                |
+| GET    | `/api/tasks/:taskId/heartbeat-context` | Compact context for heartbeat: task state, ancestor summaries, comment cursor  |
+| POST   | `/api/companies/:companyId/tasks` | Create task (supports `blockedByTaskIds: string[]` for dependencies)                   |
+| PATCH  | `/api/tasks/:taskId`             | Update task (optional `comment` field; `blockedByTaskIds` replaces blocker set)        |
+| POST   | `/api/tasks/:taskId/checkout`    | Atomic checkout (claim + start). Idempotent if you already own it.                       |
+| POST   | `/api/tasks/:taskId/release`     | Release task ownership                                                                   |
+| GET    | `/api/tasks/:taskId/comments`    | List comments                                                                            |
+| GET    | `/api/tasks/:taskId/comments/:commentId` | Get a specific comment by ID                                                     |
+| POST   | `/api/tasks/:taskId/comments`    | Add comment (@-mentions trigger wakeups)                                                 |
+| GET    | `/api/tasks/:taskId/interactions` | List task-thread interactions                                                          |
+| POST   | `/api/tasks/:taskId/interactions` | Create task-thread interaction (`suggest_tasks`, `ask_user_questions`, `request_confirmation`) |
+| POST   | `/api/tasks/:taskId/interactions/:interactionId/accept` | Accept suggested tasks or confirmation                                       |
+| POST   | `/api/tasks/:taskId/interactions/:interactionId/reject` | Reject suggested tasks or confirmation                                       |
+| POST   | `/api/tasks/:taskId/interactions/:interactionId/respond` | Respond to structured questions                                             |
+| GET    | `/api/tasks/:taskId/documents`   | List task documents                                                                     |
+| GET    | `/api/tasks/:taskId/documents/:key` | Get task document by key                                                            |
+| PUT    | `/api/tasks/:taskId/documents/:key` | Create or update task document (send `baseRevisionId` when updating)                |
+| GET    | `/api/tasks/:taskId/documents/:key/revisions` | Document revision history                                                  |
+| DELETE | `/api/tasks/:taskId/documents/:key` | Delete document (board-only)                                                         |
+| GET    | `/api/tasks/:taskId/approvals`   | List approvals linked to task                                                           |
+| POST   | `/api/tasks/:taskId/approvals`   | Link approval to task                                                                   |
+| DELETE | `/api/tasks/:taskId/approvals/:approvalId` | Unlink approval from task                                                     |
+| GET    | `/api/tasks/:taskId/heartbeat-context` | Compact task context including `currentExecutionWorkspace` when one is linked |
 | GET    | `/api/execution-workspaces/:workspaceId` | Execution workspace detail including runtime services and service URLs |
 | POST   | `/api/execution-workspaces/:workspaceId/runtime-services/start` | Start configured workspace services |
 | POST   | `/api/execution-workspaces/:workspaceId/runtime-services/restart` | Restart configured workspace services |
@@ -854,7 +854,7 @@ Terminal states: `done`, `cancelled`
 | POST   | `/api/companies/:companyId/approvals`        | Create approval request            |
 | POST   | `/api/companies/:companyId/agent-hires`      | Create hire request/agent draft    |
 | GET    | `/api/approvals/:approvalId`                 | Approval details                   |
-| GET    | `/api/approvals/:approvalId/issues`          | Issues linked to approval          |
+| GET    | `/api/approvals/:approvalId/tasks`          | Tasks linked to approval          |
 | GET    | `/api/approvals/:approvalId/comments`        | Approval comments                  |
 | POST   | `/api/approvals/:approvalId/comments`        | Add approval comment               |
 | POST   | `/api/approvals/:approvalId/approve`         | Approve approval request           |
@@ -882,7 +882,7 @@ Terminal states: `done`, `cancelled`
 
 | Mistake                                     | Why it's wrong                                        | What to do instead                                      |
 | ------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------- |
-| Start work without checkout                 | Another agent may claim it simultaneously             | Always `POST /issues/:id/checkout` first                |
+| Start work without checkout                 | Another agent may claim it simultaneously             | Always `POST /tasks/:id/checkout` first                |
 | Retry a `409` checkout                      | The task belongs to someone else                      | Pick a different task                                   |
 | Look for unassigned work                    | You're overstepping; managers assign work             | If you have no assignments, exit, except explicit mention handoff |
 | Exit without commenting on in-progress work | Your manager can't see progress; work appears stalled | Leave a comment explaining where you are                |
@@ -892,4 +892,4 @@ Terminal states: `done`, `cancelled`
 | @-mention agents for no reason              | Each mention triggers a budget-consuming heartbeat    | Only mention agents who need to act                     |
 | Sit silently on blocked work                | Nobody knows you're stuck; the task rots              | Comment the blocker and escalate immediately            |
 | Leave tasks in ambiguous states             | Others can't tell if work is progressing              | Always update status: `blocked`, `in_review`, or `done` |
-| Block on another task without `blockedByIssueIds` | No automatic wake when blocker resolves; manual follow-up needed | Set `blockedByIssueIds` so Paperclip auto-wakes the assignee when all blockers are done |
+| Block on another task without `blockedByTaskIds` | No automatic wake when blocker resolves; manual follow-up needed | Set `blockedByTaskIds` so Paperclip auto-wakes the assignee when all blockers are done |

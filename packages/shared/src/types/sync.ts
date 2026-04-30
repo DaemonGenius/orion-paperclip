@@ -116,7 +116,7 @@ export interface StartNotionKnowledgeSyncResult {
 export interface KnowledgeClearResult {
   clearedRefs: number;
   removedMirrorFiles: number;
-  deletedImportedIssues: number;
+  deletedImportedTasks: number;
   deletedImportedProjects: number;
   deletedKnowledgeProposals: number;
   deletedSyncConflicts: number;
@@ -131,7 +131,7 @@ export interface KnowledgeClearResult {
 export interface NotionTaskSyncRef {
   provider: "notion";
   notionPageId: string;
-  issueId: string;
+  taskId: string;
   syncStatus: SyncStatus;
   refId: string;
 }

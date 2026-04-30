@@ -8,7 +8,7 @@ import { companiesApi } from "../api/companies";
 import { goalsApi } from "../api/goals";
 import { agentsApi } from "../api/agents";
 import { approvalsApi } from "../api/approvals";
-import { issuesApi } from "../api/issues";
+import { tasksApi } from "../api/tasks";
 import { projectsApi } from "../api/projects";
 import { orionApi } from "../api/orion";
 import { externalAppsApi } from "../api/externalApps";
@@ -33,7 +33,7 @@ import { getAdapterDisplay } from "../adapters/adapter-display-registry";
 import { defaultCreateValues } from "./agent-config-defaults";
 import { parseOnboardingGoalInput } from "../lib/onboarding-goal";
 import {
-  buildOnboardingIssuePayload,
+  buildOnboardingTaskPayload,
   buildOnboardingProjectPayload,
   selectDefaultCompanyGoalId
 } from "../lib/onboarding-launch";
@@ -87,7 +87,7 @@ Expected preflight already done by Orion:
 
 Your task:
 
-- read the issue/project context
+- read the task/project context
 - verify the Orion knowledge refs endpoint shows the expected structures
 - write a short readiness report
 - propose the next concrete implementation task
@@ -239,7 +239,7 @@ export function OnboardingWizard() {
   );
   const [createdAgentId, setCreatedAgentId] = useState<string | null>(null);
   const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
-  const [createdIssueRef, setCreatedIssueRef] = useState<string | null>(null);
+  const [createdTaskRef, setCreatedTaskRef] = useState<string | null>(null);
   const [createdWorkflowId, setCreatedWorkflowId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -258,18 +258,18 @@ export function OnboardingWizard() {
     setCreatedCompanyGoalId(null);
     setCreatedProjectId(null);
     setCreatedAgentId(null);
-    setCreatedIssueRef(null);
+    setCreatedTaskRef(null);
   }, [
     effectiveOnboardingOpen,
     effectiveOnboardingOptions.companyId,
     effectiveOnboardingOptions.initialStep
   ]);
 
-  // Backfill issue prefix for an existing company once companies are loaded.
+  // Backfill task prefix for an existing company once companies are loaded.
   useEffect(() => {
     if (!effectiveOnboardingOpen || !createdCompanyId || createdCompanyPrefix) return;
     const company = companies.find((c) => c.id === createdCompanyId);
-    if (company) setCreatedCompanyPrefix(company.issuePrefix);
+    if (company) setCreatedCompanyPrefix(company.taskPrefix);
   }, [effectiveOnboardingOpen, createdCompanyId, createdCompanyPrefix, companies]);
 
   // Resize textarea when task step is shown or description changes
@@ -404,7 +404,7 @@ export function OnboardingWizard() {
     setCreatedCompanyGoalId(null);
     setCreatedAgentId(null);
     setCreatedProjectId(null);
-    setCreatedIssueRef(null);
+    setCreatedTaskRef(null);
     setCreatedWorkflowId(null);
   }
 
@@ -486,7 +486,7 @@ export function OnboardingWizard() {
     try {
       const company = await companiesApi.create({ name: companyName.trim() });
       setCreatedCompanyId(company.id);
-      setCreatedCompanyPrefix(company.issuePrefix);
+      setCreatedCompanyPrefix(company.taskPrefix);
       setSelectedCompanyId(company.id);
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
       if (companyGoal.trim()) {
@@ -771,11 +771,11 @@ export function OnboardingWizard() {
         });
       }
 
-      let issueRef = createdIssueRef;
-      if (!issueRef) {
-        const issue = await issuesApi.create(
+      let taskRef = createdTaskRef;
+      if (!taskRef) {
+        const task = await tasksApi.create(
           createdCompanyId,
-          buildOnboardingIssuePayload({
+          buildOnboardingTaskPayload({
             title: taskTitle,
             description: taskDescription,
             assigneeAgentId: createdAgentId,
@@ -783,16 +783,16 @@ export function OnboardingWizard() {
             goalId
           })
         );
-        issueRef = issue.identifier ?? issue.id;
-        setCreatedIssueRef(issueRef);
+        taskRef = task.identifier ?? task.id;
+        setCreatedTaskRef(taskRef);
         if (createdWorkflowId) {
-          await orionApi.bindTaskWorkflow(issue.id, {
+          await orionApi.bindTaskWorkflow(task.id, {
             workflowId: createdWorkflowId,
             currentNodeKey: workflowPresetId === "paperclip_company" ? "board" : "notion_task"
           });
         }
         queryClient.invalidateQueries({
-          queryKey: queryKeys.issues.list(createdCompanyId)
+          queryKey: queryKeys.tasks.list(createdCompanyId)
         });
       }
 
@@ -801,8 +801,8 @@ export function OnboardingWizard() {
       closeOnboarding();
       navigate(
         createdCompanyPrefix
-          ? `/${createdCompanyPrefix}/issues/${issueRef}`
-          : `/issues/${issueRef}`
+          ? `/${createdCompanyPrefix}/tasks/${taskRef}`
+          : `/tasks/${taskRef}`
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create task");
@@ -1498,7 +1498,7 @@ export function OnboardingWizard() {
                       <h3 className="font-medium">Ready to launch</h3>
                       <p className="text-xs text-muted-foreground">
                         Everything is set up. Launching now will create the
-                        starter task, wake the agent, and open the issue.
+                        starter task, wake the agent, and open the task.
                       </p>
                     </div>
                   </div>
@@ -1631,7 +1631,7 @@ export function OnboardingWizard() {
                       ) : (
                         <ArrowRight className="h-3.5 w-3.5 mr-1" />
                       )}
-                      {loading ? "Creating..." : "Create & Open Issue"}
+                      {loading ? "Creating..." : "Create & Open Task"}
                     </Button>
                   )}
                 </div>

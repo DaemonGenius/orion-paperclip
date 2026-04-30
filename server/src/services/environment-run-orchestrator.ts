@@ -134,7 +134,7 @@ export function environmentRunOrchestrator(
   /**
    * Resolve the selected environment for a run. Ensures a local default
    * exists and resolves the priority chain:
-   *   execution workspace config > issue settings > project policy > agent default > company default
+   *   execution workspace config > task settings > project policy > agent default > company default
    */
   async function resolveEnvironment(input: {
     companyId: string;
@@ -178,7 +178,7 @@ export function environmentRunOrchestrator(
   async function acquireLease(input: {
     companyId: string;
     environment: Environment;
-    issueId: string | null;
+    taskId: string | null;
     heartbeatRunId: string;
     persistedExecutionWorkspace: Pick<ExecutionWorkspace, "id" | "mode"> | null;
   }): Promise<EnvironmentRuntimeLeaseRecord> {
@@ -236,7 +236,7 @@ export function environmentRunOrchestrator(
     selectedEnvironmentId: string;
     defaultEnvironmentId: string;
     adapterType: string;
-    issueId: string | null;
+    taskId: string | null;
     heartbeatRunId: string;
     agentId: string;
     persistedExecutionWorkspace: Pick<ExecutionWorkspace, "id" | "mode"> | null;
@@ -252,7 +252,7 @@ export function environmentRunOrchestrator(
     const leaseRecord = await acquireLease({
       companyId: input.companyId,
       environment,
-      issueId: input.issueId,
+      taskId: input.taskId,
       heartbeatRunId: input.heartbeatRunId,
       persistedExecutionWorkspace: input.persistedExecutionWorkspace,
     });
@@ -273,7 +273,7 @@ export function environmentRunOrchestrator(
         leasePolicy: leaseRecord.lease.leasePolicy,
         provider: leaseRecord.lease.provider,
         executionWorkspaceId: leaseRecord.leaseContext.executionWorkspaceId,
-        issueId: input.issueId,
+        taskId: input.taskId,
       },
     });
 
@@ -310,7 +310,7 @@ export function environmentRunOrchestrator(
     lease: EnvironmentLease;
     adapterType: string;
     companyId: string;
-    issueId: string | null;
+    taskId: string | null;
     heartbeatRunId: string;
     executionWorkspace: RealizedExecutionWorkspace;
     effectiveExecutionWorkspaceMode: string | null;
@@ -320,7 +320,7 @@ export function environmentRunOrchestrator(
       environment,
       adapterType,
       companyId,
-      issueId,
+      taskId,
       heartbeatRunId,
       executionWorkspace,
       effectiveExecutionWorkspaceMode,
@@ -333,7 +333,7 @@ export function environmentRunOrchestrator(
       companyId,
       environmentId: environment.id,
       executionWorkspaceId: persistedExecutionWorkspace?.id ?? null,
-      issueId,
+      taskId,
       heartbeatRunId,
       requestedMode: persistedExecutionWorkspace?.mode ?? effectiveExecutionWorkspaceMode,
       workspace: executionWorkspace,
@@ -477,7 +477,7 @@ export function environmentRunOrchestrator(
             leasePolicy: released.lease.leasePolicy,
             provider: released.lease.provider,
             executionWorkspaceId: released.lease.executionWorkspaceId,
-            issueId: released.lease.issueId,
+            taskId: released.lease.taskId,
             status: released.lease.status,
             cleanupStatus: released.lease.cleanupStatus,
             failureReason: input.failureReason ?? released.lease.failureReason,

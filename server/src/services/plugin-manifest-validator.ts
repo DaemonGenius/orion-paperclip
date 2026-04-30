@@ -128,9 +128,9 @@ export function pluginManifestValidator(): PluginManifestValidator {
         };
       }
 
-      const details = result.error.errors.map((issue) => ({
-        path: issue.path,
-        message: issue.message,
+      const details = result.error.errors.map((task) => ({
+        path: task.path,
+        message: task.message,
       }));
 
       const errors = details

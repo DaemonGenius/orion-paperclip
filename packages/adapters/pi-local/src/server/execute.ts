@@ -199,7 +199,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
 
   const wakeTaskId =
     (typeof context.taskId === "string" && context.taskId.trim().length > 0 && context.taskId.trim()) ||
-    (typeof context.issueId === "string" && context.issueId.trim().length > 0 && context.issueId.trim()) ||
+    (typeof context.taskId === "string" && context.taskId.trim().length > 0 && context.taskId.trim()) ||
     null;
   const wakeReason =
     typeof context.wakeReason === "string" && context.wakeReason.trim().length > 0
@@ -217,8 +217,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     typeof context.approvalStatus === "string" && context.approvalStatus.trim().length > 0
       ? context.approvalStatus.trim()
       : null;
-  const linkedIssueIds = Array.isArray(context.issueIds)
-    ? context.issueIds.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+  const linkedTaskIds = Array.isArray(context.taskIds)
+    ? context.taskIds.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
     : [];
   const wakePayloadJson = stringifyPaperclipWakePayload(context.paperclipWake);
     
@@ -227,7 +227,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   if (wakeCommentId) env.PAPERCLIP_WAKE_COMMENT_ID = wakeCommentId;
   if (approvalId) env.PAPERCLIP_APPROVAL_ID = approvalId;
   if (approvalStatus) env.PAPERCLIP_APPROVAL_STATUS = approvalStatus;
-  if (linkedIssueIds.length > 0) env.PAPERCLIP_LINKED_ISSUE_IDS = linkedIssueIds.join(",");
+  if (linkedTaskIds.length > 0) env.PAPERCLIP_LINKED_TASK_IDS = linkedTaskIds.join(",");
   if (wakePayloadJson) env.PAPERCLIP_WAKE_PAYLOAD_JSON = wakePayloadJson;
   applyPaperclipWorkspaceEnv(env, {
     workspaceCwd,
@@ -249,7 +249,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   }
 
   // Prepend installed skill `bin/` dirs to PATH so an agent's bash tool can
-  // invoke skill binaries (e.g. `paperclip-get-issue`) by name. Without this,
+  // invoke skill binaries (e.g. `paperclip-get-task`) by name. Without this,
   // any pi_local agent whose AGENTS.md calls a skill command via bash hits
   // exit 127 "command not found". Only include skills that ensurePiSkillsInjected
   // actually linked — otherwise non-injected skills' binaries would be reachable

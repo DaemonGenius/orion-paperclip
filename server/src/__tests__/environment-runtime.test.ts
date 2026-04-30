@@ -232,7 +232,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const acquired = await runtime.acquireRunLease({
       companyId,
       environment,
-      issueId: null,
+      taskId: null,
       heartbeatRunId: runId,
       persistedExecutionWorkspace: null,
     });
@@ -266,7 +266,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const acquired = await runtime.acquireRunLease({
       companyId,
       environment,
-      issueId: null,
+      taskId: null,
       heartbeatRunId: runId,
       persistedExecutionWorkspace: null,
     });
@@ -306,7 +306,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
       runtimeWithoutSsh.acquireRunLease({
         companyId,
         environment,
-        issueId: null,
+        taskId: null,
         heartbeatRunId: runId,
         persistedExecutionWorkspace: null,
       }),
@@ -358,7 +358,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
       const acquired = await runtime.acquireRunLease({
         companyId,
         environment,
-        issueId: null,
+        taskId: null,
         heartbeatRunId: runId,
         persistedExecutionWorkspace: null,
       });
@@ -404,7 +404,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const acquired = await runtime.acquireRunLease({
       companyId,
       environment,
-      issueId: null,
+      taskId: null,
       heartbeatRunId: runId,
       persistedExecutionWorkspace: null,
     });
@@ -528,7 +528,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const acquired = await runtimeWithPlugin.acquireRunLease({
       companyId,
       environment,
-      issueId: null,
+      taskId: null,
       heartbeatRunId: runId,
       persistedExecutionWorkspace: null,
     });
@@ -658,7 +658,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const acquired = await runtimeWithPlugin.acquireRunLease({
       companyId,
       environment,
-      issueId: null,
+      taskId: null,
       heartbeatRunId: runId,
       persistedExecutionWorkspace: null,
     });
@@ -798,7 +798,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const acquired = await runtimeWithPlugin.acquireRunLease({
       companyId,
       environment,
-      issueId: null,
+      taskId: null,
       heartbeatRunId: runId,
       persistedExecutionWorkspace: null,
     });
@@ -833,7 +833,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const acquired = await runtime.acquireRunLease({
       companyId,
       environment,
-      issueId: null,
+      taskId: null,
       heartbeatRunId: runId,
       persistedExecutionWorkspace: null,
     });
@@ -922,7 +922,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const acquired = await runtimeWithPlugin.acquireRunLease({
       companyId,
       environment,
-      issueId: null,
+      taskId: null,
       heartbeatRunId: runId,
       persistedExecutionWorkspace: null,
     });
@@ -1071,7 +1071,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const acquired = await runtimeWithPlugin.acquireRunLease({
       companyId,
       environment,
-      issueId: null,
+      taskId: null,
       heartbeatRunId: runId,
       persistedExecutionWorkspace: null,
     });
@@ -1180,7 +1180,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
             companyId: input.companyId,
             environmentId: input.environment.id,
             executionWorkspaceId: input.executionWorkspaceId,
-            issueId: input.issueId,
+            taskId: input.taskId,
             heartbeatRunId: input.heartbeatRunId,
             metadata: {
               driver: input.environment.driver,
@@ -1202,7 +1202,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const acquired = await runtimeWithSpies.acquireRunLease({
       companyId,
       environment,
-      issueId: null,
+      taskId: null,
       heartbeatRunId: runId,
       persistedExecutionWorkspace: null,
     });

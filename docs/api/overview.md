@@ -55,7 +55,7 @@ All responses return JSON. Successful responses return the entity directly. Erro
 
 ## Pagination
 
-List endpoints support standard pagination query parameters when applicable. Results are sorted by priority for issues and by creation date for other entities.
+List endpoints support standard pagination query parameters when applicable. Results are sorted by priority for tasks and by creation date for other entities.
 
 ## Rate Limiting
 

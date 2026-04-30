@@ -1,7 +1,7 @@
 import express from "express";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
-import { actorMiddleware } from "../middleware/auth.js";
+import { actorMiddleware, shouldBypassSessionResolution } from "../middleware/auth.js";
 
 function createSelectChain(rows: unknown[]) {
   return {
@@ -25,6 +25,34 @@ function createDb() {
 }
 
 describe("actorMiddleware authenticated session profile", () => {
+  it("bypasses session resolution for Vite dev asset requests", () => {
+    expect(shouldBypassSessionResolution({ method: "GET", path: "/src/main.tsx" } as any)).toBe(true);
+    expect(shouldBypassSessionResolution({ method: "GET", path: "/node_modules/.vite/deps/react.js" } as any)).toBe(true);
+    expect(shouldBypassSessionResolution({ method: "GET", path: "/api/companies" } as any)).toBe(false);
+  });
+
+  it("does not call Better Auth for Vite dev asset requests", async () => {
+    const app = express();
+    const resolveSession = vi.fn();
+    const db = createDb();
+    app.use(
+      actorMiddleware(db, {
+        deploymentMode: "authenticated",
+        resolveSession,
+      }),
+    );
+    app.get("/src/main.tsx", (req, res) => {
+      res.json(req.actor);
+    });
+
+    const res = await request(app).get("/src/main.tsx");
+
+    expect(res.status).toBe(200);
+    expect(resolveSession).not.toHaveBeenCalled();
+    expect(db.select).not.toHaveBeenCalled();
+    expect(res.body).toMatchObject({ type: "none", source: "none" });
+  });
+
   it("preserves the signed-in user name and email on the board actor", async () => {
     const app = express();
     app.use(

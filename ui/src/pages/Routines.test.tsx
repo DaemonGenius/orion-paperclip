@@ -3,7 +3,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { Issue, RoutineListItem } from "@paperclipai/shared";
+import type { Task, RoutineListItem } from "@paperclipai/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Routines, buildRoutineGroups } from "./Routines";
 
@@ -11,9 +11,9 @@ let currentSearch = "";
 
 const navigateMock = vi.fn();
 const routinesListMock = vi.fn<(companyId: string) => Promise<RoutineListItem[]>>();
-const issuesListMock = vi.fn<(companyId: string, filters?: Record<string, unknown>) => Promise<Issue[]>>();
-const issuesListRenderMock = vi.fn(({ issues }: { issues: Issue[] }) => (
-  <div data-testid="issues-list">{issues.map((issue) => issue.title).join(", ")}</div>
+const tasksListMock = vi.fn<(companyId: string, filters?: Record<string, unknown>) => Promise<Task[]>>();
+const tasksListRenderMock = vi.fn(({ tasks }: { tasks: Task[] }) => (
+  <div data-testid="tasks-list">{tasks.map((task) => task.title).join(", ")}</div>
 ));
 
 vi.mock("@/lib/router", () => ({
@@ -43,9 +43,9 @@ vi.mock("../api/routines", () => ({
   },
 }));
 
-vi.mock("../api/issues", () => ({
-  issuesApi: {
-    list: (companyId: string, filters?: Record<string, unknown>) => issuesListMock(companyId, filters),
+vi.mock("../api/tasks", () => ({
+  tasksApi: {
+    list: (companyId: string, filters?: Record<string, unknown>) => tasksListMock(companyId, filters),
     update: vi.fn(),
   },
 }));
@@ -170,8 +170,8 @@ vi.mock("../api/heartbeats", () => ({
   },
 }));
 
-vi.mock("../components/IssuesList", () => ({
-  IssuesList: (props: { issues: Issue[] }) => issuesListRenderMock(props),
+vi.mock("../components/TasksList", () => ({
+  TasksList: (props: { tasks: Task[] }) => tasksListRenderMock(props),
 }));
 
 vi.mock("../components/PageTabBar", () => ({
@@ -216,7 +216,7 @@ function createRoutine(overrides: Partial<RoutineListItem>): RoutineListItem {
     companyId: "company-1",
     projectId: "project-1",
     goalId: null,
-    parentIssueId: null,
+    parentTaskId: null,
     title: "Routine title",
     description: null,
     assigneeAgentId: "agent-1",
@@ -235,21 +235,21 @@ function createRoutine(overrides: Partial<RoutineListItem>): RoutineListItem {
     updatedAt: new Date("2026-04-01T00:00:00.000Z"),
     triggers: [],
     lastRun: null,
-    activeIssue: null,
+    activeTask: null,
     ...overrides,
   };
 }
 
-function createIssue(overrides: Partial<Issue> = {}): Issue {
+function createTask(overrides: Partial<Task> = {}): Task {
   return {
-    id: "issue-1",
+    id: "task-1",
     identifier: "PAP-1000",
     companyId: "company-1",
     projectId: "project-1",
     projectWorkspaceId: null,
     goalId: null,
     parentId: null,
-    title: "Routine execution issue",
+    title: "Routine execution task",
     description: null,
     status: "todo",
     priority: "medium",
@@ -257,7 +257,7 @@ function createIssue(overrides: Partial<Issue> = {}): Issue {
     assigneeUserId: null,
     createdByAgentId: null,
     createdByUserId: null,
-    issueNumber: 1000,
+    taskNumber: 1000,
     originKind: "routine_execution",
     originId: "routine-1",
     originRunId: null,
@@ -302,8 +302,8 @@ describe("Routines page", () => {
     currentSearch = "";
     navigateMock.mockReset();
     routinesListMock.mockReset();
-    issuesListMock.mockReset();
-    issuesListRenderMock.mockClear();
+    tasksListMock.mockReset();
+    tasksListRenderMock.mockClear();
     localStorage.clear();
   });
 
@@ -334,12 +334,12 @@ describe("Routines page", () => {
     expect(groups[1]?.items.map((item) => item.title)).toEqual(["Weekly digest"]);
   });
 
-  it("shows recent runs through the issues list scoped to routine execution issues", async () => {
+  it("shows recent runs through the tasks list scoped to routine execution tasks", async () => {
     currentSearch = "tab=runs";
     routinesListMock.mockResolvedValue([createRoutine({ id: "routine-1" })]);
-    issuesListMock.mockResolvedValue([
-      createIssue({ id: "issue-1", title: "Routine execution A" }),
-      createIssue({ id: "issue-2", title: "Routine execution B", identifier: "PAP-1001", issueNumber: 1001 }),
+    tasksListMock.mockResolvedValue([
+      createTask({ id: "task-1", title: "Routine execution A" }),
+      createTask({ id: "task-2", title: "Routine execution B", identifier: "PAP-1001", taskNumber: 1001 }),
     ]);
 
     const root = createRoot(container);
@@ -358,7 +358,7 @@ describe("Routines page", () => {
       await flush();
     });
 
-    expect(issuesListMock).toHaveBeenCalledWith("company-1", { originKind: "routine_execution" });
+    expect(tasksListMock).toHaveBeenCalledWith("company-1", { originKind: "routine_execution" });
 
     await act(async () => {
       root.unmount();

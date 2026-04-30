@@ -14,19 +14,18 @@ import {
 import crypto, { randomUUID } from "node:crypto";
 import { WebSocket } from "ws";
 
-type SessionKeyStrategy = "fixed" | "issue" | "run";
+type SessionKeyStrategy = "fixed" | "task" | "run";
 
 type WakePayload = {
   runId: string;
   agentId: string;
   companyId: string;
   taskId: string | null;
-  issueId: string | null;
   wakeReason: string | null;
   wakeCommentId: string | null;
   approvalId: string | null;
   approvalStatus: string | null;
-  issueIds: string[];
+  taskIds: string[];
 };
 
 type GatewayDeviceIdentity = {
@@ -128,9 +127,9 @@ function parseBoolean(value: unknown, fallback = false): boolean {
 }
 
 function normalizeSessionKeyStrategy(value: unknown): SessionKeyStrategy {
-  const normalized = asString(value, "issue").trim().toLowerCase();
+  const normalized = asString(value, "task").trim().toLowerCase();
   if (normalized === "fixed" || normalized === "run") return normalized;
-  return "issue";
+  return "task";
 }
 
 function prefixSessionKeyForAgent(sessionKey: string, agentId: string | null): string {
@@ -143,14 +142,14 @@ export function resolveSessionKey(input: {
   configuredSessionKey: string | null;
   agentId: string | null;
   runId: string;
-  issueId: string | null;
+  taskId: string | null;
 }): string {
   const fallback = input.configuredSessionKey ?? "paperclip";
   if (input.strategy === "run") {
     return prefixSessionKeyForAgent(`paperclip:run:${input.runId}`, input.agentId);
   }
-  if (input.strategy === "issue" && input.issueId) {
-    return prefixSessionKeyForAgent(`paperclip:issue:${input.issueId}`, input.agentId);
+  if (input.strategy === "task" && input.taskId) {
+    return prefixSessionKeyForAgent(`paperclip:task:${input.taskId}`, input.agentId);
   }
   return prefixSessionKeyForAgent(fallback, input.agentId);
 }
@@ -304,14 +303,13 @@ function buildWakePayload(ctx: AdapterExecutionContext): WakePayload {
     runId,
     agentId: agent.id,
     companyId: agent.companyId,
-    taskId: nonEmpty(context.taskId) ?? nonEmpty(context.issueId),
-    issueId: nonEmpty(context.issueId),
+    taskId: nonEmpty(context.taskId),
     wakeReason: nonEmpty(context.wakeReason),
     wakeCommentId: nonEmpty(context.wakeCommentId) ?? nonEmpty(context.commentId),
     approvalId: nonEmpty(context.approvalId),
     approvalStatus: nonEmpty(context.approvalStatus),
-    issueIds: Array.isArray(context.issueIds)
-      ? context.issueIds.filter(
+    taskIds: Array.isArray(context.taskIds)
+      ? context.taskIds.filter(
           (value): value is string => typeof value === "string" && value.trim().length > 0,
         )
       : [],
@@ -351,8 +349,8 @@ function buildPaperclipEnvForWake(ctx: AdapterExecutionContext, wakePayload: Wak
   if (wakePayload.wakeCommentId) paperclipEnv.PAPERCLIP_WAKE_COMMENT_ID = wakePayload.wakeCommentId;
   if (wakePayload.approvalId) paperclipEnv.PAPERCLIP_APPROVAL_ID = wakePayload.approvalId;
   if (wakePayload.approvalStatus) paperclipEnv.PAPERCLIP_APPROVAL_STATUS = wakePayload.approvalStatus;
-  if (wakePayload.issueIds.length > 0) {
-    paperclipEnv.PAPERCLIP_LINKED_ISSUE_IDS = wakePayload.issueIds.join(",");
+  if (wakePayload.taskIds.length > 0) {
+    paperclipEnv.PAPERCLIP_LINKED_TASK_IDS = wakePayload.taskIds.join(",");
   }
 
   return paperclipEnv;
@@ -374,7 +372,7 @@ function buildWakeText(
     "PAPERCLIP_WAKE_COMMENT_ID",
     "PAPERCLIP_APPROVAL_ID",
     "PAPERCLIP_APPROVAL_STATUS",
-    "PAPERCLIP_LINKED_ISSUE_IDS",
+    "PAPERCLIP_LINKED_TASK_IDS",
   ];
 
   const envLines: string[] = [];
@@ -384,7 +382,7 @@ function buildWakeText(
     envLines.push(`${key}=${value}`);
   }
 
-  const issueIdHint = payload.taskId ?? payload.issueId ?? "";
+  const taskIdHint = payload.taskId ?? payload.taskId ?? "";
   const apiBaseHint = paperclipEnv.PAPERCLIP_API_URL ?? "<set PAPERCLIP_API_URL>";
 
   const lines = [
@@ -400,12 +398,12 @@ function buildWakeText(
     "",
     `api_base=${apiBaseHint}`,
     `task_id=${payload.taskId ?? ""}`,
-    `issue_id=${payload.issueId ?? ""}`,
+    `task_id=${payload.taskId ?? ""}`,
     `wake_reason=${payload.wakeReason ?? ""}`,
     `wake_comment_id=${payload.wakeCommentId ?? ""}`,
     `approval_id=${payload.approvalId ?? ""}`,
     `approval_status=${payload.approvalStatus ?? ""}`,
-    `linked_issue_ids=${payload.issueIds.join(",")}`,
+    `linked_task_ids=${payload.taskIds.join(",")}`,
     "",
     "HTTP rules:",
     "- Use Authorization: Bearer $PAPERCLIP_API_KEY on every API call.",
@@ -415,26 +413,26 @@ function buildWakeText(
     "",
     "Workflow:",
     "1) GET /api/agents/me",
-    `2) Determine issueId: PAPERCLIP_TASK_ID if present, otherwise issue_id (${issueIdHint}).`,
-    "3) If issueId exists:",
-    "   - POST /api/issues/{issueId}/checkout with {\"agentId\":\"$PAPERCLIP_AGENT_ID\",\"expectedStatuses\":[\"todo\",\"backlog\",\"blocked\",\"in_review\"]}",
-    "   - GET /api/issues/{issueId}",
-    "   - GET /api/issues/{issueId}/comments",
-    "   - Execute the issue instructions exactly. If the issue is actionable, take concrete action in this run; do not stop at a plan unless planning was requested.",
-    "   - Leave durable progress with a clear next action. Use child issues for long or parallel delegated work instead of polling agents, sessions, or processes.",
-    "   - Create child issues directly when you know what needs to be done; use POST /api/issues/{issueId}/interactions with kind suggest_tasks, ask_user_questions, or request_confirmation when the board/user must choose, answer, or confirm before you can continue.",
-    "   - For plan approval, update the plan document first, then create request_confirmation targeting the latest plan revision with idempotencyKey confirmation:{issueId}:plan:{revisionId}; wait for acceptance before creating implementation subtasks.",
-    "   - If blocked, PATCH /api/issues/{issueId} with {\"status\":\"blocked\",\"comment\":\"what is blocked, who owns the unblock, and the next action\"}.",
-    "   - If instructions require a comment, POST /api/issues/{issueId}/comments with {\"body\":\"...\"}.",
-    "   - PATCH /api/issues/{issueId} with {\"status\":\"done\",\"comment\":\"what changed and why\"}.",
-    "4) If issueId does not exist:",
-    "   - GET /api/companies/$PAPERCLIP_COMPANY_ID/issues?assigneeAgentId=$PAPERCLIP_AGENT_ID&status=todo,in_progress,in_review,blocked",
+    `2) Determine taskId: PAPERCLIP_TASK_ID if present, otherwise task_id (${taskIdHint}).`,
+    "3) If taskId exists:",
+    "   - POST /api/tasks/{taskId}/checkout with {\"agentId\":\"$PAPERCLIP_AGENT_ID\",\"expectedStatuses\":[\"todo\",\"backlog\",\"blocked\",\"in_review\"]}",
+    "   - GET /api/tasks/{taskId}",
+    "   - GET /api/tasks/{taskId}/comments",
+    "   - Execute the task instructions exactly. If the task is actionable, take concrete action in this run; do not stop at a plan unless planning was requested.",
+    "   - Leave durable progress with a clear next action. Use child tasks for long or parallel delegated work instead of polling agents, sessions, or processes.",
+    "   - Create child tasks directly when you know what needs to be done; use POST /api/tasks/{taskId}/interactions with kind suggest_tasks, ask_user_questions, or request_confirmation when the board/user must choose, answer, or confirm before you can continue.",
+    "   - For plan approval, update the plan document first, then create request_confirmation targeting the latest plan revision with idempotencyKey confirmation:{taskId}:plan:{revisionId}; wait for acceptance before creating implementation subtasks.",
+    "   - If blocked, PATCH /api/tasks/{taskId} with {\"status\":\"blocked\",\"comment\":\"what is blocked, who owns the unblock, and the next action\"}.",
+    "   - If instructions require a comment, POST /api/tasks/{taskId}/comments with {\"body\":\"...\"}.",
+    "   - PATCH /api/tasks/{taskId} with {\"status\":\"done\",\"comment\":\"what changed and why\"}.",
+    "4) If taskId does not exist:",
+    "   - GET /api/companies/$PAPERCLIP_COMPANY_ID/tasks?assigneeAgentId=$PAPERCLIP_AGENT_ID&status=todo,in_progress,in_review,blocked",
     "   - Pick in_progress first, then in_review when you were woken by a comment, then todo, then blocked, then execute step 3.",
     "",
-    "Useful endpoints for issue work:",
-    "- POST /api/issues/{issueId}/comments",
-    "- PATCH /api/issues/{issueId}",
-    "- POST /api/companies/{companyId}/issues (when asked to create a new issue)",
+    "Useful endpoints for task work:",
+    "- POST /api/tasks/{taskId}/comments",
+    "- PATCH /api/tasks/{taskId}",
+    "- POST /api/companies/{companyId}/tasks (when asked to create a new task)",
     ...(structuredWakePrompt
       ? [
           "",
@@ -487,8 +485,7 @@ function buildStandardPaperclipPayload(
     agentId: ctx.agent.id,
     agentName: ctx.agent.name,
     taskId: wakePayload.taskId,
-    issueId: wakePayload.issueId,
-    issueIds: wakePayload.issueIds,
+    taskIds: wakePayload.taskIds,
     wakeReason: wakePayload.wakeReason,
     wakeCommentId: wakePayload.wakeCommentId,
     approvalId: wakePayload.approvalId,
@@ -980,7 +977,7 @@ function extractRuntimeServicesFromMeta(meta: Record<string, unknown> | null): A
       id: nonEmpty(entry.id),
       projectId: nonEmpty(entry.projectId),
       projectWorkspaceId: nonEmpty(entry.projectWorkspaceId),
-      issueId: nonEmpty(entry.issueId),
+      taskId: nonEmpty(entry.taskId),
       scopeType,
       scopeId: nonEmpty(entry.scopeId),
       serviceName,
@@ -1122,7 +1119,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     configuredSessionKey,
     agentId: nonEmpty(ctx.config.agentId),
     runId: ctx.runId,
-    issueId: wakePayload.issueId,
+    taskId: wakePayload.taskId,
   });
 
   const templateMessage = nonEmpty(payloadTemplate.message) ?? nonEmpty(payloadTemplate.text);

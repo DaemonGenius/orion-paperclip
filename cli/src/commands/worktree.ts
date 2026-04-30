@@ -33,10 +33,10 @@ import {
   goals,
   heartbeatRuns,
   inspectMigrations,
-  issueAttachments,
-  issueComments,
-  issueDocuments,
-  issues,
+  taskAttachments,
+  taskComments,
+  taskDocuments,
+  tasks,
   projectWorkspaces,
   projects,
   routines,
@@ -70,14 +70,14 @@ import {
 import {
   buildWorktreeMergePlan,
   parseWorktreeMergeScopes,
-  type IssueAttachmentRow,
-  type IssueDocumentRow,
+  type TaskAttachmentRow,
+  type TaskDocumentRow,
   type DocumentRevisionRow,
   type PlannedAttachmentInsert,
   type PlannedCommentInsert,
-  type PlannedIssueDocumentInsert,
-  type PlannedIssueDocumentMerge,
-  type PlannedIssueInsert,
+  type PlannedTaskDocumentInsert,
+  type PlannedTaskDocumentMerge,
+  type PlannedTaskInsert,
 } from "./worktree-merge-history-lib.js";
 
 type WorktreeInitOptions = {
@@ -194,9 +194,9 @@ type SeedWorktreeDatabaseResult = {
 export type SeededWorktreeExecutionQuarantineSummary = {
   disabledTimerHeartbeats: number;
   resetRunningAgents: number;
-  quarantinedInProgressIssues: number;
-  unassignedTodoIssues: number;
-  unassignedReviewIssues: number;
+  quarantinedInProgressTasks: number;
+  unassignedTodoTasks: number;
+  unassignedReviewTasks: number;
 };
 
 function nonEmpty(value: string | null | undefined): string | null {
@@ -217,9 +217,9 @@ function formatSeededWorktreeExecutionQuarantineSummary(
   return [
     `disabled timer heartbeats: ${summary.disabledTimerHeartbeats}`,
     `reset running agents: ${summary.resetRunningAgents}`,
-    `quarantined in-progress issues: ${summary.quarantinedInProgressIssues}`,
-    `unassigned todo issues: ${summary.unassignedTodoIssues}`,
-    `unassigned review issues: ${summary.unassignedReviewIssues}`,
+    `quarantined in-progress tasks: ${summary.quarantinedInProgressTasks}`,
+    `unassigned todo tasks: ${summary.unassignedTodoTasks}`,
+    `unassigned review tasks: ${summary.unassignedReviewTasks}`,
   ].join(", ");
 }
 
@@ -1147,9 +1147,9 @@ export async function pauseSeededScheduledRoutines(connectionString: string): Pr
 const EMPTY_SEEDED_WORKTREE_EXECUTION_QUARANTINE_SUMMARY: SeededWorktreeExecutionQuarantineSummary = {
   disabledTimerHeartbeats: 0,
   resetRunningAgents: 0,
-  quarantinedInProgressIssues: 0,
-  unassignedTodoIssues: 0,
-  unassignedReviewIssues: 0,
+  quarantinedInProgressTasks: 0,
+  unassignedTodoTasks: 0,
+  unassignedReviewTasks: 0,
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1217,25 +1217,25 @@ export async function quarantineSeededWorktreeExecutionState(
         }
       }
 
-      const affectedIssues = await tx
+      const affectedTasks = await tx
         .select({
-          id: issues.id,
-          companyId: issues.companyId,
-          status: issues.status,
+          id: tasks.id,
+          companyId: tasks.companyId,
+          status: tasks.status,
         })
-        .from(issues)
+        .from(tasks)
         .where(
           and(
-            sql`${issues.assigneeAgentId} is not null`,
-            sql`${issues.assigneeUserId} is null`,
-            inArray(issues.status, ["todo", "in_progress", "in_review"]),
+            sql`${tasks.assigneeAgentId} is not null`,
+            sql`${tasks.assigneeUserId} is null`,
+            inArray(tasks.status, ["todo", "in_progress", "in_review"]),
           ),
         );
 
-      for (const issue of affectedIssues) {
-        const nextStatus = issue.status === "in_progress" ? "blocked" : issue.status;
+      for (const task of affectedTasks) {
+        const nextStatus = task.status === "in_progress" ? "blocked" : task.status;
         await tx
-          .update(issues)
+          .update(tasks)
           .set({
             status: nextStatus,
             assigneeAgentId: null,
@@ -1246,21 +1246,21 @@ export async function quarantineSeededWorktreeExecutionState(
             executionWorkspaceId: null,
             updatedAt: new Date(),
           })
-          .where(eq(issues.id, issue.id));
+          .where(eq(tasks.id, task.id));
 
-        if (issue.status === "in_progress") {
-          summary.quarantinedInProgressIssues += 1;
-          await tx.insert(issueComments).values({
-            companyId: issue.companyId,
-            issueId: issue.id,
+        if (task.status === "in_progress") {
+          summary.quarantinedInProgressTasks += 1;
+          await tx.insert(taskComments).values({
+            companyId: task.companyId,
+            taskId: task.id,
             body:
               "Quarantined during worktree seed so copied in-flight work does not auto-run in this isolated instance. " +
               "Reassign or unblock here only if you intentionally want the worktree instance to own this task.",
           });
-        } else if (issue.status === "todo") {
-          summary.unassignedTodoIssues += 1;
-        } else if (issue.status === "in_review") {
-          summary.unassignedReviewIssues += 1;
+        } else if (task.status === "todo") {
+          summary.unassignedTodoTasks += 1;
+        } else if (task.status === "in_review") {
+          summary.unassignedReviewTasks += 1;
         }
       }
     });
@@ -1765,7 +1765,7 @@ export async function worktreeCleanupCommand(nameArg: string, opts: WorktreeClea
     for (const problem of problems) {
       p.log.error(problem);
     }
-    throw new Error("Safety checks failed. Resolve the issues above or re-run with --force.");
+    throw new Error("Safety checks failed. Resolve the tasks above or re-run with --force.");
   }
   if (problems.length > 0 && opts.force) {
     for (const problem of problems) {
@@ -1877,7 +1877,7 @@ type OpenDbHandle = {
 type ResolvedMergeCompany = {
   id: string;
   name: string;
-  issuePrefix: string;
+  taskPrefix: string;
 };
 
 async function closeDb(db: ClosableDb): Promise<void> {
@@ -1970,14 +1970,14 @@ async function resolveMergeCompany(input: {
       .select({
         id: companies.id,
         name: companies.name,
-        issuePrefix: companies.issuePrefix,
+        taskPrefix: companies.taskPrefix,
       })
       .from(companies),
     input.targetDb
       .select({
         id: companies.id,
         name: companies.name,
-        issuePrefix: companies.issuePrefix,
+        taskPrefix: companies.taskPrefix,
       })
       .from(companies),
   ]);
@@ -1987,7 +1987,7 @@ async function resolveMergeCompany(input: {
   const selector = nonEmpty(input.selector);
   if (selector) {
     const matched = shared.find(
-      (company) => company.id === selector || company.issuePrefix.toLowerCase() === selector.toLowerCase(),
+      (company) => company.id === selector || company.taskPrefix.toLowerCase() === selector.toLowerCase(),
     );
     if (!matched) {
       throw new Error(`Could not resolve company "${selector}" in both source and target databases.`);
@@ -2004,7 +2004,7 @@ async function resolveMergeCompany(input: {
   }
 
   const options = shared
-    .map((company) => `${company.issuePrefix} (${company.name})`)
+    .map((company) => `${company.taskPrefix} (${company.name})`)
     .join(", ");
   throw new Error(`Multiple shared companies found. Re-run with --company <id-or-prefix>. Options: ${options}`);
 }
@@ -2025,15 +2025,15 @@ function renderMergePlan(plan: Awaited<ReturnType<typeof collectMergePlan>>["pla
     `Mode: preview`,
     `Source: ${extras.sourcePath}`,
     `Target: ${extras.targetPath}`,
-    `Company: ${plan.companyName} (${plan.issuePrefix})`,
+    `Company: ${plan.companyName} (${plan.taskPrefix})`,
     "",
     "Projects",
     `- import: ${plan.counts.projectsToImport}`,
     "",
-    "Issues",
-    `- insert: ${plan.counts.issuesToInsert}`,
-    `- already present: ${plan.counts.issuesExisting}`,
-    `- shared/imported issues with drift: ${plan.counts.issueDrift}`,
+    "Tasks",
+    `- insert: ${plan.counts.tasksToInsert}`,
+    `- already present: ${plan.counts.tasksExisting}`,
+    `- shared/imported tasks with drift: ${plan.counts.taskDrift}`,
   ];
 
   if (plan.projectImports.length > 0) {
@@ -2046,19 +2046,19 @@ function renderMergePlan(plan: Awaited<ReturnType<typeof collectMergePlan>>["pla
     }
   }
 
-  const issueInserts = plan.issuePlans.filter((item): item is PlannedIssueInsert => item.action === "insert");
-  if (issueInserts.length > 0) {
+  const taskInserts = plan.taskPlans.filter((item): item is PlannedTaskInsert => item.action === "insert");
+  if (taskInserts.length > 0) {
     lines.push("");
-    lines.push("Planned issue imports");
-    for (const issue of issueInserts) {
+    lines.push("Planned task imports");
+    for (const task of taskInserts) {
       const projectNote =
-        (issue.projectResolution === "mapped" || issue.projectResolution === "imported")
-        && issue.mappedProjectName
-          ? ` project->${issue.projectResolution === "imported" ? "import:" : ""}${issue.mappedProjectName}`
+        (task.projectResolution === "mapped" || task.projectResolution === "imported")
+        && task.mappedProjectName
+          ? ` project->${task.projectResolution === "imported" ? "import:" : ""}${task.mappedProjectName}`
           : "";
-      const adjustments = issue.adjustments.length > 0 ? ` [${issue.adjustments.join(", ")}]` : "";
-      const prefix = `- ${issue.source.identifier ?? issue.source.id} -> ${issue.previewIdentifier} (${issue.targetStatus}${projectNote})`;
-      const title = oneLine(issue.source.title);
+      const adjustments = task.adjustments.length > 0 ? ` [${task.adjustments.join(", ")}]` : "";
+      const prefix = `- ${task.source.identifier ?? task.source.id} -> ${task.previewIdentifier} (${task.targetStatus}${projectNote})`;
+      const title = oneLine(task.source.title);
       const suffix = `${adjustments}${title ? ` ${title}` : ""}`;
       lines.push(
         `${prefix}${truncateToWidth(suffix, Math.max(8, terminalWidth - prefix.length))}`,
@@ -2105,7 +2105,7 @@ function renderMergePlan(plan: Awaited<ReturnType<typeof collectMergePlan>>["pla
   lines.push("Not imported in this phase");
   lines.push(`- heartbeat runs: ${extras.unsupportedRunCount}`);
   lines.push("");
-  lines.push("Identifiers shown above are provisional preview values. `--apply` reserves fresh issue numbers at write time.");
+  lines.push("Identifiers shown above are provisional preview values. `--apply` reserves fresh task numbers at write time.");
 
   return lines.join("\n");
 }
@@ -2128,12 +2128,12 @@ async function collectMergePlan(input: {
   const companyId = input.company.id;
   const [
     targetCompanyRow,
-    sourceIssuesRows,
-    targetIssuesRows,
+    sourceTasksRows,
+    targetTasksRows,
     sourceCommentsRows,
     targetCommentsRows,
-    sourceIssueDocumentsRows,
-    targetIssueDocumentsRows,
+    sourceTaskDocumentsRows,
+    targetTaskDocumentsRows,
     sourceDocumentRevisionRows,
     targetDocumentRevisionRows,
     sourceAttachmentRows,
@@ -2148,38 +2148,38 @@ async function collectMergePlan(input: {
   ] = await Promise.all([
     input.targetDb
       .select({
-        issueCounter: companies.issueCounter,
+        taskCounter: companies.taskCounter,
       })
       .from(companies)
       .where(eq(companies.id, companyId))
       .then((rows) => rows[0] ?? null),
     input.sourceDb
       .select()
-      .from(issues)
-      .where(eq(issues.companyId, companyId)),
+      .from(tasks)
+      .where(eq(tasks.companyId, companyId)),
     input.targetDb
       .select()
-      .from(issues)
-      .where(eq(issues.companyId, companyId)),
+      .from(tasks)
+      .where(eq(tasks.companyId, companyId)),
     input.scopes.includes("comments")
       ? input.sourceDb
         .select()
-        .from(issueComments)
-        .where(eq(issueComments.companyId, companyId))
+        .from(taskComments)
+        .where(eq(taskComments.companyId, companyId))
       : Promise.resolve([]),
     input.targetDb
       .select()
-      .from(issueComments)
-      .where(eq(issueComments.companyId, companyId)),
+      .from(taskComments)
+      .where(eq(taskComments.companyId, companyId)),
     input.sourceDb
       .select({
-        id: issueDocuments.id,
-        companyId: issueDocuments.companyId,
-        issueId: issueDocuments.issueId,
-        documentId: issueDocuments.documentId,
-        key: issueDocuments.key,
-        linkCreatedAt: issueDocuments.createdAt,
-        linkUpdatedAt: issueDocuments.updatedAt,
+        id: taskDocuments.id,
+        companyId: taskDocuments.companyId,
+        taskId: taskDocuments.taskId,
+        documentId: taskDocuments.documentId,
+        key: taskDocuments.key,
+        linkCreatedAt: taskDocuments.createdAt,
+        linkUpdatedAt: taskDocuments.updatedAt,
         title: documents.title,
         format: documents.format,
         latestBody: documents.latestBody,
@@ -2192,19 +2192,19 @@ async function collectMergePlan(input: {
         documentCreatedAt: documents.createdAt,
         documentUpdatedAt: documents.updatedAt,
       })
-      .from(issueDocuments)
-      .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
-      .innerJoin(issues, eq(issueDocuments.issueId, issues.id))
-      .where(eq(issues.companyId, companyId)),
+      .from(taskDocuments)
+      .innerJoin(documents, eq(taskDocuments.documentId, documents.id))
+      .innerJoin(tasks, eq(taskDocuments.taskId, tasks.id))
+      .where(eq(tasks.companyId, companyId)),
     input.targetDb
       .select({
-        id: issueDocuments.id,
-        companyId: issueDocuments.companyId,
-        issueId: issueDocuments.issueId,
-        documentId: issueDocuments.documentId,
-        key: issueDocuments.key,
-        linkCreatedAt: issueDocuments.createdAt,
-        linkUpdatedAt: issueDocuments.updatedAt,
+        id: taskDocuments.id,
+        companyId: taskDocuments.companyId,
+        taskId: taskDocuments.taskId,
+        documentId: taskDocuments.documentId,
+        key: taskDocuments.key,
+        linkCreatedAt: taskDocuments.createdAt,
+        linkUpdatedAt: taskDocuments.updatedAt,
         title: documents.title,
         format: documents.format,
         latestBody: documents.latestBody,
@@ -2217,10 +2217,10 @@ async function collectMergePlan(input: {
         documentCreatedAt: documents.createdAt,
         documentUpdatedAt: documents.updatedAt,
       })
-      .from(issueDocuments)
-      .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
-      .innerJoin(issues, eq(issueDocuments.issueId, issues.id))
-      .where(eq(issues.companyId, companyId)),
+      .from(taskDocuments)
+      .innerJoin(documents, eq(taskDocuments.documentId, documents.id))
+      .innerJoin(tasks, eq(taskDocuments.taskId, tasks.id))
+      .where(eq(tasks.companyId, companyId)),
     input.sourceDb
       .select({
         id: documentRevisions.id,
@@ -2234,9 +2234,9 @@ async function collectMergePlan(input: {
         createdAt: documentRevisions.createdAt,
       })
       .from(documentRevisions)
-      .innerJoin(issueDocuments, eq(documentRevisions.documentId, issueDocuments.documentId))
-      .innerJoin(issues, eq(issueDocuments.issueId, issues.id))
-      .where(eq(issues.companyId, companyId)),
+      .innerJoin(taskDocuments, eq(documentRevisions.documentId, taskDocuments.documentId))
+      .innerJoin(tasks, eq(taskDocuments.taskId, tasks.id))
+      .where(eq(tasks.companyId, companyId)),
     input.targetDb
       .select({
         id: documentRevisions.id,
@@ -2250,16 +2250,16 @@ async function collectMergePlan(input: {
         createdAt: documentRevisions.createdAt,
       })
       .from(documentRevisions)
-      .innerJoin(issueDocuments, eq(documentRevisions.documentId, issueDocuments.documentId))
-      .innerJoin(issues, eq(issueDocuments.issueId, issues.id))
-      .where(eq(issues.companyId, companyId)),
+      .innerJoin(taskDocuments, eq(documentRevisions.documentId, taskDocuments.documentId))
+      .innerJoin(tasks, eq(taskDocuments.taskId, tasks.id))
+      .where(eq(tasks.companyId, companyId)),
     input.sourceDb
       .select({
-        id: issueAttachments.id,
-        companyId: issueAttachments.companyId,
-        issueId: issueAttachments.issueId,
-        issueCommentId: issueAttachments.issueCommentId,
-        assetId: issueAttachments.assetId,
+        id: taskAttachments.id,
+        companyId: taskAttachments.companyId,
+        taskId: taskAttachments.taskId,
+        taskCommentId: taskAttachments.taskCommentId,
+        assetId: taskAttachments.assetId,
         provider: assets.provider,
         objectKey: assets.objectKey,
         contentType: assets.contentType,
@@ -2270,20 +2270,20 @@ async function collectMergePlan(input: {
         createdByUserId: assets.createdByUserId,
         assetCreatedAt: assets.createdAt,
         assetUpdatedAt: assets.updatedAt,
-        attachmentCreatedAt: issueAttachments.createdAt,
-        attachmentUpdatedAt: issueAttachments.updatedAt,
+        attachmentCreatedAt: taskAttachments.createdAt,
+        attachmentUpdatedAt: taskAttachments.updatedAt,
       })
-      .from(issueAttachments)
-      .innerJoin(assets, eq(issueAttachments.assetId, assets.id))
-      .innerJoin(issues, eq(issueAttachments.issueId, issues.id))
-      .where(eq(issues.companyId, companyId)),
+      .from(taskAttachments)
+      .innerJoin(assets, eq(taskAttachments.assetId, assets.id))
+      .innerJoin(tasks, eq(taskAttachments.taskId, tasks.id))
+      .where(eq(tasks.companyId, companyId)),
     input.targetDb
       .select({
-        id: issueAttachments.id,
-        companyId: issueAttachments.companyId,
-        issueId: issueAttachments.issueId,
-        issueCommentId: issueAttachments.issueCommentId,
-        assetId: issueAttachments.assetId,
+        id: taskAttachments.id,
+        companyId: taskAttachments.companyId,
+        taskId: taskAttachments.taskId,
+        taskCommentId: taskAttachments.taskCommentId,
+        assetId: taskAttachments.assetId,
         provider: assets.provider,
         objectKey: assets.objectKey,
         contentType: assets.contentType,
@@ -2294,13 +2294,13 @@ async function collectMergePlan(input: {
         createdByUserId: assets.createdByUserId,
         assetCreatedAt: assets.createdAt,
         assetUpdatedAt: assets.updatedAt,
-        attachmentCreatedAt: issueAttachments.createdAt,
-        attachmentUpdatedAt: issueAttachments.updatedAt,
+        attachmentCreatedAt: taskAttachments.createdAt,
+        attachmentUpdatedAt: taskAttachments.updatedAt,
       })
-      .from(issueAttachments)
-      .innerJoin(assets, eq(issueAttachments.assetId, assets.id))
-      .innerJoin(issues, eq(issueAttachments.issueId, issues.id))
-      .where(eq(issues.companyId, companyId)),
+      .from(taskAttachments)
+      .innerJoin(assets, eq(taskAttachments.assetId, assets.id))
+      .innerJoin(tasks, eq(taskAttachments.taskId, tasks.id))
+      .where(eq(tasks.companyId, companyId)),
     input.sourceDb
       .select()
       .from(projects)
@@ -2338,21 +2338,21 @@ async function collectMergePlan(input: {
   const plan = buildWorktreeMergePlan({
     companyId,
     companyName: input.company.name,
-    issuePrefix: input.company.issuePrefix,
-    previewIssueCounterStart: targetCompanyRow.issueCounter,
+    taskPrefix: input.company.taskPrefix,
+    previewTaskCounterStart: targetCompanyRow.taskCounter,
     scopes: input.scopes,
-    sourceIssues: sourceIssuesRows,
-    targetIssues: targetIssuesRows,
+    sourceTasks: sourceTasksRows,
+    targetTasks: targetTasksRows,
     sourceComments: sourceCommentsRows,
     targetComments: targetCommentsRows,
     sourceProjects: sourceProjectsRows,
     sourceProjectWorkspaces: sourceProjectWorkspaceRows,
-    sourceDocuments: sourceIssueDocumentsRows as IssueDocumentRow[],
-    targetDocuments: targetIssueDocumentsRows as IssueDocumentRow[],
+    sourceDocuments: sourceTaskDocumentsRows as TaskDocumentRow[],
+    targetDocuments: targetTaskDocumentsRows as TaskDocumentRow[],
     sourceDocumentRevisions: sourceDocumentRevisionRows as DocumentRevisionRow[],
     targetDocumentRevisions: targetDocumentRevisionRows as DocumentRevisionRow[],
-    sourceAttachments: sourceAttachmentRows as IssueAttachmentRow[],
-    targetAttachments: targetAttachmentRows as IssueAttachmentRow[],
+    sourceAttachments: sourceAttachmentRows as TaskAttachmentRow[],
+    targetAttachments: targetAttachmentRows as TaskAttachmentRow[],
     targetAgents: targetAgentsRows,
     targetProjects: targetProjectsRows,
     targetProjectWorkspaces: targetProjectWorkspaceRows,
@@ -2381,8 +2381,8 @@ async function promptForProjectMappings(input: {
 }): Promise<ProjectMappingSelections> {
   const missingProjectIds = [
     ...new Set(
-      input.plan.issuePlans
-        .filter((plan): plan is PlannedIssueInsert => plan.action === "insert")
+      input.plan.taskPlans
+        .filter((plan): plan is PlannedTaskInsert => plan.action === "insert")
         .filter((plan) => !!plan.source.projectId && plan.projectResolution === "cleared")
         .map((plan) => plan.source.projectId as string),
     ),
@@ -2413,7 +2413,7 @@ async function promptForProjectMappings(input: {
     );
     const importSelectionValue = `__import__:${sourceProjectId}`;
     const selection = await p.select<string | null>({
-      message: `Project "${sourceProject.name}" is missing in target. How should ${input.plan.issuePrefix} imports handle it?`,
+      message: `Project "${sourceProject.name}" is missing in target. How should ${input.plan.taskPrefix} imports handle it?`,
       options: [
         {
           value: importSelectionValue,
@@ -2430,7 +2430,7 @@ async function promptForProjectMappings(input: {
         {
           value: null,
           label: "Leave unset",
-          hint: "Keep imported issues without a project",
+          hint: "Keep imported tasks without a project",
         },
         ...targetChoices.filter((choice) => choice.value !== nameMatch?.id),
       ],
@@ -2638,73 +2638,73 @@ async function applyMergePlan(input: {
       }
     }
 
-    const issueCandidates = input.plan.issuePlans.filter(
-      (plan): plan is PlannedIssueInsert => plan.action === "insert",
+    const taskCandidates = input.plan.taskPlans.filter(
+      (plan): plan is PlannedTaskInsert => plan.action === "insert",
     );
-    const issueCandidateIds = issueCandidates.map((issue) => issue.source.id);
-    const existingIssueIds = issueCandidateIds.length > 0
+    const taskCandidateIds = taskCandidates.map((task) => task.source.id);
+    const existingTaskIds = taskCandidateIds.length > 0
       ? new Set(
         (await tx
-          .select({ id: issues.id })
-          .from(issues)
-          .where(inArray(issues.id, issueCandidateIds)))
+          .select({ id: tasks.id })
+          .from(tasks)
+          .where(inArray(tasks.id, taskCandidateIds)))
           .map((row) => row.id),
       )
       : new Set<string>();
-    const issueInserts = issueCandidates.filter((issue) => !existingIssueIds.has(issue.source.id));
+    const taskInserts = taskCandidates.filter((task) => !existingTaskIds.has(task.source.id));
 
-    let nextIssueNumber = 0;
-    if (issueInserts.length > 0) {
+    let nextTaskNumber = 0;
+    if (taskInserts.length > 0) {
       const [companyRow] = await tx
         .update(companies)
-        .set({ issueCounter: sql`${companies.issueCounter} + ${issueInserts.length}` })
+        .set({ taskCounter: sql`${companies.taskCounter} + ${taskInserts.length}` })
         .where(eq(companies.id, companyId))
-        .returning({ issueCounter: companies.issueCounter });
-      nextIssueNumber = companyRow.issueCounter - issueInserts.length + 1;
+        .returning({ taskCounter: companies.taskCounter });
+      nextTaskNumber = companyRow.taskCounter - taskInserts.length + 1;
     }
 
-    const insertedIssueIdentifiers = new Map<string, string>();
-    let insertedIssues = 0;
-    for (const issue of issueInserts) {
-      const issueNumber = nextIssueNumber;
-      nextIssueNumber += 1;
-      const identifier = `${input.company.issuePrefix}-${issueNumber}`;
-      insertedIssueIdentifiers.set(issue.source.id, identifier);
-      await tx.insert(issues).values({
-        id: issue.source.id,
+    const insertedTaskIdentifiers = new Map<string, string>();
+    let insertedTasks = 0;
+    for (const task of taskInserts) {
+      const taskNumber = nextTaskNumber;
+      nextTaskNumber += 1;
+      const identifier = `${input.company.taskPrefix}-${taskNumber}`;
+      insertedTaskIdentifiers.set(task.source.id, identifier);
+      await tx.insert(tasks).values({
+        id: task.source.id,
         companyId,
-        projectId: issue.targetProjectId,
-        projectWorkspaceId: issue.targetProjectWorkspaceId,
-        goalId: issue.targetGoalId,
-        parentId: issue.source.parentId,
-        title: issue.source.title,
-        description: issue.source.description,
-        status: issue.targetStatus,
-        priority: issue.source.priority,
-        assigneeAgentId: issue.targetAssigneeAgentId,
-        assigneeUserId: issue.source.assigneeUserId,
+        projectId: task.targetProjectId,
+        projectWorkspaceId: task.targetProjectWorkspaceId,
+        goalId: task.targetGoalId,
+        parentId: task.source.parentId,
+        title: task.source.title,
+        description: task.source.description,
+        status: task.targetStatus,
+        priority: task.source.priority,
+        assigneeAgentId: task.targetAssigneeAgentId,
+        assigneeUserId: task.source.assigneeUserId,
         checkoutRunId: null,
         executionRunId: null,
         executionAgentNameKey: null,
         executionLockedAt: null,
-        createdByAgentId: issue.targetCreatedByAgentId,
-        createdByUserId: issue.source.createdByUserId,
-        issueNumber,
+        createdByAgentId: task.targetCreatedByAgentId,
+        createdByUserId: task.source.createdByUserId,
+        taskNumber,
         identifier,
-        requestDepth: issue.source.requestDepth,
-        billingCode: issue.source.billingCode,
-        assigneeAdapterOverrides: issue.targetAssigneeAgentId ? issue.source.assigneeAdapterOverrides : null,
+        requestDepth: task.source.requestDepth,
+        billingCode: task.source.billingCode,
+        assigneeAdapterOverrides: task.targetAssigneeAgentId ? task.source.assigneeAdapterOverrides : null,
         executionWorkspaceId: null,
         executionWorkspacePreference: null,
         executionWorkspaceSettings: null,
-        startedAt: issue.source.startedAt,
-        completedAt: issue.source.completedAt,
-        cancelledAt: issue.source.cancelledAt,
-        hiddenAt: issue.source.hiddenAt,
-        createdAt: issue.source.createdAt,
-        updatedAt: issue.source.updatedAt,
+        startedAt: task.source.startedAt,
+        completedAt: task.source.completedAt,
+        cancelledAt: task.source.cancelledAt,
+        hiddenAt: task.source.hiddenAt,
+        createdAt: task.source.createdAt,
+        updatedAt: task.source.updatedAt,
       });
-      insertedIssues += 1;
+      insertedTasks += 1;
     }
 
     const commentCandidates = input.plan.commentPlans.filter(
@@ -2714,9 +2714,9 @@ async function applyMergePlan(input: {
     const existingCommentIds = commentCandidateIds.length > 0
       ? new Set(
         (await tx
-          .select({ id: issueComments.id })
-          .from(issueComments)
-          .where(inArray(issueComments.id, commentCandidateIds)))
+          .select({ id: taskComments.id })
+          .from(taskComments)
+          .where(inArray(taskComments.id, commentCandidateIds)))
           .map((row) => row.id),
       )
       : new Set<string>();
@@ -2725,15 +2725,15 @@ async function applyMergePlan(input: {
     for (const comment of commentCandidates) {
       if (existingCommentIds.has(comment.source.id)) continue;
       const parentExists = await tx
-        .select({ id: issues.id })
-        .from(issues)
-        .where(and(eq(issues.id, comment.source.issueId), eq(issues.companyId, companyId)))
+        .select({ id: tasks.id })
+        .from(tasks)
+        .where(and(eq(tasks.id, comment.source.taskId), eq(tasks.companyId, companyId)))
         .then((rows) => rows[0] ?? null);
       if (!parentExists) continue;
-      await tx.insert(issueComments).values({
+      await tx.insert(taskComments).values({
         id: comment.source.id,
         companyId,
-        issueId: comment.source.issueId,
+        taskId: comment.source.taskId,
         authorAgentId: comment.targetAuthorAgentId,
         authorUserId: comment.source.authorUserId,
         body: comment.source.body,
@@ -2744,7 +2744,7 @@ async function applyMergePlan(input: {
     }
 
     const documentCandidates = input.plan.documentPlans.filter(
-      (plan): plan is PlannedIssueDocumentInsert | PlannedIssueDocumentMerge =>
+      (plan): plan is PlannedTaskDocumentInsert | PlannedTaskDocumentMerge =>
         plan.action === "insert" || plan.action === "merge_existing",
     );
     let insertedDocuments = 0;
@@ -2752,16 +2752,16 @@ async function applyMergePlan(input: {
     let insertedDocumentRevisions = 0;
     for (const documentPlan of documentCandidates) {
       const parentExists = await tx
-        .select({ id: issues.id })
-        .from(issues)
-        .where(and(eq(issues.id, documentPlan.source.issueId), eq(issues.companyId, companyId)))
+        .select({ id: tasks.id })
+        .from(tasks)
+        .where(and(eq(tasks.id, documentPlan.source.taskId), eq(tasks.companyId, companyId)))
         .then((rows) => rows[0] ?? null);
       if (!parentExists) continue;
 
       const conflictingKeyDocument = await tx
-        .select({ documentId: issueDocuments.documentId })
-        .from(issueDocuments)
-        .where(and(eq(issueDocuments.issueId, documentPlan.source.issueId), eq(issueDocuments.key, documentPlan.source.key)))
+        .select({ documentId: taskDocuments.documentId })
+        .from(taskDocuments)
+        .where(and(eq(taskDocuments.taskId, documentPlan.source.taskId), eq(taskDocuments.key, documentPlan.source.key)))
         .then((rows) => rows[0] ?? null);
       if (
         conflictingKeyDocument
@@ -2792,10 +2792,10 @@ async function applyMergePlan(input: {
           createdAt: documentPlan.source.documentCreatedAt,
           updatedAt: documentPlan.source.documentUpdatedAt,
         });
-        await tx.insert(issueDocuments).values({
+        await tx.insert(taskDocuments).values({
           id: documentPlan.source.id,
           companyId,
-          issueId: documentPlan.source.issueId,
+          taskId: documentPlan.source.taskId,
           documentId: documentPlan.source.documentId,
           key: documentPlan.source.key,
           createdAt: documentPlan.source.linkCreatedAt,
@@ -2804,15 +2804,15 @@ async function applyMergePlan(input: {
         insertedDocuments += 1;
       } else {
         const existingLink = await tx
-          .select({ id: issueDocuments.id })
-          .from(issueDocuments)
-          .where(eq(issueDocuments.documentId, documentPlan.source.documentId))
+          .select({ id: taskDocuments.id })
+          .from(taskDocuments)
+          .where(eq(taskDocuments.documentId, documentPlan.source.documentId))
           .then((rows) => rows[0] ?? null);
         if (!existingLink) {
-          await tx.insert(issueDocuments).values({
+          await tx.insert(taskDocuments).values({
             id: documentPlan.source.id,
             companyId,
-            issueId: documentPlan.source.issueId,
+            taskId: documentPlan.source.taskId,
             documentId: documentPlan.source.documentId,
             key: documentPlan.source.key,
             createdAt: documentPlan.source.linkCreatedAt,
@@ -2820,13 +2820,13 @@ async function applyMergePlan(input: {
           });
         } else {
           await tx
-            .update(issueDocuments)
+            .update(taskDocuments)
             .set({
-              issueId: documentPlan.source.issueId,
+              taskId: documentPlan.source.taskId,
               key: documentPlan.source.key,
               updatedAt: documentPlan.source.linkUpdatedAt,
             })
-            .where(eq(issueDocuments.documentId, documentPlan.source.documentId));
+            .where(eq(taskDocuments.documentId, documentPlan.source.documentId));
         }
 
         await tx
@@ -2876,9 +2876,9 @@ async function applyMergePlan(input: {
     const existingAttachmentIds = new Set(
       (
         await tx
-          .select({ id: issueAttachments.id })
-          .from(issueAttachments)
-          .where(eq(issueAttachments.companyId, companyId))
+          .select({ id: taskAttachments.id })
+          .from(taskAttachments)
+          .where(eq(taskAttachments.companyId, companyId))
       ).map((row) => row.id),
     );
     let insertedAttachments = 0;
@@ -2886,9 +2886,9 @@ async function applyMergePlan(input: {
     for (const attachment of attachmentCandidates) {
       if (existingAttachmentIds.has(attachment.source.id)) continue;
       const parentExists = await tx
-        .select({ id: issues.id })
-        .from(issues)
-        .where(and(eq(issues.id, attachment.source.issueId), eq(issues.companyId, companyId)))
+        .select({ id: tasks.id })
+        .from(tasks)
+        .where(and(eq(tasks.id, attachment.source.taskId), eq(tasks.companyId, companyId)))
         .then((rows) => rows[0] ?? null);
       if (!parentExists) continue;
 
@@ -2923,12 +2923,12 @@ async function applyMergePlan(input: {
         updatedAt: attachment.source.assetUpdatedAt,
       });
 
-      await tx.insert(issueAttachments).values({
+      await tx.insert(taskAttachments).values({
         id: attachment.source.id,
         companyId,
-        issueId: attachment.source.issueId,
+        taskId: attachment.source.taskId,
         assetId: attachment.source.assetId,
-        issueCommentId: attachment.targetIssueCommentId,
+        taskCommentId: attachment.targetTaskCommentId,
         createdAt: attachment.source.attachmentCreatedAt,
         updatedAt: attachment.source.attachmentUpdatedAt,
       });
@@ -2938,14 +2938,14 @@ async function applyMergePlan(input: {
     return {
       insertedProjects,
       insertedProjectWorkspaces,
-      insertedIssues,
+      insertedTasks,
       insertedComments,
       insertedDocuments,
       mergedDocuments,
       insertedDocumentRevisions,
       insertedAttachments,
       skippedMissingAttachmentObjects,
-      insertedIssueIdentifiers,
+      insertedTaskIdentifiers,
     };
   });
 }
@@ -3027,7 +3027,7 @@ export async function worktreeMergeHistoryCommand(sourceArg: string | undefined,
     const confirmed = opts.yes
       ? true
       : await p.confirm({
-        message: `Import ${collected.plan.counts.issuesToInsert} issues and ${collected.plan.counts.commentsToInsert} comments from ${sourceEndpoint.label} into ${targetEndpoint.label}?`,
+        message: `Import ${collected.plan.counts.tasksToInsert} tasks and ${collected.plan.counts.commentsToInsert} comments from ${sourceEndpoint.label} into ${targetEndpoint.label}?`,
         initialValue: false,
       });
     if (p.isCancel(confirmed) || !confirmed) {
@@ -3049,7 +3049,7 @@ export async function worktreeMergeHistoryCommand(sourceArg: string | undefined,
     }
     p.outro(
       pc.green(
-        `Imported ${applied.insertedProjects} projects (${applied.insertedProjectWorkspaces} workspaces), ${applied.insertedIssues} issues, ${applied.insertedComments} comments, ${applied.insertedDocuments} documents (${applied.insertedDocumentRevisions} revisions, ${applied.mergedDocuments} merged), and ${applied.insertedAttachments} attachments into ${company.issuePrefix}.`,
+        `Imported ${applied.insertedProjects} projects (${applied.insertedProjectWorkspaces} workspaces), ${applied.insertedTasks} tasks, ${applied.insertedComments} comments, ${applied.insertedDocuments} documents (${applied.insertedDocumentRevisions} revisions, ${applied.mergedDocuments} merged), and ${applied.insertedAttachments} attachments into ${company.taskPrefix}.`,
       ),
     );
   } finally {
@@ -3255,7 +3255,7 @@ export function registerWorktreeCommands(program: Command): void {
     .option("--server-port <port>", "Preferred server port", (value) => Number(value))
     .option("--db-port <port>", "Preferred embedded Postgres port", (value) => Number(value))
     .option("--seed-mode <mode>", "Seed profile: minimal or full (default: minimal)", "minimal")
-    .option("--preserve-live-work", "Do not quarantine copied agent timers or assigned open issues in the seeded worktree", false)
+    .option("--preserve-live-work", "Do not quarantine copied agent timers or assigned open tasks in the seeded worktree", false)
     .option("--no-seed", "Skip database seeding from the source instance")
     .option("--force", "Replace existing repo-local config and isolated instance data", false)
     .action(worktreeMakeCommand);
@@ -3272,7 +3272,7 @@ export function registerWorktreeCommands(program: Command): void {
     .option("--server-port <port>", "Preferred server port", (value) => Number(value))
     .option("--db-port <port>", "Preferred embedded Postgres port", (value) => Number(value))
     .option("--seed-mode <mode>", "Seed profile: minimal or full (default: minimal)", "minimal")
-    .option("--preserve-live-work", "Do not quarantine copied agent timers or assigned open issues in the seeded worktree", false)
+    .option("--preserve-live-work", "Do not quarantine copied agent timers or assigned open tasks in the seeded worktree", false)
     .option("--no-seed", "Skip database seeding from the source instance")
     .option("--force", "Replace existing repo-local config and isolated instance data", false)
     .action(worktreeInitCommand);
@@ -3292,12 +3292,12 @@ export function registerWorktreeCommands(program: Command): void {
 
   program
     .command("worktree:merge-history")
-    .description("Preview or import issue/comment history from another worktree into the current instance")
+    .description("Preview or import task/comment history from another worktree into the current instance")
     .argument("[source]", "Optional source worktree path, directory name, or branch name (back-compat alias for --from)")
     .option("--from <worktree>", "Source worktree path, directory name, branch name, or current")
     .option("--to <worktree>", "Target worktree path, directory name, branch name, or current (defaults to current)")
-    .option("--company <id-or-prefix>", "Shared company id or issue prefix inside the chosen source/target instances")
-    .option("--scope <items>", "Comma-separated scopes to import (issues, comments)", "issues,comments")
+    .option("--company <id-or-prefix>", "Shared company id or task prefix inside the chosen source/target instances")
+    .option("--scope <items>", "Comma-separated scopes to import (tasks, comments)", "tasks,comments")
     .option("--apply", "Apply the import after previewing the plan", false)
     .option("--dry", "Preview only and do not import anything", false)
     .option("--yes", "Skip the interactive confirmation prompt when applying", false)
@@ -3312,7 +3312,7 @@ export function registerWorktreeCommands(program: Command): void {
     .option("--from-data-dir <path>", "Source PAPERCLIP_HOME used when deriving the source config")
     .option("--from-instance <id>", "Source instance id when deriving the source config")
     .option("--seed-mode <mode>", "Seed profile: minimal or full (default: full)", "full")
-    .option("--preserve-live-work", "Do not quarantine copied agent timers or assigned open issues in the seeded worktree", false)
+    .option("--preserve-live-work", "Do not quarantine copied agent timers or assigned open tasks in the seeded worktree", false)
     .option("--yes", "Skip the destructive confirmation prompt", false)
     .option("--allow-live-target", "Override the guard that requires the target worktree DB to be stopped first", false)
     .action(worktreeReseedCommand);
@@ -3326,7 +3326,7 @@ export function registerWorktreeCommands(program: Command): void {
     .option("--from-data-dir <path>", "Source PAPERCLIP_HOME used when deriving the source config")
     .option("--from-instance <id>", "Source instance id when deriving the source config (default: default)")
     .option("--seed-mode <mode>", "Seed profile: minimal or full (default: minimal)", "minimal")
-    .option("--preserve-live-work", "Do not quarantine copied agent timers or assigned open issues in the seeded worktree", false)
+    .option("--preserve-live-work", "Do not quarantine copied agent timers or assigned open tasks in the seeded worktree", false)
     .option("--no-seed", "Repair metadata only and skip reseeding when bootstrapping a missing worktree config", false)
     .option("--allow-live-target", "Override the guard that requires the target worktree DB to be stopped first", false)
     .action(worktreeRepairCommand);

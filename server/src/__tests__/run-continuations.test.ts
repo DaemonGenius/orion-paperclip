@@ -8,7 +8,7 @@ import {
 
 const companyId = "company-1";
 const agentId = "agent-1";
-const issueId = "issue-1";
+const taskId = "task-1";
 const runId = "run-1";
 
 function run(overrides: Record<string, unknown> = {}) {
@@ -21,9 +21,9 @@ function run(overrides: Record<string, unknown> = {}) {
   } as never;
 }
 
-function issue(overrides: Record<string, unknown> = {}) {
+function task(overrides: Record<string, unknown> = {}) {
   return {
-    id: issueId,
+    id: taskId,
     companyId,
     identifier: "PAP-1577",
     title: "Add bounded liveness continuation wakes",
@@ -45,10 +45,10 @@ function agent(overrides: Record<string, unknown> = {}) {
 }
 
 describe("run liveness continuations", () => {
-  it("enqueues the first plan_only continuation for the same issue and assignee", () => {
+  it("enqueues the first plan_only continuation for the same task and assignee", () => {
     const decision = decideRunLivenessContinuation({
       run: run(),
-      issue: issue(),
+      task: task(),
       agent: agent(),
       livenessState: "plan_only",
       livenessReason: "Planned without acting",
@@ -62,14 +62,14 @@ describe("run liveness continuations", () => {
     expect(decision.nextAttempt).toBe(1);
     expect(decision.idempotencyKey).toBe(
       buildRunLivenessContinuationIdempotencyKey({
-        issueId,
+        taskId,
         sourceRunId: runId,
         livenessState: "plan_only",
         nextAttempt: 1,
       }),
     );
     expect(decision.payload).toMatchObject({
-      issueId,
+      taskId,
       sourceRunId: runId,
       livenessState: "plan_only",
       livenessReason: "Planned without acting",
@@ -78,7 +78,7 @@ describe("run liveness continuations", () => {
       instruction: "Take the first concrete action now.",
     });
     expect(decision.contextSnapshot).toMatchObject({
-      issueId,
+      taskId,
       wakeReason: RUN_LIVENESS_CONTINUATION_REASON,
       livenessContinuationAttempt: 1,
       livenessContinuationMaxAttempts: DEFAULT_MAX_LIVENESS_CONTINUATION_ATTEMPTS,
@@ -92,7 +92,7 @@ describe("run liveness continuations", () => {
   it("enqueues the second empty_response continuation", () => {
     const decision = decideRunLivenessContinuation({
       run: run({ continuationAttempt: 1 }),
-      issue: issue(),
+      task: task(),
       agent: agent(),
       livenessState: "empty_response",
       livenessReason: "No useful output",
@@ -109,7 +109,7 @@ describe("run liveness continuations", () => {
   it("does not enqueue a third continuation and returns an exhaustion comment", () => {
     const decision = decideRunLivenessContinuation({
       run: run({ continuationAttempt: 2 }),
-      issue: issue(),
+      task: task(),
       agent: agent(),
       livenessState: "plan_only",
       livenessReason: "Still planning",
@@ -124,12 +124,12 @@ describe("run liveness continuations", () => {
     expect(decision.comment).toContain("Attempts used: 2/2");
   });
 
-  it("skips non-actionable and guarded issues", () => {
+  it("skips non-actionable and guarded tasks", () => {
     const guardedCases = [
       { livenessState: "advanced" as const },
-      { issue: issue({ status: "done" }) },
-      { issue: issue({ assigneeAgentId: "other-agent" }) },
-      { issue: issue({ executionState: { status: "pending" } }) },
+      { task: task({ status: "done" }) },
+      { task: task({ assigneeAgentId: "other-agent" }) },
+      { task: task({ executionState: { status: "pending" } }) },
       { agent: agent({ status: "paused" }) },
       { budgetBlocked: true },
       { idempotentWakeExists: true },
@@ -138,7 +138,7 @@ describe("run liveness continuations", () => {
     for (const guarded of guardedCases) {
       const decision = decideRunLivenessContinuation({
         run: run(),
-        issue: guarded.issue ?? issue(),
+        task: guarded.task ?? task(),
         agent: guarded.agent ?? agent(),
         livenessState: guarded.livenessState ?? "plan_only",
         livenessReason: "No progress",

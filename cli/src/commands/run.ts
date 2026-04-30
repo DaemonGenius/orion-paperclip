@@ -70,7 +70,7 @@ export async function runCommand(opts: RunOptions): Promise<void> {
   });
 
   if (summary.failed > 0) {
-    p.log.error("Doctor found blocking issues. Not starting server.");
+    p.log.error("Doctor found blocking tasks. Not starting server.");
     process.exit(1);
   }
 

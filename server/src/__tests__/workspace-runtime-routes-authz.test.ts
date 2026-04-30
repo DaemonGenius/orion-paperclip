@@ -159,7 +159,7 @@ function buildExecutionWorkspace(overrides: Record<string, unknown> = {}) {
     companyId: "company-1",
     projectId: "project-1",
     projectWorkspaceId: null,
-    sourceIssueId: null,
+    sourceTaskId: null,
     mode: "isolated_workspace",
     strategyType: "git_worktree",
     name: "Workspace",

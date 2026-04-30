@@ -36,7 +36,7 @@ export interface MetricTrend {
 
 /** Props for `MetricCard`. */
 export interface MetricCardProps {
-  /** Short label describing the metric (e.g. `"Synced Issues"`). */
+  /** Short label describing the metric (e.g. `"Synced Tasks"`). */
   label: string;
   /** The metric value to display. */
   value: number | string;

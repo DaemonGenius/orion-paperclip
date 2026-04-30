@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { Router, type Request, type Response } from "express";
 import type { Db } from "@paperclipai/db";
-import { issues, projects, projectWorkspaces } from "@paperclipai/db";
+import { tasks, projects, projectWorkspaces } from "@paperclipai/db";
 import {
   findWorkspaceCommandDefinition,
   matchWorkspaceRuntimeServiceToCommand,
@@ -44,7 +44,7 @@ export function executionWorkspaceRoutes(db: Db) {
     const filters = {
       projectId: req.query.projectId as string | undefined,
       projectWorkspaceId: req.query.projectWorkspaceId as string | undefined,
-      issueId: req.query.issueId as string | undefined,
+      taskId: req.query.taskId as string | undefined,
       status: req.query.status as string | undefined,
       reuseEligible: req.query.reuseEligible === "true",
     };
@@ -111,7 +111,7 @@ export function executionWorkspaceRoutes(db: Db) {
     await assertCanManageExecutionWorkspaceRuntimeServices(db, req, {
       companyId: existing.companyId,
       executionWorkspaceId: existing.id,
-      sourceIssueId: existing.sourceIssueId,
+      sourceTaskId: existing.sourceTaskId,
     });
 
     const workspaceCwd = existing.cwd;
@@ -258,9 +258,9 @@ export function executionWorkspaceRoutes(db: Db) {
                   ?? null,
               },
             },
-            issue: existing.sourceIssueId
+            task: existing.sourceTaskId
               ? {
-                  id: existing.sourceIssueId,
+                  id: existing.sourceTaskId,
                   identifier: null,
                   title: existing.name,
                 }
@@ -287,9 +287,9 @@ export function executionWorkspaceRoutes(db: Db) {
               name: actor.actorType === "user" ? "Board" : "Agent",
               companyId: existing.companyId,
             },
-            issue: existing.sourceIssueId
+            task: existing.sourceTaskId
               ? {
-                  id: existing.sourceIssueId,
+                  id: existing.sourceTaskId,
                   identifier: null,
                   title: existing.name,
                 }
@@ -339,9 +339,9 @@ export function executionWorkspaceRoutes(db: Db) {
               name: actor.actorType === "user" ? "Board" : "Agent",
               companyId: existing.companyId,
             },
-            issue: existing.sourceIssueId
+            task: existing.sourceTaskId
               ? {
-                  id: existing.sourceIssueId,
+                  id: existing.sourceTaskId,
                   identifier: null,
                   title: existing.name,
                 }
@@ -510,15 +510,15 @@ export function executionWorkspaceRoutes(db: Db) {
 
       if (existing.mode === "shared_workspace") {
         await db
-          .update(issues)
+          .update(tasks)
           .set({
             executionWorkspaceId: null,
             updatedAt: new Date(),
           })
           .where(
             and(
-              eq(issues.companyId, existing.companyId),
-              eq(issues.executionWorkspaceId, existing.id),
+              eq(tasks.companyId, existing.companyId),
+              eq(tasks.executionWorkspaceId, existing.id),
             ),
           );
       }

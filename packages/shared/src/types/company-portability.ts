@@ -5,7 +5,7 @@ export interface CompanyPortabilityInclude {
   company: boolean;
   agents: boolean;
   projects: boolean;
-  issues: boolean;
+  tasks: boolean;
   skills: boolean;
 }
 
@@ -76,7 +76,7 @@ export interface CompanyPortabilityProjectWorkspaceManifestEntry {
   isPrimary: boolean;
 }
 
-export interface CompanyPortabilityIssueRoutineTriggerManifestEntry {
+export interface CompanyPortabilityTaskRoutineTriggerManifestEntry {
   kind: string;
   label: string | null;
   enabled: boolean;
@@ -86,14 +86,14 @@ export interface CompanyPortabilityIssueRoutineTriggerManifestEntry {
   replayWindowSec: number | null;
 }
 
-export interface CompanyPortabilityIssueRoutineManifestEntry {
+export interface CompanyPortabilityTaskRoutineManifestEntry {
   concurrencyPolicy: string | null;
   catchUpPolicy: string | null;
   variables?: RoutineVariable[] | null;
-  triggers: CompanyPortabilityIssueRoutineTriggerManifestEntry[];
+  triggers: CompanyPortabilityTaskRoutineTriggerManifestEntry[];
 }
 
-export interface CompanyPortabilityIssueManifestEntry {
+export interface CompanyPortabilityTaskManifestEntry {
   slug: string;
   identifier: string | null;
   title: string;
@@ -103,7 +103,7 @@ export interface CompanyPortabilityIssueManifestEntry {
   assigneeAgentSlug: string | null;
   description: string | null;
   recurring: boolean;
-  routine: CompanyPortabilityIssueRoutineManifestEntry | null;
+  routine: CompanyPortabilityTaskRoutineManifestEntry | null;
   legacyRecurrence: Record<string, unknown> | null;
   status: string | null;
   priority: string | null;
@@ -163,7 +163,7 @@ export interface CompanyPortabilityManifest {
   agents: CompanyPortabilityAgentManifestEntry[];
   skills: CompanyPortabilitySkillManifestEntry[];
   projects: CompanyPortabilityProjectManifestEntry[];
-  issues: CompanyPortabilityIssueManifestEntry[];
+  tasks: CompanyPortabilityTaskManifestEntry[];
   envInputs: CompanyPortabilityEnvInput[];
 }
 
@@ -177,7 +177,7 @@ export interface CompanyPortabilityExportResult {
 
 export interface CompanyPortabilityExportPreviewFile {
   path: string;
-  kind: "company" | "agent" | "skill" | "project" | "issue" | "extension" | "readme" | "other";
+  kind: "company" | "agent" | "skill" | "project" | "task" | "extension" | "readme" | "other";
 }
 
 export interface CompanyPortabilityExportPreviewResult {
@@ -190,7 +190,7 @@ export interface CompanyPortabilityExportPreviewResult {
     agents: number;
     skills: number;
     projects: number;
-    issues: number;
+    tasks: number;
   };
   warnings: string[];
   paperclipExtensionPath: string;
@@ -247,7 +247,7 @@ export interface CompanyPortabilityPreviewProjectPlan {
   reason: string | null;
 }
 
-export interface CompanyPortabilityPreviewIssuePlan {
+export interface CompanyPortabilityPreviewTaskPlan {
   slug: string;
   action: "create" | "skip";
   plannedTitle: string;
@@ -264,7 +264,7 @@ export interface CompanyPortabilityPreviewResult {
     companyAction: "none" | "create" | "update";
     agentPlans: CompanyPortabilityPreviewAgentPlan[];
     projectPlans: CompanyPortabilityPreviewProjectPlan[];
-    issuePlans: CompanyPortabilityPreviewIssuePlan[];
+    taskPlans: CompanyPortabilityPreviewTaskPlan[];
   };
   manifest: CompanyPortabilityManifest;
   files: Record<string, CompanyPortabilityFileEntry>;
@@ -311,8 +311,8 @@ export interface CompanyPortabilityExportRequest {
   agents?: string[];
   skills?: string[];
   projects?: string[];
-  issues?: string[];
-  projectIssues?: string[];
+  tasks?: string[];
+  projectTasks?: string[];
   selectedFiles?: string[];
   expandReferencedSkills?: boolean;
   sidebarOrder?: Partial<CompanyPortabilitySidebarOrder>;

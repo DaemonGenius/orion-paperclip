@@ -131,7 +131,7 @@ async function setupExecuteEnv(
 
 describe("claude execute", () => {
   /**
-   * Regression tests for https://github.com/paperclipai/paperclip/issues/2848
+   * Regression tests for https://github.com/paperclipai/paperclip/tasks/2848
    *
    * --append-system-prompt-file should only be passed on fresh sessions.
    * On resumed sessions the instructions are already in the session cache;
@@ -480,16 +480,15 @@ describe("claude execute", () => {
           promptTemplate: "Follow the paperclip heartbeat.",
         },
         context: {
-          issueId: "issue-1",
-          taskId: "issue-1",
-          wakeReason: "issue_commented",
+          taskId: "task-1",
+          wakeReason: "task_commented",
           wakeCommentId: "comment-2",
           paperclipWake: {
-            reason: "issue_commented",
-            issue: {
-              id: "issue-1",
+            reason: "task_commented",
+            task: {
+              id: "task-1",
               identifier: "PAP-874",
-              title: "chat-speed issues",
+              title: "chat-speed tasks",
               status: "in_progress",
               priority: "medium",
             },
@@ -498,7 +497,7 @@ describe("claude execute", () => {
             comments: [
               {
                 id: "comment-2",
-                issueId: "issue-1",
+                taskId: "task-1",
                 body: "Second comment",
                 bodyTruncated: false,
                 createdAt: "2026-03-28T14:35:10.000Z",

@@ -6,11 +6,11 @@
  */
 
 // ---------------------------------------------------------------------------
-// Issue status colors
+// Task status colors
 // ---------------------------------------------------------------------------
 
 /** StatusIcon circle: text + border classes */
-export const issueStatusIcon: Record<string, string> = {
+export const taskStatusIcon: Record<string, string> = {
   backlog: "text-muted-foreground border-muted-foreground",
   todo: "text-blue-600 border-blue-600 dark:text-blue-400 dark:border-blue-400",
   in_progress: "text-yellow-600 border-yellow-600 dark:text-yellow-400 dark:border-yellow-400",
@@ -20,10 +20,10 @@ export const issueStatusIcon: Record<string, string> = {
   blocked: "text-red-600 border-red-600 dark:text-red-400 dark:border-red-400",
 };
 
-export const issueStatusIconDefault = "text-muted-foreground border-muted-foreground";
+export const taskStatusIconDefault = "text-muted-foreground border-muted-foreground";
 
-/** Text-only color for issue statuses (dropdowns, labels) */
-export const issueStatusText: Record<string, string> = {
+/** Text-only color for task statuses (dropdowns, labels) */
+export const taskStatusText: Record<string, string> = {
   backlog: "text-muted-foreground",
   todo: "text-blue-600 dark:text-blue-400",
   in_progress: "text-yellow-600 dark:text-yellow-400",
@@ -33,7 +33,7 @@ export const issueStatusText: Record<string, string> = {
   blocked: "text-red-600 dark:text-red-400",
 };
 
-export const issueStatusTextDefault = "text-muted-foreground";
+export const taskStatusTextDefault = "text-muted-foreground";
 
 // ---------------------------------------------------------------------------
 // Badge colors — used by StatusBadge for all entity types
@@ -67,7 +67,7 @@ export const statusBadge: Record<string, string> = {
   approved: "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300",
   rejected: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300",
 
-  // Issue statuses — consistent hues with issueStatusIcon above
+  // Task statuses — consistent hues with taskStatusIcon above
   backlog: "bg-muted text-muted-foreground",
   todo: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
   in_progress: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300",

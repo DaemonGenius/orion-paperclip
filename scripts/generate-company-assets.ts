@@ -335,12 +335,12 @@ async function main() {
       schemaVersion: 1,
       generatedAt: new Date().toISOString(),
       source: null,
-      includes: { company: true, agents: true, projects: false, issues: false, skills: true },
+      includes: { company: true, agents: true, projects: false, tasks: false, skills: true },
       company: null,
       agents: pkg.agents,
       skills: pkg.skills,
       projects: [],
-      issues: [],
+      tasks: [],
       envInputs: [],
     };
 

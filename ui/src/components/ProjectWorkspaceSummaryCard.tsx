@@ -1,8 +1,8 @@
 import { Link } from "@/lib/router";
-import type { ExecutionWorkspace, Issue } from "@paperclipai/shared";
+import type { ExecutionWorkspace, Task } from "@paperclipai/shared";
 import { Button } from "@/components/ui/button";
 import { CopyText } from "./CopyText";
-import { IssuesQuicklook } from "./IssuesQuicklook";
+import { TasksQuicklook } from "./TasksQuicklook";
 import type { ProjectWorkspaceSummary } from "../lib/project-workspaces-tab";
 import { cn, projectWorkspaceUrl } from "../lib/utils";
 import { timeAgo } from "../lib/timeAgo";
@@ -44,8 +44,8 @@ export function ProjectWorkspaceSummaryCard({
   onRuntimeAction,
   onCloseWorkspace,
 }: ProjectWorkspaceSummaryCardProps) {
-  const visibleIssues = summary.issues.slice(0, 4);
-  const hiddenIssueCount = Math.max(summary.issues.length - visibleIssues.length, 0);
+  const visibleTasks = summary.tasks.slice(0, 4);
+  const hiddenTaskCount = Math.max(summary.tasks.length - visibleTasks.length, 0);
   const workspaceHref =
     summary.kind === "project_workspace"
       ? projectWorkspaceUrl({ id: projectRef, urlKey: projectRef }, summary.workspaceId)
@@ -224,21 +224,21 @@ export function ProjectWorkspaceSummaryCard({
           </div>
         </div>
 
-        {summary.issues.length > 0 ? (
+        {summary.tasks.length > 0 ? (
           <div className="space-y-2">
             <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              Linked issues
+              Linked tasks
             </div>
             <div className="flex flex-wrap gap-2">
-              {visibleIssues.map((issue) => (
-                <IssuePill key={issue.id} issue={issue} />
+              {visibleTasks.map((task) => (
+                <TaskPill key={task.id} task={task} />
               ))}
-              {hiddenIssueCount > 0 ? (
+              {hiddenTaskCount > 0 ? (
                 <Link
                   to={workspaceHref}
                   className="inline-flex items-center rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
                 >
-                  +{hiddenIssueCount} more
+                  +{hiddenTaskCount} more
                 </Link>
               ) : null}
             </div>
@@ -249,15 +249,15 @@ export function ProjectWorkspaceSummaryCard({
   );
 }
 
-function IssuePill({ issue }: { issue: Issue }) {
+function TaskPill({ task }: { task: Task }) {
   return (
-    <IssuesQuicklook issue={issue}>
+    <TasksQuicklook task={task}>
       <Link
-        to={`/issues/${issue.identifier ?? issue.id}`}
+        to={`/tasks/${task.identifier ?? task.id}`}
         className="inline-flex items-center rounded-full border border-border bg-background px-2.5 py-1 font-mono text-xs text-foreground transition-colors hover:border-foreground/30 hover:text-foreground hover:underline"
       >
-        {issue.identifier ?? issue.id.slice(0, 8)}
+        {task.identifier ?? task.id.slice(0, 8)}
       </Link>
-    </IssuesQuicklook>
+    </TasksQuicklook>
   );
 }

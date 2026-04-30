@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import path from "node:path";
 import type { Db } from "@paperclipai/db";
-import { agents as agentsTable, companies, heartbeatRuns, issues as issuesTable } from "@paperclipai/db";
+import { agents as agentsTable, companies, heartbeatRuns, tasks as tasksTable } from "@paperclipai/db";
 import { and, desc, eq, inArray, not, sql } from "drizzle-orm";
 import {
   agentSkillSyncSchema,
@@ -39,9 +39,9 @@ import {
   companySkillService,
   budgetService,
   heartbeatService,
-  ISSUE_LIST_DEFAULT_LIMIT,
-  issueApprovalService,
-  issueService,
+  TASK_LIST_DEFAULT_LIMIT,
+  taskApprovalService,
+  taskService,
   logActivity,
   syncInstructionsBundleConfigFromFilePath,
   workspaceOperationService,
@@ -65,6 +65,7 @@ import {
 } from "../adapters/index.js";
 import { redactEventPayload } from "../redaction.js";
 import { redactCurrentUserValue } from "../log-redaction.js";
+import { isTaskIdentifier } from "../utils/task-identifiers.js";
 import { renderOrgChartSvg, renderOrgChartPng, type OrgNode, type OrgChartStyle, ORG_CHART_STYLES } from "./org-chart-svg.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
 import { runClaudeLogin } from "@paperclipai/adapter-claude-local/server";
@@ -150,7 +151,7 @@ export function agentRoutes(
     pluginWorkerManager: options.pluginWorkerManager,
   });
   const recovery = recoveryService(db, { enqueueWakeup: heartbeat.wakeup });
-  const issueApprovalsSvc = issueApprovalService(db);
+  const taskApprovalsSvc = taskApprovalService(db);
   const secretsSvc = secretService(db);
   const instructions = agentInstructionsService();
   const companySkills = companySkillService(db);
@@ -311,48 +312,48 @@ export function agentRoutes(
     agent: NonNullable<Awaited<ReturnType<typeof svc.getById>>>,
     payload: Record<string, unknown> | null | undefined,
   ) {
-    const issueId = typeof payload?.issueId === "string" && payload.issueId.trim() ? payload.issueId : null;
-    if (!issueId) {
+    const taskId = typeof payload?.taskId === "string" && payload.taskId.trim() ? payload.taskId : null;
+    if (!taskId) {
       return {
         status: "skipped" as const,
         reason: "wakeup_skipped",
         message: "Wakeup was skipped.",
-        issueId: null,
+        taskId: null,
         executionRunId: null,
         executionAgentId: null,
         executionAgentName: null,
       };
     }
 
-    const issue = await db
+    const task = await db
       .select({
-        id: issuesTable.id,
-        executionRunId: issuesTable.executionRunId,
+        id: tasksTable.id,
+        executionRunId: tasksTable.executionRunId,
       })
-      .from(issuesTable)
-      .where(and(eq(issuesTable.id, issueId), eq(issuesTable.companyId, agent.companyId)))
+      .from(tasksTable)
+      .where(and(eq(tasksTable.id, taskId), eq(tasksTable.companyId, agent.companyId)))
       .then((rows) => rows[0] ?? null);
 
-    if (!issue?.executionRunId) {
+    if (!task?.executionRunId) {
       return {
         status: "skipped" as const,
         reason: "wakeup_skipped",
         message: "Wakeup was skipped.",
-        issueId,
+        taskId,
         executionRunId: null,
         executionAgentId: null,
         executionAgentName: null,
       };
     }
 
-    const executionRun = await heartbeat.getRun(issue.executionRunId);
+    const executionRun = await heartbeat.getRun(task.executionRunId);
     if (!executionRun || (executionRun.status !== "queued" && executionRun.status !== "running")) {
       return {
         status: "skipped" as const,
         reason: "wakeup_skipped",
         message: "Wakeup was skipped.",
-        issueId,
-        executionRunId: issue.executionRunId,
+        taskId,
+        executionRunId: task.executionRunId,
         executionAgentId: null,
         executionAgentName: null,
       };
@@ -363,11 +364,11 @@ export function agentRoutes(
 
     return {
       status: "skipped" as const,
-      reason: "issue_execution_deferred",
+      reason: "task_execution_deferred",
       message: executionAgentName
-        ? `Wakeup was deferred because this issue is already being executed by ${executionAgentName}.`
-        : "Wakeup was deferred because this issue already has an active execution run.",
-      issueId,
+        ? `Wakeup was deferred because this task is already being executed by ${executionAgentName}.`
+        : "Wakeup was deferred because this task already has an active execution run.",
+      taskId,
       executionRunId: executionRun.id,
       executionAgentId: executionRun.agentId,
       executionAgentName,
@@ -501,14 +502,14 @@ export function agentRoutes(
     return resolved.agent.id;
   }
 
-  function parseSourceIssueIds(input: {
-    sourceIssueId?: string | null;
-    sourceIssueIds?: string[];
+  function parseSourceTaskIds(input: {
+    sourceTaskId?: string | null;
+    sourceTaskIds?: string[];
   }): string[] {
     const values: string[] = [];
-    if (Array.isArray(input.sourceIssueIds)) values.push(...input.sourceIssueIds);
-    if (typeof input.sourceIssueId === "string" && input.sourceIssueId.length > 0) {
-      values.push(input.sourceIssueId);
+    if (Array.isArray(input.sourceTaskIds)) values.push(...input.sourceTaskIds);
+    if (typeof input.sourceTaskId === "string" && input.sourceTaskId.length > 0) {
+      values.push(input.sourceTaskId);
     }
     return Array.from(new Set(values));
   }
@@ -1135,7 +1136,7 @@ export function agentRoutes(
         runtimeConfig: agentsTable.runtimeConfig,
         lastHeartbeatAt: agentsTable.lastHeartbeatAt,
         companyName: companies.name,
-        companyIssuePrefix: companies.issuePrefix,
+        companyTaskPrefix: companies.taskPrefix,
       })
       .from(agentsTable)
       .innerJoin(companies, eq(agentsTable.companyId, companies.id))
@@ -1153,7 +1154,7 @@ export function agentRoutes(
           id: row.id,
           companyId: row.companyId,
           companyName: row.companyName,
-          companyIssuePrefix: row.companyIssuePrefix,
+          companyTaskPrefix: row.companyTaskPrefix,
           agentName: row.agentName,
           agentUrlKey: deriveAgentUrlKey(row.agentName, row.id),
           role: row.role as InstanceSchedulerHeartbeatAgent["role"],
@@ -1241,33 +1242,33 @@ export function agentRoutes(
       return;
     }
 
-    const issuesSvc = issueService(db);
-    const rows = await issuesSvc.list(req.actor.companyId, {
+    const tasksSvc = taskService(db);
+    const rows = await tasksSvc.list(req.actor.companyId, {
       assigneeAgentId: req.actor.agentId,
       status: "todo,in_progress,blocked",
       includeRoutineExecutions: true,
-      limit: ISSUE_LIST_DEFAULT_LIMIT,
+      limit: TASK_LIST_DEFAULT_LIMIT,
     });
-    const dependencyReadiness = await issuesSvc.listDependencyReadiness(
+    const dependencyReadiness = await tasksSvc.listDependencyReadiness(
       req.actor.companyId,
-      rows.map((issue) => issue.id),
+      rows.map((task) => task.id),
     );
 
     res.json(
-      rows.map((issue) => ({
-        id: issue.id,
-        identifier: issue.identifier,
-        title: issue.title,
-        status: issue.status,
-        priority: issue.priority,
-        projectId: issue.projectId,
-        goalId: issue.goalId,
-        parentId: issue.parentId,
-        updatedAt: issue.updatedAt,
-        activeRun: issue.activeRun,
-        dependencyReady: dependencyReadiness.get(issue.id)?.isDependencyReady ?? true,
-        unresolvedBlockerCount: dependencyReadiness.get(issue.id)?.unresolvedBlockerCount ?? 0,
-        unresolvedBlockerIssueIds: dependencyReadiness.get(issue.id)?.unresolvedBlockerIssueIds ?? [],
+      rows.map((task) => ({
+        id: task.id,
+        identifier: task.identifier,
+        title: task.title,
+        status: task.status,
+        priority: task.priority,
+        projectId: task.projectId,
+        goalId: task.goalId,
+        parentId: task.parentId,
+        updatedAt: task.updatedAt,
+        activeRun: task.activeRun,
+        dependencyReady: dependencyReadiness.get(task.id)?.isDependencyReady ?? true,
+        unresolvedBlockerCount: dependencyReadiness.get(task.id)?.unresolvedBlockerCount ?? 0,
+        unresolvedBlockerTaskIds: dependencyReadiness.get(task.id)?.unresolvedBlockerTaskIds ?? [],
       })),
     );
   });
@@ -1279,12 +1280,12 @@ export function agentRoutes(
     }
 
     const query = agentMineInboxQuerySchema.parse(req.query);
-    const issuesSvc = issueService(db);
-    const rows = await issuesSvc.list(req.actor.companyId, {
+    const tasksSvc = taskService(db);
+    const rows = await tasksSvc.list(req.actor.companyId, {
       touchedByUserId: query.userId,
       inboxArchivedByUserId: query.userId,
       status: query.status,
-      limit: ISSUE_LIST_DEFAULT_LIMIT,
+      limit: TASK_LIST_DEFAULT_LIMIT,
     });
 
     res.json(rows);
@@ -1452,11 +1453,11 @@ export function agentRoutes(
   router.post("/companies/:companyId/agent-hires", validate(createAgentHireSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     await assertCanCreateAgentsForCompany(req, companyId);
-    const sourceIssueIds = parseSourceIssueIds(req.body);
+    const sourceTaskIds = parseSourceTaskIds(req.body);
     const {
       desiredSkills: requestedDesiredSkills,
-      sourceIssueId: _sourceIssueId,
-      sourceIssueIds: _sourceIssueIds,
+      sourceTaskId: _sourceTaskId,
+      sourceTaskIds: _sourceTaskIds,
       ...hireInput
     } = req.body;
     hireInput.adapterType = assertKnownAdapterType(hireInput.adapterType);
@@ -1567,8 +1568,8 @@ export function agentRoutes(
         updatedAt: new Date(),
       });
 
-      if (sourceIssueIds.length > 0) {
-        await issueApprovalsSvc.linkManyForApproval(approval.id, sourceIssueIds, {
+      if (sourceTaskIds.length > 0) {
+        await taskApprovalsSvc.linkManyForApproval(approval.id, sourceTaskIds, {
           agentId: actor.actorType === "agent" ? actor.actorId : null,
           userId: actor.actorType === "user" ? actor.actorId : null,
         });
@@ -1589,7 +1590,7 @@ export function agentRoutes(
         role: agent.role,
         requiresApproval,
         approvalId: approval?.id ?? null,
-        issueIds: sourceIssueIds,
+        taskIds: sourceTaskIds,
         desiredSkills: desiredSkillAssignment.desiredSkills,
       },
     });
@@ -2556,7 +2557,7 @@ export function agentRoutes(
       lastOutputStream: heartbeatRuns.lastOutputStream,
       lastOutputBytes: heartbeatRuns.lastOutputBytes,
       processStartedAt: heartbeatRuns.processStartedAt,
-      issueId: sql<string | null>`${heartbeatRuns.contextSnapshot} ->> 'issueId'`.as("issueId"),
+      taskId: sql<string | null>`${heartbeatRuns.contextSnapshot} ->> 'taskId'`.as("taskId"),
     };
 
     const liveRunsQuery = db
@@ -2658,7 +2659,7 @@ export function agentRoutes(
       res.status(400).json({ error: "Unsupported watchdog decision" });
       return;
     }
-    const evaluationIssueId = typeof req.body?.evaluationIssueId === "string" ? req.body.evaluationIssueId : null;
+    const evaluationTaskId = typeof req.body?.evaluationTaskId === "string" ? req.body.evaluationTaskId : null;
     const reason = typeof req.body?.reason === "string" ? req.body.reason.slice(0, 4000) : null;
     const snoozedUntil = decision === "snooze"
       ? new Date(String(req.body?.snoozedUntil ?? ""))
@@ -2672,7 +2673,7 @@ export function agentRoutes(
       runId: existing.id,
       actor: req.actor,
       decision: decision as "snooze" | "continue" | "dismissed_false_positive",
-      evaluationIssueId,
+      evaluationTaskId,
       reason,
       snoozedUntil,
       createdByRunId: req.actor.runId ?? null,
@@ -2758,16 +2759,16 @@ export function agentRoutes(
     res.json(result);
   });
 
-  router.get("/issues/:issueId/live-runs", async (req, res) => {
-    const rawId = req.params.issueId as string;
-    const issueSvc = issueService(db);
-    const isIdentifier = /^[A-Z]+-\d+$/i.test(rawId);
-    const issue = isIdentifier ? await issueSvc.getByIdentifier(rawId) : await issueSvc.getById(rawId);
-    if (!issue) {
-      res.status(404).json({ error: "Issue not found" });
+  router.get("/tasks/:taskId/live-runs", async (req, res) => {
+    const rawId = req.params.taskId as string;
+    const taskSvc = taskService(db);
+    const isIdentifier = isTaskIdentifier(rawId);
+    const task = isIdentifier ? await taskSvc.getByIdentifier(rawId) : await taskSvc.getById(rawId);
+    if (!task) {
+      res.status(404).json({ error: "Task not found" });
       return;
     }
-    assertCompanyAccess(req, issue.companyId);
+    assertCompanyAccess(req, task.companyId);
 
     const liveRuns = await db
       .select({
@@ -2797,45 +2798,45 @@ export function agentRoutes(
       .innerJoin(agentsTable, eq(heartbeatRuns.agentId, agentsTable.id))
       .where(
         and(
-          eq(heartbeatRuns.companyId, issue.companyId),
+          eq(heartbeatRuns.companyId, task.companyId),
           inArray(heartbeatRuns.status, ["queued", "running"]),
-          sql`${heartbeatRuns.contextSnapshot} ->> 'issueId' = ${issue.id}`,
+          sql`${heartbeatRuns.contextSnapshot} ->> 'taskId' = ${task.id}`,
         ),
       )
       .orderBy(desc(heartbeatRuns.createdAt));
 
     res.json(await Promise.all(liveRuns.map(async (run) => ({
       ...run,
-      outputSilence: await heartbeat.buildRunOutputSilence({ ...run, companyId: issue.companyId }),
+      outputSilence: await heartbeat.buildRunOutputSilence({ ...run, companyId: task.companyId }),
     }))));
   });
 
-  router.get("/issues/:issueId/active-run", async (req, res) => {
-    const rawId = req.params.issueId as string;
-    const issueSvc = issueService(db);
-    const isIdentifier = /^[A-Z]+-\d+$/i.test(rawId);
-    const issue = isIdentifier ? await issueSvc.getByIdentifier(rawId) : await issueSvc.getById(rawId);
-    if (!issue) {
-      res.status(404).json({ error: "Issue not found" });
+  router.get("/tasks/:taskId/active-run", async (req, res) => {
+    const rawId = req.params.taskId as string;
+    const taskSvc = taskService(db);
+    const isIdentifier = isTaskIdentifier(rawId);
+    const task = isIdentifier ? await taskSvc.getByIdentifier(rawId) : await taskSvc.getById(rawId);
+    if (!task) {
+      res.status(404).json({ error: "Task not found" });
       return;
     }
-    assertCompanyAccess(req, issue.companyId);
+    assertCompanyAccess(req, task.companyId);
 
-    let run = issue.executionRunId ? await heartbeat.getRunIssueSummary(issue.executionRunId) : null;
+    let run = task.executionRunId ? await heartbeat.getRunTaskSummary(task.executionRunId) : null;
     if (
       run &&
       (
         (run.status !== "queued" && run.status !== "running") ||
-        run.issueId !== issue.id
+        run.taskId !== task.id
       )
     ) {
       run = null;
     }
 
-    if (!run && issue.assigneeAgentId && issue.status === "in_progress") {
-      const candidateRun = await heartbeat.getActiveRunIssueSummaryForAgent(issue.assigneeAgentId);
-      const candidateIssueId = asNonEmptyString(candidateRun?.issueId);
-      if (candidateRun && candidateIssueId === issue.id) {
+    if (!run && task.assigneeAgentId && task.status === "in_progress") {
+      const candidateRun = await heartbeat.getActiveRunTaskSummaryForAgent(task.assigneeAgentId);
+      const candidateTaskId = asNonEmptyString(candidateRun?.taskId);
+      if (candidateRun && candidateTaskId === task.id) {
         run = candidateRun;
       }
     }
@@ -2855,7 +2856,7 @@ export function agentRoutes(
       agentId: agent.id,
       agentName: agent.name,
       adapterType: agent.adapterType,
-      outputSilence: await heartbeat.buildRunOutputSilence({ ...run, companyId: issue.companyId }),
+      outputSilence: await heartbeat.buildRunOutputSilence({ ...run, companyId: task.companyId }),
     });
   });
 

@@ -68,7 +68,7 @@ Use for displaying status in properties panels, entity rows, and list views. Nev
 
 **File:** `StatusIcon.tsx`
 **Props:** `status: string`, `onChange?: (status: string) => void`
-**Usage:** Circle icon representing issue status. When `onChange` provided, opens a popover picker.
+**Usage:** Circle icon representing task status. When `onChange` provided, opens a popover picker.
 
 ```tsx
 <StatusIcon status="todo" onChange={setStatus} />
@@ -92,7 +92,7 @@ Supports: critical, high, medium, low. Use alongside StatusIcon in entity row le
 
 **File:** `EntityRow.tsx`
 **Props:** `leading`, `identifier`, `title`, `subtitle?`, `trailing?`, `onClick?`, `selected?`
-**Usage:** Standard list row for issues, agents, projects. Supports hover highlight and selected state.
+**Usage:** Standard list row for tasks, agents, projects. Supports hover highlight and selected state.
 
 ```tsx
 <EntityRow
@@ -100,7 +100,7 @@ Supports: critical, high, medium, low. Use alongside StatusIcon in entity row le
   identifier="PAP-003"
   title="Write API documentation"
   trailing={<StatusBadge status="todo" />}
-  onClick={() => navigate(`/issues/${id}`)}
+  onClick={() => navigate(`/tasks/${id}`)}
 />
 ```
 
@@ -176,7 +176,7 @@ Use in property rows, comment headers, assignee displays, and anywhere a user/ag
 ### CommentThread
 
 **File:** `CommentThread.tsx`
-**Usage:** Comment list with add-comment form. Used on issue and entity detail views.
+**Usage:** Comment list with add-comment form. Used on task and entity detail views.
 
 ### GoalTree
 
@@ -200,7 +200,7 @@ Use in property rows, comment headers, assignee displays, and anywhere a user/ag
 ### Sidebar
 
 **File:** `Sidebar.tsx`
-**Usage:** Left navigation sidebar (`w-60`). Contains CompanySwitcher, search button, new issue button, and SidebarSections.
+**Usage:** Left navigation sidebar (`w-60`). Contains CompanySwitcher, search button, new task button, and SidebarSections.
 
 ### SidebarSection
 
@@ -226,16 +226,16 @@ Use in property rows, comment headers, assignee displays, and anywhere a user/ag
 ### CommandPalette
 
 **File:** `CommandPalette.tsx`
-**Usage:** Cmd+K global search modal. Searches issues, projects, agents.
+**Usage:** Cmd+K global search modal. Searches tasks, projects, agents.
 
 ---
 
 ## Dialog & Form Components
 
-### NewIssueDialog
+### NewTaskDialog
 
-**File:** `NewIssueDialog.tsx`
-**Usage:** Create new issue with project/assignee/priority selection. Supports draft saving.
+**File:** `NewTaskDialog.tsx`
+**Usage:** Create new task with project/assignee/priority selection. Supports draft saving.
 
 ### NewProjectDialog
 
@@ -260,7 +260,7 @@ These render inside the PropertiesPanel for different entity types:
 
 | Component | File | Entity |
 |-----------|------|--------|
-| IssueProperties | `IssueProperties.tsx` | Issues |
+| TaskProperties | `TaskProperties.tsx` | Tasks |
 | AgentProperties | `AgentProperties.tsx` | Agents |
 | ProjectProperties | `ProjectProperties.tsx` | Projects |
 | GoalProperties | `GoalProperties.tsx` | Goals |

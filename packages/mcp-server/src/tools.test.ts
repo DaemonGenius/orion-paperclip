@@ -36,15 +36,15 @@ describe("paperclip MCP tools", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const tool = getTool("paperclipUpdateIssue");
+    const tool = getTool("paperclipUpdateTask");
     await tool.execute({
-      issueId: "PAP-1135",
+      taskId: "PAP-1135",
       status: "done",
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(String(url)).toBe("http://localhost:3100/api/issues/PAP-1135");
+    expect(String(url)).toBe("http://localhost:3100/api/tasks/PAP-1135");
     expect(init.method).toBe("PATCH");
     expect((init.headers as Record<string, string>)["Authorization"]).toBe("Bearer token-123");
     expect((init.headers as Record<string, string>)["X-Paperclip-Run-Id"]).toBe(
@@ -54,19 +54,19 @@ describe("paperclip MCP tools", () => {
 
   it("uses default company id for company-scoped list tools", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      mockJsonResponse([{ id: "issue-1" }]),
+      mockJsonResponse([{ id: "task-1" }]),
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const tool = getTool("paperclipListIssues");
+    const tool = getTool("paperclipListTasks");
     const response = await tool.execute({});
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url] = fetchMock.mock.calls[0] as [string];
     expect(String(url)).toBe(
-      "http://localhost:3100/api/companies/11111111-1111-1111-1111-111111111111/issues",
+      "http://localhost:3100/api/companies/11111111-1111-1111-1111-111111111111/tasks",
     );
-    expect(response.content[0]?.text).toContain("issue-1");
+    expect(response.content[0]?.text).toContain("task-1");
   });
 
   it("uses default agent id for checkout requests", async () => {
@@ -75,9 +75,9 @@ describe("paperclip MCP tools", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const tool = getTool("paperclipCheckoutIssue");
+    const tool = getTool("paperclipCheckoutTask");
     await tool.execute({
-      issueId: "PAP-1135",
+      taskId: "PAP-1135",
     });
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -87,15 +87,15 @@ describe("paperclip MCP tools", () => {
     });
   });
 
-  it("defaults issue document format to markdown", async () => {
+  it("defaults task document format to markdown", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       mockJsonResponse({ key: "plan", latestRevisionNumber: 2 }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const tool = getTool("paperclipUpsertIssueDocument");
+    const tool = getTool("paperclipUpsertTaskDocument");
     await tool.execute({
-      issueId: "PAP-1135",
+      taskId: "PAP-1135",
       key: "plan",
       body: "# Updated",
     });
@@ -107,7 +107,7 @@ describe("paperclip MCP tools", () => {
     });
   });
 
-  it("controls issue workspace services through the current execution workspace", async () => {
+  it("controls task workspace services through the current execution workspace", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(mockJsonResponse({
         currentExecutionWorkspace: {
@@ -131,16 +131,16 @@ describe("paperclip MCP tools", () => {
       }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const tool = getTool("paperclipControlIssueWorkspaceServices");
+    const tool = getTool("paperclipControlTaskWorkspaceServices");
     await tool.execute({
-      issueId: "PAP-1135",
+      taskId: "PAP-1135",
       action: "restart",
       workspaceCommandId: "web",
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const [lookupUrl, lookupInit] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(String(lookupUrl)).toBe("http://localhost:3100/api/issues/PAP-1135/heartbeat-context");
+    expect(String(lookupUrl)).toBe("http://localhost:3100/api/tasks/PAP-1135/heartbeat-context");
     expect(lookupInit.method).toBe("GET");
 
     const [controlUrl, controlInit] = fetchMock.mock.calls[1] as [string, RequestInit];
@@ -153,7 +153,7 @@ describe("paperclip MCP tools", () => {
     });
   });
 
-  it("waits for an issue workspace runtime service URL", async () => {
+  it("waits for an task workspace runtime service URL", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(mockJsonResponse({
         currentExecutionWorkspace: {
@@ -171,9 +171,9 @@ describe("paperclip MCP tools", () => {
       }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const tool = getTool("paperclipWaitForIssueWorkspaceService");
+    const tool = getTool("paperclipWaitForTaskWorkspaceService");
     const response = await tool.execute({
-      issueId: "PAP-1135",
+      taskId: "PAP-1135",
       serviceName: "web",
       timeoutSeconds: 1,
     });
@@ -182,7 +182,7 @@ describe("paperclip MCP tools", () => {
     expect(response.content[0]?.text).toContain("http://127.0.0.1:5173");
   });
 
-  it("creates suggest_tasks interactions with the expected issue-scoped payload", async () => {
+  it("creates suggest_tasks interactions with the expected task-scoped payload", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       mockJsonResponse({ id: "interaction-1", kind: "suggest_tasks" }),
     );
@@ -190,7 +190,7 @@ describe("paperclip MCP tools", () => {
 
     const tool = getTool("paperclipSuggestTasks");
     await tool.execute({
-      issueId: "PAP-1135",
+      taskId: "PAP-1135",
       idempotencyKey: "run-1:suggest",
       payload: {
         version: 1,
@@ -199,7 +199,7 @@ describe("paperclip MCP tools", () => {
     });
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(String(url)).toBe("http://localhost:3100/api/issues/PAP-1135/interactions");
+    expect(String(url)).toBe("http://localhost:3100/api/tasks/PAP-1135/interactions");
     expect(init.method).toBe("POST");
     expect(JSON.parse(String(init.body))).toEqual({
       kind: "suggest_tasks",
@@ -220,7 +220,7 @@ describe("paperclip MCP tools", () => {
 
     const tool = getTool("paperclipRequestConfirmation");
     await tool.execute({
-      issueId: "PAP-1135",
+      taskId: "PAP-1135",
       idempotencyKey: "confirmation:PAP-1135:plan:33333333-3333-4333-8333-333333333333",
       title: "Plan approval",
       payload: {
@@ -232,7 +232,7 @@ describe("paperclip MCP tools", () => {
         rejectRequiresReason: true,
         supersedeOnUserComment: true,
         target: {
-          type: "issue_document",
+          type: "task_document",
           key: "plan",
           revisionId: "33333333-3333-4333-8333-333333333333",
           revisionNumber: 3,
@@ -241,7 +241,7 @@ describe("paperclip MCP tools", () => {
     });
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(String(url)).toBe("http://localhost:3100/api/issues/PAP-1135/interactions");
+    expect(String(url)).toBe("http://localhost:3100/api/tasks/PAP-1135/interactions");
     expect(init.method).toBe("POST");
     expect(JSON.parse(String(init.body))).toEqual({
       kind: "request_confirmation",
@@ -257,7 +257,7 @@ describe("paperclip MCP tools", () => {
         rejectRequiresReason: true,
         supersedeOnUserComment: true,
         target: {
-          type: "issue_document",
+          type: "task_document",
           key: "plan",
           revisionId: "33333333-3333-4333-8333-333333333333",
           revisionNumber: 3,
@@ -276,7 +276,7 @@ describe("paperclip MCP tools", () => {
     await tool.execute({
       type: "hire_agent",
       payload: { branch: "pap-1167" },
-      issueIds: ["44444444-4444-4444-4444-444444444444"],
+      taskIds: ["44444444-4444-4444-4444-444444444444"],
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -288,7 +288,7 @@ describe("paperclip MCP tools", () => {
     expect(JSON.parse(String(init.body))).toEqual({
       type: "hire_agent",
       payload: { branch: "pap-1167" },
-      issueIds: ["44444444-4444-4444-4444-444444444444"],
+      taskIds: ["44444444-4444-4444-4444-444444444444"],
     });
   });
 
@@ -298,7 +298,7 @@ describe("paperclip MCP tools", () => {
     const tool = getTool("paperclipApiRequest");
     const response = await tool.execute({
       method: "GET",
-      path: "issues",
+      path: "tasks",
     });
 
     expect(response.content[0]?.text).toContain("path must start with /");

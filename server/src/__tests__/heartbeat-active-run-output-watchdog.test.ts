@@ -7,8 +7,8 @@ import {
   createDb,
   heartbeatRunWatchdogDecisions,
   heartbeatRuns,
-  issueRelations,
-  issues,
+  taskRelations,
+  tasks,
 } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
@@ -98,16 +98,16 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     const companyId = randomUUID();
     const managerId = randomUUID();
     const coderId = randomUUID();
-    const issueId = randomUUID();
+    const taskId = randomUUID();
     const runId = randomUUID();
-    const issuePrefix = `W${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+    const taskPrefix = `W${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
     const startedAt = new Date(opts.now.getTime() - opts.ageMs);
     const lastOutputAt = opts.withOutput ? new Date(opts.now.getTime() - 5 * 60 * 1000) : null;
 
     await db.insert(companies).values({
       id: companyId,
       name: "Watchdog Co",
-      issuePrefix,
+      taskPrefix,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(agents).values([
@@ -135,15 +135,15 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
         permissions: {},
       },
     ]);
-    await db.insert(issues).values({
-      id: issueId,
+    await db.insert(tasks).values({
+      id: taskId,
       companyId,
       title: "Long running implementation",
       status: "in_progress",
       priority: "medium",
       assigneeAgentId: coderId,
-      issueNumber: 1,
-      identifier: `${issuePrefix}-1`,
+      taskNumber: 1,
+      identifier: `${taskPrefix}-1`,
       updatedAt: startedAt,
       createdAt: startedAt,
     });
@@ -159,7 +159,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
       lastOutputAt,
       lastOutputSeq: opts.withOutput ? 3 : 0,
       lastOutputStream: opts.withOutput ? "stdout" : null,
-      contextSnapshot: { issueId },
+      contextSnapshot: { taskId },
       stdoutExcerpt: "OPENAI_API_KEY=sk-test-secret-value should not leak",
       logBytes: 0,
     });
@@ -180,11 +180,11 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
         })
         .where(eq(heartbeatRuns.id, runId));
     }
-    await db.update(issues).set({ executionRunId: runId }).where(eq(issues.id, issueId));
-    return { companyId, managerId, coderId, issueId, runId, issuePrefix };
+    await db.update(tasks).set({ executionRunId: runId }).where(eq(tasks.id, taskId));
+    return { companyId, managerId, coderId, taskId, runId, taskPrefix };
   }
 
-  it("creates one medium-priority evaluation issue for a suspicious silent run", async () => {
+  it("creates one medium-priority evaluation task for a suspicious silent run", async () => {
     const now = new Date("2026-04-22T20:00:00.000Z");
     const { companyId, managerId, runId } = await seedRunningRun({
       now,
@@ -201,8 +201,8 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
 
     const evaluations = await db
       .select()
-      .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "stale_active_run_evaluation")));
+      .from(tasks)
+      .where(and(eq(tasks.companyId, companyId), eq(tasks.originKind, "stale_active_run_evaluation")));
     expect(evaluations).toHaveLength(1);
     expect(["todo", "in_progress"]).toContain(evaluations[0]?.status);
     expect(evaluations[0]).toMatchObject({
@@ -234,8 +234,8 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
 
     const [evaluation] = await db
       .select()
-      .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "stale_active_run_evaluation")));
+      .from(tasks)
+      .where(and(eq(tasks.companyId, companyId), eq(tasks.originKind, "stale_active_run_evaluation")));
     expect(evaluation?.description).toContain("***REDACTED***");
     expect(evaluation?.description).not.toContain("live-bearer-token-value");
     expect(evaluation?.description).not.toContain("json-secret-value");
@@ -243,9 +243,9 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     expect(evaluation?.description).not.toContain(leakedGithubToken);
   });
 
-  it("raises critical stale-run evaluations and blocks the source issue", async () => {
+  it("raises critical stale-run evaluations and blocks the source task", async () => {
     const now = new Date("2026-04-22T20:00:00.000Z");
-    const { companyId, issueId } = await seedRunningRun({
+    const { companyId, taskId } = await seedRunningRun({
       now,
       ageMs: ACTIVE_RUN_OUTPUT_CRITICAL_THRESHOLD_MS + 60_000,
     });
@@ -256,17 +256,17 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     expect(result.created).toBe(1);
     const [evaluation] = await db
       .select()
-      .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "stale_active_run_evaluation")));
+      .from(tasks)
+      .where(and(eq(tasks.companyId, companyId), eq(tasks.originKind, "stale_active_run_evaluation")));
     expect(evaluation?.priority).toBe("high");
 
     const [blocker] = await db
       .select()
-      .from(issueRelations)
-      .where(and(eq(issueRelations.companyId, companyId), eq(issueRelations.relatedIssueId, issueId)));
-    expect(blocker?.issueId).toBe(evaluation?.id);
+      .from(taskRelations)
+      .where(and(eq(taskRelations.companyId, companyId), eq(taskRelations.relatedTaskId, taskId)));
+    expect(blocker?.taskId).toBe(evaluation?.id);
 
-    const [source] = await db.select().from(issues).where(eq(issues.id, issueId));
+    const [source] = await db.select().from(tasks).where(eq(tasks.id, taskId));
     expect(source?.status).toBe("blocked");
   });
 
@@ -307,16 +307,16 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     const recovery = recoveryService(db, { enqueueWakeup: vi.fn() });
 
     const scan = await heartbeat.scanSilentActiveRuns({ now, companyId });
-    const evaluationIssueId = scan.evaluationIssueIds[0];
-    expect(evaluationIssueId).toBeTruthy();
+    const evaluationTaskId = scan.evaluationTaskIds[0];
+    expect(evaluationTaskId).toBeTruthy();
 
     await expect(
       recovery.recordWatchdogDecision({
         runId,
         actor: { type: "agent", agentId: randomUUID() },
         decision: "continue",
-        evaluationIssueId,
-        reason: "not my recovery issue",
+        evaluationTaskId,
+        reason: "not my recovery task",
       }),
     ).rejects.toMatchObject({ status: 403 });
 
@@ -325,14 +325,14 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
       runId,
       actor: { type: "agent", agentId: managerId },
       decision: "snooze",
-      evaluationIssueId,
+      evaluationTaskId,
       reason: "Long compile with no output",
       snoozedUntil,
     });
 
     expect(decision).toMatchObject({
       runId,
-      evaluationIssueId,
+      evaluationTaskId,
       decision: "snooze",
       createdByAgentId: managerId,
     });
@@ -349,7 +349,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     }, now)).resolves.toMatchObject({
       level: "snoozed",
       snoozedUntil,
-      evaluationIssueId,
+      evaluationTaskId,
     });
   });
 
@@ -363,27 +363,27 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     const recovery = recoveryService(db, { enqueueWakeup: vi.fn() });
 
     const scan = await heartbeat.scanSilentActiveRuns({ now, companyId });
-    const evaluationIssueId = scan.evaluationIssueIds[0];
-    expect(evaluationIssueId).toBeTruthy();
+    const evaluationTaskId = scan.evaluationTaskIds[0];
+    expect(evaluationTaskId).toBeTruthy();
 
     const decision = await recovery.recordWatchdogDecision({
       runId,
       actor: { type: "agent", agentId: managerId },
       decision: "continue",
-      evaluationIssueId,
+      evaluationTaskId,
       reason: "Current evidence is acceptable; keep watching.",
       now,
     });
     const rearmAt = new Date(now.getTime() + ACTIVE_RUN_OUTPUT_CONTINUE_REARM_MS);
     expect(decision).toMatchObject({
       runId,
-      evaluationIssueId,
+      evaluationTaskId,
       decision: "continue",
       createdByAgentId: managerId,
     });
     expect(decision.snoozedUntil?.toISOString()).toBe(rearmAt.toISOString());
 
-    await db.update(issues).set({ status: "done" }).where(eq(issues.id, evaluationIssueId));
+    await db.update(tasks).set({ status: "done" }).where(eq(tasks.id, evaluationTaskId));
 
     const beforeRearm = await heartbeat.scanSilentActiveRuns({
       now: new Date(rearmAt.getTime() - 60_000),
@@ -396,18 +396,18 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
       companyId,
     });
     expect(afterRearm.created).toBe(1);
-    expect(afterRearm.evaluationIssueIds[0]).not.toBe(evaluationIssueId);
+    expect(afterRearm.evaluationTaskIds[0]).not.toBe(evaluationTaskId);
 
     const evaluations = await db
       .select()
-      .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "stale_active_run_evaluation")));
-    expect(evaluations.filter((issue) => !["done", "cancelled"].includes(issue.status))).toHaveLength(1);
+      .from(tasks)
+      .where(and(eq(tasks.companyId, companyId), eq(tasks.originKind, "stale_active_run_evaluation")));
+    expect(evaluations.filter((task) => !["done", "cancelled"].includes(task.status))).toHaveLength(1);
   });
 
-  it("rejects agent watchdog decisions using issues not bound to the target run", async () => {
+  it("rejects agent watchdog decisions using tasks not bound to the target run", async () => {
     const now = new Date("2026-04-22T20:00:00.000Z");
-    const { companyId, managerId, coderId, runId, issuePrefix } = await seedRunningRun({
+    const { companyId, managerId, coderId, runId, taskPrefix } = await seedRunningRun({
       now,
       ageMs: ACTIVE_RUN_OUTPUT_SUSPICION_THRESHOLD_MS + 60_000,
     });
@@ -415,23 +415,23 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     const recovery = recoveryService(db, { enqueueWakeup: vi.fn() });
 
     const scan = await heartbeat.scanSilentActiveRuns({ now, companyId });
-    const evaluationIssueId = scan.evaluationIssueIds[0];
-    expect(evaluationIssueId).toBeTruthy();
+    const evaluationTaskId = scan.evaluationTaskIds[0];
+    expect(evaluationTaskId).toBeTruthy();
 
-    const unrelatedIssueId = randomUUID();
-    await db.insert(issues).values({
-      id: unrelatedIssueId,
+    const unrelatedTaskId = randomUUID();
+    await db.insert(tasks).values({
+      id: unrelatedTaskId,
       companyId,
       title: "Assigned but unrelated",
       status: "todo",
       priority: "medium",
       assigneeAgentId: managerId,
-      issueNumber: 20,
-      identifier: `${issuePrefix}-20`,
+      taskNumber: 20,
+      identifier: `${taskPrefix}-20`,
     });
 
     const otherRunId = randomUUID();
-    const otherEvaluationIssueId = randomUUID();
+    const otherEvaluationTaskId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: otherRunId,
       companyId,
@@ -447,29 +447,29 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
       contextSnapshot: {},
       logBytes: 0,
     });
-    await db.insert(issues).values({
-      id: otherEvaluationIssueId,
+    await db.insert(tasks).values({
+      id: otherEvaluationTaskId,
       companyId,
       title: "Other run evaluation",
       status: "todo",
       priority: "medium",
       assigneeAgentId: managerId,
-      issueNumber: 21,
-      identifier: `${issuePrefix}-21`,
+      taskNumber: 21,
+      identifier: `${taskPrefix}-21`,
       originKind: "stale_active_run_evaluation",
       originId: otherRunId,
       originFingerprint: `stale_active_run:${companyId}:${otherRunId}`,
     });
 
     const attempts = [
-      { decision: "continue" as const, evaluationIssueId: unrelatedIssueId },
-      { decision: "dismissed_false_positive" as const, evaluationIssueId: unrelatedIssueId },
+      { decision: "continue" as const, evaluationTaskId: unrelatedTaskId },
+      { decision: "dismissed_false_positive" as const, evaluationTaskId: unrelatedTaskId },
       {
         decision: "snooze" as const,
-        evaluationIssueId: unrelatedIssueId,
+        evaluationTaskId: unrelatedTaskId,
         snoozedUntil: new Date(now.getTime() + 60 * 60 * 1000),
       },
-      { decision: "continue" as const, evaluationIssueId: otherEvaluationIssueId },
+      { decision: "continue" as const, evaluationTaskId: otherEvaluationTaskId },
     ];
 
     for (const attempt of attempts) {
@@ -483,13 +483,13 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
       ).rejects.toMatchObject({ status: 403 });
     }
 
-    await db.update(issues).set({ status: "done" }).where(eq(issues.id, evaluationIssueId));
+    await db.update(tasks).set({ status: "done" }).where(eq(tasks.id, evaluationTaskId));
     await expect(
       recovery.recordWatchdogDecision({
         runId,
         actor: { type: "agent", agentId: managerId },
         decision: "continue",
-        evaluationIssueId,
+        evaluationTaskId,
         reason: "closed evaluation should not authorize",
       }),
     ).rejects.toMatchObject({ status: 403 });
@@ -505,15 +505,15 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     const recovery = recoveryService(db, { enqueueWakeup: vi.fn() });
 
     const scan = await heartbeat.scanSilentActiveRuns({ now, companyId });
-    const evaluationIssueId = scan.evaluationIssueIds[0];
-    expect(evaluationIssueId).toBeTruthy();
+    const evaluationTaskId = scan.evaluationTaskIds[0];
+    expect(evaluationTaskId).toBeTruthy();
 
     await expect(
       recovery.recordWatchdogDecision({
         runId,
         actor: { type: "agent", agentId: managerId },
         decision: "continue",
-        evaluationIssueId,
+        evaluationTaskId,
         reason: "client supplied another agent run",
         createdByRunId: runId,
       }),
@@ -540,7 +540,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
       runId,
       actor: { type: "agent", agentId: managerId, runId: managerRunId },
       decision: "continue",
-      evaluationIssueId,
+      evaluationTaskId,
       reason: "valid current actor run",
       createdByRunId: randomUUID(),
     });

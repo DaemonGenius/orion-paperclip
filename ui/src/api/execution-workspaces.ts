@@ -14,7 +14,7 @@ export const executionWorkspacesApi = {
     filters?: {
       projectId?: string;
       projectWorkspaceId?: string;
-      issueId?: string;
+      taskId?: string;
       status?: string;
       reuseEligible?: boolean;
     },
@@ -22,7 +22,7 @@ export const executionWorkspacesApi = {
     const params = new URLSearchParams();
     if (filters?.projectId) params.set("projectId", filters.projectId);
     if (filters?.projectWorkspaceId) params.set("projectWorkspaceId", filters.projectWorkspaceId);
-    if (filters?.issueId) params.set("issueId", filters.issueId);
+    if (filters?.taskId) params.set("taskId", filters.taskId);
     if (filters?.status) params.set("status", filters.status);
     if (filters?.reuseEligible) params.set("reuseEligible", "true");
     params.set("summary", "true");
@@ -36,7 +36,7 @@ export const executionWorkspacesApi = {
     filters?: {
       projectId?: string;
       projectWorkspaceId?: string;
-      issueId?: string;
+      taskId?: string;
       status?: string;
       reuseEligible?: boolean;
     },
@@ -44,7 +44,7 @@ export const executionWorkspacesApi = {
     const params = new URLSearchParams();
     if (filters?.projectId) params.set("projectId", filters.projectId);
     if (filters?.projectWorkspaceId) params.set("projectWorkspaceId", filters.projectWorkspaceId);
-    if (filters?.issueId) params.set("issueId", filters.issueId);
+    if (filters?.taskId) params.set("taskId", filters.taskId);
     if (filters?.status) params.set("status", filters.status);
     if (filters?.reuseEligible) params.set("reuseEligible", "true");
     const qs = params.toString();

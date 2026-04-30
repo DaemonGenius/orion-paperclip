@@ -5,20 +5,20 @@ import { Check, ChevronDown, ChevronRight, Layers, MoreHorizontal, Plus, Repeat 
 import { routinesApi } from "../api/routines";
 import { agentsApi } from "../api/agents";
 import { projectsApi } from "../api/projects";
-import { issuesApi } from "../api/issues";
+import { tasksApi } from "../api/tasks";
 import { heartbeatsApi } from "../api/heartbeats";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToastActions } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
 import { groupBy } from "../lib/groupBy";
-import { createIssueDetailLocationState } from "../lib/issueDetailBreadcrumb";
-import { collectLiveIssueIds } from "../lib/liveIssueIds";
+import { createTaskDetailLocationState } from "../lib/taskDetailBreadcrumb";
+import { collectLiveTaskIds } from "../lib/liveTaskIds";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
 import { getRecentProjectIds, trackRecentProject } from "../lib/recent-projects";
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import { EmptyState } from "../components/EmptyState";
-import { IssuesList } from "../components/IssuesList";
+import { TasksList } from "../components/TasksList";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { PageTabBar } from "../components/PageTabBar";
 import { AgentIcon } from "../components/AgentIconPicker";
@@ -353,9 +353,9 @@ export function Routines() {
     queryFn: () => projectsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
-  const { data: routineExecutionIssues, isLoading: recentRunsLoading, error: recentRunsError } = useQuery({
-    queryKey: [...queryKeys.issues.list(selectedCompanyId!), "routine-executions"],
-    queryFn: () => issuesApi.list(selectedCompanyId!, { originKind: "routine_execution" }),
+  const { data: routineExecutionTasks, isLoading: recentRunsLoading, error: recentRunsError } = useQuery({
+    queryKey: [...queryKeys.tasks.list(selectedCompanyId!), "routine-executions"],
+    queryFn: () => tasksApi.list(selectedCompanyId!, { originKind: "routine_execution" }),
     enabled: !!selectedCompanyId && activeTab === "runs",
   });
   const { data: liveRuns } = useQuery({
@@ -396,11 +396,11 @@ export function Routines() {
       navigate(`/routines/${routine.id}?tab=triggers`);
     },
   });
-  const updateIssue = useMutation({
+  const updateTask = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
-      issuesApi.update(id, data),
+      tasksApi.update(id, data),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: [...queryKeys.issues.list(selectedCompanyId!), "routine-executions"] });
+      await queryClient.invalidateQueries({ queryKey: [...queryKeys.tasks.list(selectedCompanyId!), "routine-executions"] });
     },
   });
 
@@ -493,17 +493,17 @@ export function Routines() {
     () => new Map((projects ?? []).map((project) => [project.id, project])),
     [projects],
   );
-  const liveIssueIds = useMemo(() => collectLiveIssueIds(liveRuns), [liveRuns]);
+  const liveTaskIds = useMemo(() => collectLiveTaskIds(liveRuns), [liveRuns]);
   const routineGroups = useMemo(
     () => buildRoutineGroups(routines ?? [], routineViewState.groupBy, projectById, agentById),
     [agentById, projectById, routineViewState.groupBy, routines],
   );
-  const recentRunsIssueLinkState = useMemo(
+  const recentRunsTaskLinkState = useMemo(
     () =>
-      createIssueDetailLocationState(
+      createTaskDetailLocationState(
         "Recent Runs",
         buildRoutinesTabHref("runs"),
-        "issues",
+        "tasks",
       ),
     [],
   );
@@ -556,7 +556,7 @@ export function Routines() {
   }
 
   if (isLoading) {
-    return <PageSkeleton variant="issues-list" />;
+    return <PageSkeleton variant="tasks-list" />;
   }
 
   return (
@@ -567,7 +567,7 @@ export function Routines() {
             Routines
           </h1>
           <p className="text-sm text-muted-foreground">
-            Recurring work definitions that materialize into auditable execution issues.
+            Recurring work definitions that materialize into auditable execution tasks.
           </p>
         </div>
         <Button onClick={() => setComposerOpen(true)}>
@@ -624,16 +624,16 @@ export function Routines() {
           </div>
         </TabsContent>
         <TabsContent value="runs">
-          <IssuesList
-            issues={routineExecutionIssues ?? []}
+          <TasksList
+            tasks={routineExecutionTasks ?? []}
             isLoading={recentRunsLoading}
             error={recentRunsError as Error | null}
             agents={agents}
             projects={projects}
-            liveIssueIds={liveIssueIds}
+            liveTaskIds={liveTaskIds}
             viewStateKey="paperclip:routine-recent-runs-view"
-            issueLinkState={recentRunsIssueLinkState}
-            onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
+            taskLinkState={recentRunsTaskLinkState}
+            onUpdateTask={(id, data) => updateTask.mutate({ id, data })}
           />
         </TabsContent>
       </Tabs>

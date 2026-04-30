@@ -256,7 +256,7 @@ const hermesLocalAdapter: ServerAdapterModule = {
     const authGuardPrompt = [
       "Paperclip API safety rule:",
       "Use Authorization: Bearer $PAPERCLIP_API_KEY on every Paperclip API request.",
-      "Use X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID on every Paperclip API request that writes or mutates data, including comments and issue updates.",
+      "Use X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID on every Paperclip API request that writes or mutates data, including comments and task updates.",
       "Never use a board, browser, or local-board session for Paperclip API writes.",
     ].join("\n");
 
@@ -271,7 +271,7 @@ const hermesLocalAdapter: ServerAdapterModule = {
 
     // Only inject the auth guard into promptTemplate when a custom template already exists.
     // When no custom template is set, Hermes uses its built-in default heartbeat/task prompt —
-    // overwriting it with only the auth guard text would strip the assigned issue/workflow instructions.
+    // overwriting it with only the auth guard text would strip the assigned task/workflow instructions.
     if (promptTemplate) {
       patchedConfig.promptTemplate = `${authGuardPrompt}\n\n${promptTemplate}`;
     }

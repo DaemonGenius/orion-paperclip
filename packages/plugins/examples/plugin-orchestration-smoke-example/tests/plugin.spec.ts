@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { pluginManifestV1Schema, type Issue } from "@paperclipai/shared";
+import { pluginManifestV1Schema, type Task } from "@paperclipai/shared";
 import { createTestHarness } from "@paperclipai/plugin-sdk/testing";
 import manifest from "../src/manifest.js";
 import plugin from "../src/worker.js";
 
-function issue(input: Partial<Issue> & Pick<Issue, "id" | "companyId" | "title">): Issue {
+function task(input: Partial<Task> & Pick<Task, "id" | "companyId" | "title">): Task {
   const now = new Date();
   const { id, companyId, title, ...rest } = input;
   return {
@@ -27,7 +27,7 @@ function issue(input: Partial<Issue> & Pick<Issue, "id" | "companyId" | "title">
     executionLockedAt: null,
     createdByAgentId: null,
     createdByUserId: null,
-    issueNumber: null,
+    taskNumber: null,
     identifier: null,
     originKind: "manual",
     originId: null,
@@ -54,7 +54,7 @@ describe("orchestration smoke plugin", () => {
       id: "paperclipai.plugin-orchestration-smoke-example",
       database: {
         migrationsDir: "migrations",
-        coreReadTables: ["issues"],
+        coreReadTables: ["tasks"],
       },
       apiRoutes: [
         expect.objectContaining({ routeKey: "initialize" }),
@@ -63,17 +63,17 @@ describe("orchestration smoke plugin", () => {
     });
   });
 
-  it("creates plugin-owned orchestration rows, issue tree, document, wakeup, and summary reads", async () => {
+  it("creates plugin-owned orchestration rows, task tree, document, wakeup, and summary reads", async () => {
     const companyId = randomUUID();
-    const rootIssueId = randomUUID();
+    const rootTaskId = randomUUID();
     const agentId = randomUUID();
     const harness = createTestHarness({ manifest });
     harness.seed({
-      issues: [
-        issue({
-          id: rootIssueId,
+      tasks: [
+        task({
+          id: rootTaskId,
           companyId,
-          title: "Root orchestration issue",
+          title: "Root orchestration task",
           assigneeAgentId: agentId,
         }),
       ],
@@ -81,35 +81,35 @@ describe("orchestration smoke plugin", () => {
     await plugin.definition.setup(harness.ctx);
 
     const result = await harness.performAction<{
-      rootIssueId: string;
-      childIssueId: string;
-      blockerIssueId: string;
+      rootTaskId: string;
+      childTaskId: string;
+      blockerTaskId: string;
       billingCode: string;
-      subtreeIssueIds: string[];
+      subtreeTaskIds: string[];
       wakeupQueued: boolean;
     }>("initialize-smoke", {
       companyId,
-      issueId: rootIssueId,
+      taskId: rootTaskId,
       assigneeAgentId: agentId,
     });
 
-    expect(result.rootIssueId).toBe(rootIssueId);
-    expect(result.childIssueId).toEqual(expect.any(String));
-    expect(result.blockerIssueId).toEqual(expect.any(String));
-    expect(result.billingCode).toBe(`plugin-smoke:${rootIssueId}`);
+    expect(result.rootTaskId).toBe(rootTaskId);
+    expect(result.childTaskId).toEqual(expect.any(String));
+    expect(result.blockerTaskId).toEqual(expect.any(String));
+    expect(result.billingCode).toBe(`plugin-smoke:${rootTaskId}`);
     expect(result.wakeupQueued).toBe(true);
-    expect(result.subtreeIssueIds).toEqual(expect.arrayContaining([rootIssueId, result.childIssueId]));
+    expect(result.subtreeTaskIds).toEqual(expect.arrayContaining([rootTaskId, result.childTaskId]));
     expect(harness.dbExecutes[0]?.sql).toContain(".smoke_runs");
-    expect(harness.dbQueries.some((entry) => entry.sql.includes("JOIN public.issues"))).toBe(true);
+    expect(harness.dbQueries.some((entry) => entry.sql.includes("JOIN public.tasks"))).toBe(true);
 
-    const relations = await harness.ctx.issues.relations.get(result.childIssueId, companyId);
+    const relations = await harness.ctx.tasks.relations.get(result.childTaskId, companyId);
     expect(relations.blockedBy).toEqual([
       expect.objectContaining({
-        id: result.blockerIssueId,
+        id: result.blockerTaskId,
         status: "done",
       }),
     ]);
-    const docs = await harness.ctx.issues.documents.list(result.childIssueId, companyId);
+    const docs = await harness.ctx.tasks.documents.list(result.childTaskId, companyId);
     expect(docs).toEqual([
       expect.objectContaining({
         key: "orchestration-smoke",
@@ -120,13 +120,13 @@ describe("orchestration smoke plugin", () => {
 
   it("dispatches the scoped API route through the same smoke path", async () => {
     const companyId = randomUUID();
-    const rootIssueId = randomUUID();
+    const rootTaskId = randomUUID();
     const agentId = randomUUID();
     const harness = createTestHarness({ manifest });
     harness.seed({
-      issues: [
-        issue({
-          id: rootIssueId,
+      tasks: [
+        task({
+          id: rootTaskId,
           companyId,
           title: "Scoped API root",
           assigneeAgentId: agentId,
@@ -138,8 +138,8 @@ describe("orchestration smoke plugin", () => {
     await expect(plugin.definition.onApiRequest?.({
       routeKey: "initialize",
       method: "POST",
-      path: `/issues/${rootIssueId}/smoke`,
-      params: { issueId: rootIssueId },
+      path: `/tasks/${rootTaskId}/smoke`,
+      params: { taskId: rootTaskId },
       query: {},
       body: { assigneeAgentId: agentId },
       actor: {
@@ -154,7 +154,7 @@ describe("orchestration smoke plugin", () => {
     })).resolves.toMatchObject({
       status: 201,
       body: expect.objectContaining({
-        rootIssueId,
+        rootTaskId,
         wakeupQueued: true,
       }),
     });

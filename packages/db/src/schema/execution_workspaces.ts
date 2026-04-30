@@ -8,7 +8,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
-import { issues } from "./issues.js";
+import { tasks } from "./tasks.js";
 import { projectWorkspaces } from "./project_workspaces.js";
 import { projects } from "./projects.js";
 
@@ -19,7 +19,7 @@ export const executionWorkspaces = pgTable(
     companyId: uuid("company_id").notNull().references(() => companies.id),
     projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
     projectWorkspaceId: uuid("project_workspace_id").references(() => projectWorkspaces.id, { onDelete: "set null" }),
-    sourceIssueId: uuid("source_issue_id").references((): AnyPgColumn => issues.id, { onDelete: "set null" }),
+    sourceTaskId: uuid("source_task_id").references((): AnyPgColumn => tasks.id, { onDelete: "set null" }),
     mode: text("mode").notNull(),
     strategyType: text("strategy_type").notNull(),
     name: text("name").notNull(),
@@ -52,9 +52,9 @@ export const executionWorkspaces = pgTable(
       table.projectWorkspaceId,
       table.status,
     ),
-    companySourceIssueIdx: index("execution_workspaces_company_source_issue_idx").on(
+    companySourceTaskIdx: index("execution_workspaces_company_source_task_idx").on(
       table.companyId,
-      table.sourceIssueId,
+      table.sourceTaskId,
     ),
     companyLastUsedIdx: index("execution_workspaces_company_last_used_idx").on(
       table.companyId,

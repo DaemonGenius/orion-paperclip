@@ -31,7 +31,7 @@ function isAgentAdapterType(type: string): boolean {
 }
 
 export function NewAgentDialog() {
-  const { newAgentOpen, closeNewAgent, openNewIssue } = useDialog();
+  const { newAgentOpen, closeNewAgent, openNewTask } = useDialog();
   const { selectedCompanyId } = useCompany();
   const navigate = useNavigate();
   const [showAdvancedCards, setShowAdvancedCards] = useState(false);
@@ -82,7 +82,7 @@ export function NewAgentDialog() {
 
   function handleAskCeo() {
     closeNewAgent();
-    openNewIssue({
+    openNewTask({
       assigneeAgentId: creatorAgent?.id,
       title: "Create a new agent",
       description: "(type in what kind of agent you want here)",

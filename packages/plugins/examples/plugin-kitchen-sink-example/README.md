@@ -6,7 +6,7 @@ It is intentionally broad:
 
 - full plugin page
 - dashboard widget
-- project and issue surfaces
+- project and task surfaces
 - comment surfaces
 - sidebar surfaces
 - settings page

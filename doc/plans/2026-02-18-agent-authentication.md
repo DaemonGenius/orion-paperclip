@@ -31,7 +31,7 @@ server (or is invoked directly by it). There is no meaningful network boundary.
 **Approach:** Paperclip generates a token and passes it directly to the agent
 process as a parameter/env var at invocation time. No manual setup required.
 
-**Token format:** Short-lived JWT issued per heartbeat invocation (or per
+**Token format:** Short-lived JWT taskd per heartbeat invocation (or per
 session). The server mints the token, passes it in the adapter call, and
 accepts it back on API requests.
 
@@ -94,7 +94,7 @@ agent receives an onboarding URL and negotiates its own registration.
 7. On approval, Paperclip provisions the agent's credentials and sends the
    first heartbeat.
 
-**Token format:** Paperclip issues an API key (or JWT) upon approval, delivered
+**Token format:** Paperclip tasks an API key (or JWT) upon approval, delivered
 to the agent via its declared communication channel.
 
 **Inspiration:**

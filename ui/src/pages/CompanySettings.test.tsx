@@ -81,14 +81,14 @@ vi.mock("../context/ToastContext", () => ({
 
 vi.mock("../context/CompanyContext", () => ({
   useCompany: () => ({
-    companies: [{ id: "company-1", name: "Paperclip", issuePrefix: "PAP" }],
+    companies: [{ id: "company-1", name: "Paperclip", taskPrefix: "PAP" }],
     selectedCompany: {
       id: "company-1",
       name: "Paperclip",
       description: null,
       brandColor: null,
       logoUrl: null,
-      issuePrefix: "PAP",
+      taskPrefix: "PAP",
     },
     selectedCompanyId: "company-1",
     setSelectedCompanyId: mockSetSelectedCompanyId,
@@ -126,7 +126,7 @@ describe("CompanySettings", () => {
       description: null,
       brandColor: null,
       logoUrl: null,
-      issuePrefix: "PAP",
+      taskPrefix: "PAP",
     });
   });
 

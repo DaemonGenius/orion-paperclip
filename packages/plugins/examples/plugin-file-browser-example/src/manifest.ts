@@ -21,7 +21,7 @@ const manifest: PaperclipPluginManifestV1 = {
     "ui.action.register",
     "projects.read",
     "project.workspaces.read",
-    "issue.comments.read",
+    "task.comments.read",
     "plugin.state.read",
   ],
   instanceConfigSchema: {

@@ -309,7 +309,7 @@ Every import preview should surface:
 - entity-level create/update/skip plan
 - referenced external content
 - missing files
-- hash mismatch or pinning issues
+- hash mismatch or pinning tasks
 - env inputs, including required vs optional and default values when present
 - unsupported content types
 - trust/licensing warnings
@@ -386,13 +386,13 @@ Exports should:
 - express adapter env/secrets as portable env input declarations rather than exported secret binding ids
 - preserve compatible `SKILL.md` content as-is
 
-Projects and issues should not be exported by default.
+Projects and tasks should not be exported by default.
 
 They should be opt-in through selectors such as:
 
 - `--projects project-shortname-1,project-shortname-2`
-- `--issues PAP-1,PAP-3`
-- `--project-issues project-shortname-1,project-shortname-2`
+- `--tasks PAP-1,PAP-3`
+- `--project-tasks project-shortname-1,project-shortname-2`
 
 This supports “clean public company package” workflows where a maintainer exports a follower-facing company package without bundling active work items every time.
 
@@ -594,7 +594,7 @@ If importing skills:
 
 - goals
 - projects
-- starter issues/tasks
+- starter tasks/tasks
 
 This phase is intentionally after the structural model is stable.
 

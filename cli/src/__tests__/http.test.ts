@@ -44,7 +44,7 @@ describe("PaperclipApiClient", () => {
   it("throws ApiRequestError with details", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
-        JSON.stringify({ error: "Issue checkout conflict", details: { issueId: "1" } }),
+        JSON.stringify({ error: "Task checkout conflict", details: { taskId: "1" } }),
         { status: 409 },
       ),
     );
@@ -52,10 +52,10 @@ describe("PaperclipApiClient", () => {
 
     const client = new PaperclipApiClient({ apiBase: "http://localhost:3100" });
 
-    await expect(client.post("/api/issues/1/checkout", {})).rejects.toMatchObject({
+    await expect(client.post("/api/tasks/1/checkout", {})).rejects.toMatchObject({
       status: 409,
-      message: "Issue checkout conflict",
-      details: { issueId: "1" },
+      message: "Task checkout conflict",
+      details: { taskId: "1" },
     } satisfies Partial<ApiRequestError>);
   });
 

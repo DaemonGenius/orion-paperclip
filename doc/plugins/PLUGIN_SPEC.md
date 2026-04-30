@@ -85,7 +85,7 @@ The plugin system must:
    - new agent adapters
    - revenue tracking
    - knowledge base
-   - issue tracker sync
+   - task tracker sync
    - metrics/dashboards
    - file/project tooling
 6. Use simple, explicit, typed contracts.
@@ -96,7 +96,7 @@ The plugin system must:
 The first plugin system must not:
 
 1. Allow arbitrary plugins to override core routes or core invariants.
-2. Allow arbitrary plugins to mutate approval, auth, issue checkout, or budget enforcement logic.
+2. Allow arbitrary plugins to mutate approval, auth, task checkout, or budget enforcement logic.
 3. Allow arbitrary third-party plugins to run free-form DB migrations.
 4. Depend on project-local plugin folders such as `.paperclip/plugins`.
 5. Depend on automatic install-and-execute behavior at server startup from arbitrary config files.
@@ -134,7 +134,7 @@ An installable instance-wide extension package loaded through the Paperclip plug
 Examples:
 
 - Linear sync
-- GitHub Issues sync
+- GitHub Tasks sync
 - Grafana widgets
 - Stripe revenue sync
 - file browser
@@ -343,7 +343,7 @@ export interface PaperclipPluginManifestV1 {
       /** Which export name in the UI bundle provides this component */
       exportName: string;
       /** For detailTab: which entity types this tab appears on */
-      entityTypes?: Array<"project" | "issue" | "agent" | "goal" | "run">;
+      entityTypes?: Array<"project" | "task" | "agent" | "goal" | "run">;
     }>;
   };
 }
@@ -376,7 +376,7 @@ tools?: Array<{
 }>;
 ```
 
-Tool names are automatically namespaced by plugin ID at runtime (e.g. `linear:search-issues`), so plugins cannot shadow core tools or each other's tools.
+Tool names are automatically namespaced by plugin ID at runtime (e.g. `linear:search-tasks`), so plugins cannot shadow core tools or each other's tools.
 
 ### 11.2 Tool Execution
 
@@ -569,7 +569,7 @@ The plugin UI calls the host bridge, which forwards the request to the worker. T
 
 Input includes:
 
-- data key (plugin-defined, e.g. `"sync-health"`, `"issue-detail"`)
+- data key (plugin-defined, e.g. `"sync-health"`, `"task-detail"`)
 - context (company id, project id, entity id, etc.)
 - optional query parameters
 
@@ -580,8 +580,8 @@ Runs an explicit plugin action initiated by the board UI.
 Examples:
 
 - "resync now"
-- "link GitHub issue"
-- "create branch from issue"
+- "link GitHub task"
+- "create branch from task"
 - "restart process"
 
 ### 13.10 `executeTool`
@@ -615,7 +615,7 @@ Required SDK clients:
 - `ctx.state`
 - `ctx.entities`
 - `ctx.projects`
-- `ctx.issues`
+- `ctx.tasks`
 - `ctx.agents`
 - `ctx.goals`
 - `ctx.data`
@@ -627,33 +627,33 @@ Required SDK clients:
 
 Plugins that need filesystem, git, terminal, or process operations handle those directly using standard Node APIs or libraries. The host provides project workspace metadata through `ctx.projects` so plugins can resolve workspace paths, but the host does not proxy low-level OS operations.
 
-## 14.1 Issue Orchestration APIs
+## 14.1 Task Orchestration APIs
 
-Trusted orchestration plugins can create and update Paperclip issues through `ctx.issues` instead of importing server internals. The public issue contract includes parent/project/goal links, board or agent assignees, blocker IDs, labels, billing code, request depth, execution workspace inheritance, and plugin origin metadata.
+Trusted orchestration plugins can create and update Paperclip tasks through `ctx.tasks` instead of importing server internals. The public task contract includes parent/project/goal links, board or agent assignees, blocker IDs, labels, billing code, request depth, execution workspace inheritance, and plugin origin metadata.
 
 Origin rules:
 
-- Built-in core issues keep built-in origins such as `manual` and `routine_execution`.
-- Plugin-managed issues use `plugin:<pluginKey>` or a sub-kind such as `plugin:<pluginKey>:feature`.
+- Built-in core tasks keep built-in origins such as `manual` and `routine_execution`.
+- Plugin-managed tasks use `plugin:<pluginKey>` or a sub-kind such as `plugin:<pluginKey>:feature`.
 - The host derives the default plugin origin from the installed plugin key and rejects attempts to set `plugin:<otherPluginKey>` origins.
 - `originId` is plugin-defined and should be stable for idempotent generated work.
 
 Relation and read helpers:
 
-- `ctx.issues.relations.get(issueId, companyId)`
-- `ctx.issues.relations.setBlockedBy(issueId, blockerIssueIds, companyId)`
-- `ctx.issues.relations.addBlockers(issueId, blockerIssueIds, companyId)`
-- `ctx.issues.relations.removeBlockers(issueId, blockerIssueIds, companyId)`
-- `ctx.issues.getSubtree(issueId, companyId, options)`
-- `ctx.issues.summaries.getOrchestration({ issueId, companyId, includeSubtree, billingCode })`
+- `ctx.tasks.relations.get(taskId, companyId)`
+- `ctx.tasks.relations.setBlockedBy(taskId, blockerTaskIds, companyId)`
+- `ctx.tasks.relations.addBlockers(taskId, blockerTaskIds, companyId)`
+- `ctx.tasks.relations.removeBlockers(taskId, blockerTaskIds, companyId)`
+- `ctx.tasks.getSubtree(taskId, companyId, options)`
+- `ctx.tasks.summaries.getOrchestration({ taskId, companyId, includeSubtree, billingCode })`
 
 Governance helpers:
 
-- `ctx.issues.assertCheckoutOwner({ issueId, companyId, actorAgentId, actorRunId })` lets plugin actions preserve agent-run checkout ownership.
-- `ctx.issues.requestWakeup(issueId, companyId, options)` requests assignment wakeups through host heartbeat semantics, including terminal-status, blocker, assignee, and budget hard-stop checks.
-- `ctx.issues.requestWakeups(issueIds, companyId, options)` applies the same host-owned wakeup semantics to a batch and may use an idempotency key prefix for stable coordinator retries.
+- `ctx.tasks.assertCheckoutOwner({ taskId, companyId, actorAgentId, actorRunId })` lets plugin actions preserve agent-run checkout ownership.
+- `ctx.tasks.requestWakeup(taskId, companyId, options)` requests assignment wakeups through host heartbeat semantics, including terminal-status, blocker, assignee, and budget hard-stop checks.
+- `ctx.tasks.requestWakeups(taskIds, companyId, options)` applies the same host-owned wakeup semantics to a batch and may use an idempotency key prefix for stable coordinator retries.
 
-Plugin-originated issue, relation, document, comment, and wakeup mutations must write activity entries with `actorType: "plugin"` and details fields for `sourcePluginId`, `sourcePluginKey`, `initiatingActorType`, `initiatingActorId`, and `initiatingRunId` when a user or agent run initiated the plugin work.
+Plugin-originated task, relation, document, comment, and wakeup mutations must write activity entries with `actorType: "plugin"` and details fields for `sourcePluginId`, `sourcePluginKey`, `initiatingActorType`, `initiatingActorId`, and `initiatingRunId` when a user or agent run initiated the plugin work.
 
 Scoped API routes:
 
@@ -736,26 +736,26 @@ The host enforces capabilities in the SDK layer and refuses calls outside the gr
 - `companies.read`
 - `projects.read`
 - `project.workspaces.read`
-- `issues.read`
-- `issue.comments.read`
-- `issue.documents.read`
-- `issue.relations.read`
-- `issue.subtree.read`
+- `tasks.read`
+- `task.comments.read`
+- `task.documents.read`
+- `task.relations.read`
+- `task.subtree.read`
 - `agents.read`
 - `goals.read`
 - `activity.read`
 - `costs.read`
-- `issues.orchestration.read`
+- `tasks.orchestration.read`
 
 ### Data Write
 
-- `issues.create`
-- `issues.update`
-- `issue.comments.create`
-- `issue.documents.write`
-- `issue.relations.write`
-- `issues.checkout`
-- `issues.wakeup`
+- `tasks.create`
+- `tasks.update`
+- `task.comments.create`
+- `task.documents.write`
+- `task.relations.write`
+- `tasks.checkout`
+- `tasks.wakeup`
 - `assets.write`
 - `assets.read`
 - `activity.log.write`
@@ -795,7 +795,7 @@ The host must not expose capabilities for:
 - approval decisions
 - budget override
 - auth bypass
-- issue checkout lock override
+- task checkout lock override
 - direct DB access
 
 ## 15.3 Upgrade Rules
@@ -819,16 +819,16 @@ Minimum event set:
 - `project.workspace_created`
 - `project.workspace_updated`
 - `project.workspace_deleted`
-- `issue.created`
-- `issue.updated`
-- `issue.comment.created`
-- `issue.document.created`
-- `issue.document.updated`
-- `issue.document.deleted`
-- `issue.relations.updated`
-- `issue.checked_out`
-- `issue.released`
-- `issue.assignment_wakeup_requested`
+- `task.created`
+- `task.updated`
+- `task.comment.created`
+- `task.document.created`
+- `task.document.updated`
+- `task.document.deleted`
+- `task.relations.updated`
+- `task.checked_out`
+- `task.released`
+- `task.assignment_wakeup_requested`
 - `agent.created`
 - `agent.updated`
 - `agent.status_changed`
@@ -942,7 +942,7 @@ export function DashboardWidget({ context }: PluginWidgetProps) {
 
   return (
     <div>
-      <MetricCard label="Synced Issues" value={data.syncedCount} trend={data.trend} />
+      <MetricCard label="Synced Tasks" value={data.syncedCount} trend={data.trend} />
       {data.mappings.map(m => (
         <StatusBadge key={m.id} label={m.label} status={m.status} />
       ))}
@@ -1026,7 +1026,7 @@ These routes exist because the board UI is organized around companies even thoug
 Plugins may add tabs to:
 
 - project detail
-- issue detail
+- task detail
 - agent detail
 - goal detail
 - run detail
@@ -1054,7 +1054,7 @@ The host SDK ships shared components that plugins can import to quickly build UI
 |---|---|---|
 | `MetricCard` | Single number with label, optional trend/sparkline | KPIs, counts, rates |
 | `StatusBadge` | Inline status indicator (ok/warning/error/info) | Sync health, connection status |
-| `DataTable` | Rows and columns with optional sorting and pagination | Issue lists, job history, process lists |
+| `DataTable` | Rows and columns with optional sorting and pagination | Task lists, job history, process lists |
 | `TimeseriesChart` | Line or bar chart with timestamped data points | Revenue trends, sync volume, error rates |
 | `MarkdownBlock` | Rendered markdown text | Descriptions, help text, notes |
 | `KeyValueList` | Label/value pairs in a definition-list layout | Entity metadata, config summary |
@@ -1123,7 +1123,7 @@ Both approaches coexist: a plugin can use the auto-generated form for simple con
 
 Plugins that need filesystem, git, terminal, or process operations implement those directly. The host does not wrap or proxy these operations.
 
-The host provides workspace metadata through `ctx.projects` (list workspaces, get primary workspace, resolve workspace from issue or agent/run). Plugins use this metadata to resolve local paths and then operate on the filesystem, spawn processes, shell out to `git`, or open PTY sessions using standard Node APIs or any libraries they choose.
+The host provides workspace metadata through `ctx.projects` (list workspaces, get primary workspace, resolve workspace from task or agent/run). Plugins use this metadata to resolve local paths and then operate on the filesystem, spawn processes, shell out to `git`, or open PTY sessions using standard Node APIs or any libraries they choose.
 
 This keeps the host lean — it does not need to maintain a parallel API surface for every OS-level operation a plugin might need. Plugins own their own logic for file browsing, git workflows, terminal sessions, and process management.
 
@@ -1180,7 +1180,7 @@ Indexes:
 
 - `id` uuid pk
 - `plugin_id` uuid fk `plugins.id` not null
-- `scope_kind` enum: `instance | company | project | project_workspace | agent | issue | goal | run`
+- `scope_kind` enum: `instance | company | project | project_workspace | agent | task | goal | run`
 - `scope_id` uuid/text null
 - `namespace` text not null
 - `state_key` text not null
@@ -1193,7 +1193,7 @@ Constraints:
 
 Examples:
 
-- Linear external IDs keyed by `issue`
+- Linear external IDs keyed by `task`
 - GitHub sync cursors keyed by `project`
 - file browser preferences keyed by `project_workspace`
 - git branch metadata keyed by `project_workspace`
@@ -1277,8 +1277,8 @@ Indexes:
 
 Use cases:
 
-- imported Linear issues
-- imported GitHub issues
+- imported Linear tasks
+- imported GitHub tasks
 - plugin-owned process records
 - plugin-owned external metric bindings
 
@@ -1527,10 +1527,10 @@ const harness = createTestHarness({ manifest, capabilities: manifest.capabilitie
 await register(harness.ctx);
 
 // Simulate an event
-await harness.emit("issue.created", { issueId: "iss-1", projectId: "proj-1" });
+await harness.emit("task.created", { taskId: "iss-1", projectId: "proj-1" });
 
 // Verify state was written
-const state = await harness.state.get({ pluginId: manifest.id, scopeKind: "issue", scopeId: "iss-1", namespace: "sync", stateKey: "external-id" });
+const state = await harness.state.get({ pluginId: manifest.id, scopeKind: "task", scopeId: "iss-1", namespace: "sync", stateKey: "external-id" });
 expect(state).toBeDefined();
 
 // Simulate a UI data request
@@ -1567,7 +1567,7 @@ This spec directly supports the following plugin types:
 - `@paperclip/plugin-terminal`
 - `@paperclip/plugin-git`
 - `@paperclip/plugin-linear`
-- `@paperclip/plugin-github-issues`
+- `@paperclip/plugin-github-tasks`
 - `@paperclip/plugin-grafana`
 - `@paperclip/plugin-runtime-processes`
 - `@paperclip/plugin-stripe`
@@ -1663,7 +1663,7 @@ When a new SDK version is released:
 This phase is enough for:
 
 - Linear
-- GitHub Issues
+- GitHub Tasks
 - Grafana
 - Stripe
 - file browser

@@ -1629,15 +1629,15 @@
           "notNull": true,
           "default": "'active'"
         },
-        "issue_prefix": {
-          "name": "issue_prefix",
+        "task_prefix": {
+          "name": "task_prefix",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "default": "'PAP'"
         },
-        "issue_counter": {
-          "name": "issue_counter",
+        "task_counter": {
+          "name": "task_counter",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -2033,8 +2033,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "issue_id": {
-          "name": "issue_id",
+        "task_id": {
+          "name": "task_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -2180,12 +2180,12 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "cost_events_issue_id_issues_id_fk": {
-          "name": "cost_events_issue_id_issues_id_fk",
+        "cost_events_task_id_tasks_id_fk": {
+          "name": "cost_events_task_id_tasks_id_fk",
           "tableFrom": "cost_events",
-          "tableTo": "issues",
+          "tableTo": "tasks",
           "columnsFrom": [
-            "issue_id"
+            "task_id"
           ],
           "columnsTo": [
             "id"
@@ -2805,8 +2805,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.issue_approvals": {
-      "name": "issue_approvals",
+    "public.task_approvals": {
+      "name": "task_approvals",
       "schema": "",
       "columns": {
         "company_id": {
@@ -2815,8 +2815,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "issue_id": {
-          "name": "issue_id",
+        "task_id": {
+          "name": "task_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -2848,11 +2848,11 @@
         }
       },
       "indexes": {
-        "issue_approvals_issue_idx": {
-          "name": "issue_approvals_issue_idx",
+        "task_approvals_task_idx": {
+          "name": "task_approvals_task_idx",
           "columns": [
             {
-              "expression": "issue_id",
+              "expression": "task_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2863,8 +2863,8 @@
           "method": "btree",
           "with": {}
         },
-        "issue_approvals_approval_idx": {
-          "name": "issue_approvals_approval_idx",
+        "task_approvals_approval_idx": {
+          "name": "task_approvals_approval_idx",
           "columns": [
             {
               "expression": "approval_id",
@@ -2878,8 +2878,8 @@
           "method": "btree",
           "with": {}
         },
-        "issue_approvals_company_idx": {
-          "name": "issue_approvals_company_idx",
+        "task_approvals_company_idx": {
+          "name": "task_approvals_company_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -2895,9 +2895,9 @@
         }
       },
       "foreignKeys": {
-        "issue_approvals_company_id_companies_id_fk": {
-          "name": "issue_approvals_company_id_companies_id_fk",
-          "tableFrom": "issue_approvals",
+        "task_approvals_company_id_companies_id_fk": {
+          "name": "task_approvals_company_id_companies_id_fk",
+          "tableFrom": "task_approvals",
           "tableTo": "companies",
           "columnsFrom": [
             "company_id"
@@ -2908,12 +2908,12 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "issue_approvals_issue_id_issues_id_fk": {
-          "name": "issue_approvals_issue_id_issues_id_fk",
-          "tableFrom": "issue_approvals",
-          "tableTo": "issues",
+        "task_approvals_task_id_tasks_id_fk": {
+          "name": "task_approvals_task_id_tasks_id_fk",
+          "tableFrom": "task_approvals",
+          "tableTo": "tasks",
           "columnsFrom": [
-            "issue_id"
+            "task_id"
           ],
           "columnsTo": [
             "id"
@@ -2921,9 +2921,9 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "issue_approvals_approval_id_approvals_id_fk": {
-          "name": "issue_approvals_approval_id_approvals_id_fk",
-          "tableFrom": "issue_approvals",
+        "task_approvals_approval_id_approvals_id_fk": {
+          "name": "task_approvals_approval_id_approvals_id_fk",
+          "tableFrom": "task_approvals",
           "tableTo": "approvals",
           "columnsFrom": [
             "approval_id"
@@ -2934,9 +2934,9 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "issue_approvals_linked_by_agent_id_agents_id_fk": {
-          "name": "issue_approvals_linked_by_agent_id_agents_id_fk",
-          "tableFrom": "issue_approvals",
+        "task_approvals_linked_by_agent_id_agents_id_fk": {
+          "name": "task_approvals_linked_by_agent_id_agents_id_fk",
+          "tableFrom": "task_approvals",
           "tableTo": "agents",
           "columnsFrom": [
             "linked_by_agent_id"
@@ -2949,10 +2949,10 @@
         }
       },
       "compositePrimaryKeys": {
-        "issue_approvals_pk": {
-          "name": "issue_approvals_pk",
+        "task_approvals_pk": {
+          "name": "task_approvals_pk",
           "columns": [
-            "issue_id",
+            "task_id",
             "approval_id"
           ]
         }
@@ -2962,8 +2962,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.issue_comments": {
-      "name": "issue_comments",
+    "public.task_comments": {
+      "name": "task_comments",
       "schema": "",
       "columns": {
         "id": {
@@ -2979,8 +2979,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "issue_id": {
-          "name": "issue_id",
+        "task_id": {
+          "name": "task_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -3019,11 +3019,11 @@
         }
       },
       "indexes": {
-        "issue_comments_issue_idx": {
-          "name": "issue_comments_issue_idx",
+        "task_comments_task_idx": {
+          "name": "task_comments_task_idx",
           "columns": [
             {
-              "expression": "issue_id",
+              "expression": "task_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -3034,8 +3034,8 @@
           "method": "btree",
           "with": {}
         },
-        "issue_comments_company_idx": {
-          "name": "issue_comments_company_idx",
+        "task_comments_company_idx": {
+          "name": "task_comments_company_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -3051,9 +3051,9 @@
         }
       },
       "foreignKeys": {
-        "issue_comments_company_id_companies_id_fk": {
-          "name": "issue_comments_company_id_companies_id_fk",
-          "tableFrom": "issue_comments",
+        "task_comments_company_id_companies_id_fk": {
+          "name": "task_comments_company_id_companies_id_fk",
+          "tableFrom": "task_comments",
           "tableTo": "companies",
           "columnsFrom": [
             "company_id"
@@ -3064,12 +3064,12 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "issue_comments_issue_id_issues_id_fk": {
-          "name": "issue_comments_issue_id_issues_id_fk",
-          "tableFrom": "issue_comments",
-          "tableTo": "issues",
+        "task_comments_task_id_tasks_id_fk": {
+          "name": "task_comments_task_id_tasks_id_fk",
+          "tableFrom": "task_comments",
+          "tableTo": "tasks",
           "columnsFrom": [
-            "issue_id"
+            "task_id"
           ],
           "columnsTo": [
             "id"
@@ -3077,9 +3077,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "issue_comments_author_agent_id_agents_id_fk": {
-          "name": "issue_comments_author_agent_id_agents_id_fk",
-          "tableFrom": "issue_comments",
+        "task_comments_author_agent_id_agents_id_fk": {
+          "name": "task_comments_author_agent_id_agents_id_fk",
+          "tableFrom": "task_comments",
           "tableTo": "agents",
           "columnsFrom": [
             "author_agent_id"
@@ -3097,8 +3097,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.issues": {
-      "name": "issues",
+    "public.tasks": {
+      "name": "tasks",
       "schema": "",
       "columns": {
         "id": {
@@ -3176,8 +3176,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "issue_number": {
-          "name": "issue_number",
+        "task_number": {
+          "name": "task_number",
           "type": "integer",
           "primaryKey": false,
           "notNull": false
@@ -3241,8 +3241,8 @@
         }
       },
       "indexes": {
-        "issues_company_status_idx": {
-          "name": "issues_company_status_idx",
+        "tasks_company_status_idx": {
+          "name": "tasks_company_status_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -3262,8 +3262,8 @@
           "method": "btree",
           "with": {}
         },
-        "issues_company_assignee_status_idx": {
-          "name": "issues_company_assignee_status_idx",
+        "tasks_company_assignee_status_idx": {
+          "name": "tasks_company_assignee_status_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -3289,8 +3289,8 @@
           "method": "btree",
           "with": {}
         },
-        "issues_company_parent_idx": {
-          "name": "issues_company_parent_idx",
+        "tasks_company_parent_idx": {
+          "name": "tasks_company_parent_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -3310,8 +3310,8 @@
           "method": "btree",
           "with": {}
         },
-        "issues_company_project_idx": {
-          "name": "issues_company_project_idx",
+        "tasks_company_project_idx": {
+          "name": "tasks_company_project_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -3331,8 +3331,8 @@
           "method": "btree",
           "with": {}
         },
-        "issues_company_identifier_idx": {
-          "name": "issues_company_identifier_idx",
+        "tasks_company_identifier_idx": {
+          "name": "tasks_company_identifier_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -3354,9 +3354,9 @@
         }
       },
       "foreignKeys": {
-        "issues_company_id_companies_id_fk": {
-          "name": "issues_company_id_companies_id_fk",
-          "tableFrom": "issues",
+        "tasks_company_id_companies_id_fk": {
+          "name": "tasks_company_id_companies_id_fk",
+          "tableFrom": "tasks",
           "tableTo": "companies",
           "columnsFrom": [
             "company_id"
@@ -3367,9 +3367,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "issues_project_id_projects_id_fk": {
-          "name": "issues_project_id_projects_id_fk",
-          "tableFrom": "issues",
+        "tasks_project_id_projects_id_fk": {
+          "name": "tasks_project_id_projects_id_fk",
+          "tableFrom": "tasks",
           "tableTo": "projects",
           "columnsFrom": [
             "project_id"
@@ -3380,9 +3380,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "issues_goal_id_goals_id_fk": {
-          "name": "issues_goal_id_goals_id_fk",
-          "tableFrom": "issues",
+        "tasks_goal_id_goals_id_fk": {
+          "name": "tasks_goal_id_goals_id_fk",
+          "tableFrom": "tasks",
           "tableTo": "goals",
           "columnsFrom": [
             "goal_id"
@@ -3393,10 +3393,10 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "issues_parent_id_issues_id_fk": {
-          "name": "issues_parent_id_issues_id_fk",
-          "tableFrom": "issues",
-          "tableTo": "issues",
+        "tasks_parent_id_tasks_id_fk": {
+          "name": "tasks_parent_id_tasks_id_fk",
+          "tableFrom": "tasks",
+          "tableTo": "tasks",
           "columnsFrom": [
             "parent_id"
           ],
@@ -3406,9 +3406,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "issues_assignee_agent_id_agents_id_fk": {
-          "name": "issues_assignee_agent_id_agents_id_fk",
-          "tableFrom": "issues",
+        "tasks_assignee_agent_id_agents_id_fk": {
+          "name": "tasks_assignee_agent_id_agents_id_fk",
+          "tableFrom": "tasks",
           "tableTo": "agents",
           "columnsFrom": [
             "assignee_agent_id"
@@ -3419,9 +3419,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "issues_created_by_agent_id_agents_id_fk": {
-          "name": "issues_created_by_agent_id_agents_id_fk",
-          "tableFrom": "issues",
+        "tasks_created_by_agent_id_agents_id_fk": {
+          "name": "tasks_created_by_agent_id_agents_id_fk",
+          "tableFrom": "tasks",
           "tableTo": "agents",
           "columnsFrom": [
             "created_by_agent_id"

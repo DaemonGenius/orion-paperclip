@@ -70,7 +70,7 @@ This is the direction for higher-autonomy execution: more aggressive delegation,
 
 ### ⚪ Deep Planning
 
-Some work needs more than a task description before execution starts. Deeper planning means stronger issue documents, revisionable plans, and clearer review loops for strategy-heavy work before agents begin execution.
+Some work needs more than a task description before execution starts. Deeper planning means stronger task documents, revisionable plans, and clearer review loops for strategy-heavy work before agents begin execution.
 
 ### ⚪ Work Queues
 
@@ -86,7 +86,7 @@ Paperclip should get better at turning completed work into reusable organization
 
 ### ⚪ CEO Chat
 
-We want a lighter-weight way to talk to leadership agents, but those conversations should still resolve to real work objects like plans, issues, approvals, or decisions. This should improve interaction without changing the core task-and-comments model.
+We want a lighter-weight way to talk to leadership agents, but those conversations should still resolve to real work objects like plans, tasks, approvals, or decisions. This should improve interaction without changing the core task-and-comments model.
 
 ### ⚪ Cloud deployments
 

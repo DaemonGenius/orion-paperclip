@@ -3,7 +3,7 @@
 import { act } from "react";
 import type { ComponentProps, ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import type { ExecutionWorkspace, Issue } from "@paperclipai/shared";
+import type { ExecutionWorkspace, Task } from "@paperclipai/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectWorkspaceSummary } from "../lib/project-workspaces-tab";
 import { ProjectWorkspaceSummaryCard } from "./ProjectWorkspaceSummaryCard";
@@ -12,22 +12,22 @@ vi.mock("@/lib/router", () => ({
   Link: ({ children, to, ...props }: ComponentProps<"a"> & { to: string }) => <a href={to} {...props}>{children}</a>,
 }));
 
-vi.mock("./IssuesQuicklook", () => ({
-  IssuesQuicklook: ({ children }: { children: ReactNode }) => <>{children}</>,
+vi.mock("./TasksQuicklook", () => ({
+  TasksQuicklook: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
-function createIssue(overrides: Partial<Issue> = {}): Issue {
+function createTask(overrides: Partial<Task> = {}): Task {
   return {
-    id: overrides.id ?? "issue-1",
+    id: overrides.id ?? "task-1",
     companyId: overrides.companyId ?? "company-1",
     projectId: overrides.projectId ?? "project-1",
     projectWorkspaceId: overrides.projectWorkspaceId ?? null,
     goalId: overrides.goalId ?? null,
     parentId: overrides.parentId ?? null,
-    title: overrides.title ?? "Issue",
+    title: overrides.title ?? "Task",
     description: overrides.description ?? null,
     status: overrides.status ?? "todo",
     priority: overrides.priority ?? "medium",
@@ -39,7 +39,7 @@ function createIssue(overrides: Partial<Issue> = {}): Issue {
     executionLockedAt: overrides.executionLockedAt ?? null,
     createdByAgentId: overrides.createdByAgentId ?? null,
     createdByUserId: overrides.createdByUserId ?? null,
-    issueNumber: overrides.issueNumber ?? 1,
+    taskNumber: overrides.taskNumber ?? 1,
     identifier: overrides.identifier ?? "PAP-1",
     requestDepth: overrides.requestDepth ?? 0,
     billingCode: overrides.billingCode ?? null,
@@ -53,7 +53,7 @@ function createIssue(overrides: Partial<Issue> = {}): Issue {
     hiddenAt: overrides.hiddenAt ?? null,
     createdAt: overrides.createdAt ?? new Date("2026-04-12T00:00:00Z"),
     updatedAt: overrides.updatedAt ?? new Date("2026-04-12T00:00:00Z"),
-  } as Issue;
+  } as Task;
 }
 
 function createSummary(overrides: Partial<ProjectWorkspaceSummary> = {}): ProjectWorkspaceSummary {
@@ -73,12 +73,12 @@ function createSummary(overrides: Partial<ProjectWorkspaceSummary> = {}): Projec
     primaryServiceUrl: overrides.primaryServiceUrl ?? "http://127.0.0.1:62474",
     primaryServiceUrlRunning: overrides.primaryServiceUrlRunning ?? false,
     hasRuntimeConfig: overrides.hasRuntimeConfig ?? true,
-    issues: overrides.issues ?? [
-      createIssue({ id: "issue-1", identifier: "PAP-1364" }),
-      createIssue({ id: "issue-2", identifier: "PAP-1367" }),
-      createIssue({ id: "issue-3", identifier: "PAP-1362" }),
-      createIssue({ id: "issue-4", identifier: "PAP-1363" }),
-      createIssue({ id: "issue-5", identifier: "PAP-1340" }),
+    tasks: overrides.tasks ?? [
+      createTask({ id: "task-1", identifier: "PAP-1364" }),
+      createTask({ id: "task-2", identifier: "PAP-1367" }),
+      createTask({ id: "task-3", identifier: "PAP-1362" }),
+      createTask({ id: "task-4", identifier: "PAP-1363" }),
+      createTask({ id: "task-5", identifier: "PAP-1340" }),
     ],
   };
 }
@@ -105,7 +105,7 @@ describe("ProjectWorkspaceSummaryCard", () => {
     document.body.innerHTML = "";
   });
 
-  it("renders a stacked mobile-friendly summary with metadata labels and compact issue pills", () => {
+  it("renders a stacked mobile-friendly summary with metadata labels and compact task pills", () => {
     const root = createRoot(container);
     act(() => {
       root.render(
@@ -124,7 +124,7 @@ describe("ProjectWorkspaceSummaryCard", () => {
     expect(container.textContent).toContain("Branch");
     expect(container.textContent).toContain("Path");
     expect(container.textContent).toContain("Service");
-    expect(container.textContent).toContain("Linked issues");
+    expect(container.textContent).toContain("Linked tasks");
     expect(container.textContent).toContain("Start services");
     expect(container.textContent).toContain("Close workspace");
     expect(container.textContent).toContain("+1 more");
@@ -155,7 +155,7 @@ describe("ProjectWorkspaceSummaryCard", () => {
             executionWorkspaceId: null,
             executionWorkspaceStatus: null,
             hasRuntimeConfig: false,
-            issues: [createIssue({ id: "issue-6", identifier: "PAP-1400" })],
+            tasks: [createTask({ id: "task-6", identifier: "PAP-1400" })],
           })}
           runtimeActionKey={null}
           runtimeActionPending={false}

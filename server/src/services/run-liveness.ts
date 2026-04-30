@@ -1,4 +1,4 @@
-import type { HeartbeatRunStatus, IssueStatus, RunLivenessState } from "@paperclipai/shared";
+import type { HeartbeatRunStatus, TaskStatus, RunLivenessState } from "@paperclipai/shared";
 
 export type RunLivenessActionability =
   | "runnable"
@@ -7,14 +7,14 @@ export type RunLivenessActionability =
   | "approval_required"
   | "unknown";
 
-export interface RunLivenessIssueInput {
-  status: IssueStatus | string;
+export interface RunLivenessTaskInput {
+  status: TaskStatus | string;
   title: string;
   description: string | null;
 }
 
 export interface RunLivenessEvidenceInput {
-  issueCommentsCreated: number;
+  taskCommentsCreated: number;
   documentRevisionsCreated: number;
   planDocumentRevisionsCreated: number;
   workProductsCreated: number;
@@ -26,9 +26,9 @@ export interface RunLivenessEvidenceInput {
 
 export interface RunLivenessClassificationInput {
   runStatus: HeartbeatRunStatus | string;
-  issue: RunLivenessIssueInput | null;
+  task: RunLivenessTaskInput | null;
   resultJson?: Record<string, unknown> | null;
-  issueCommentBodies?: string[] | null;
+  taskCommentBodies?: string[] | null;
   continuationSummaryBody?: string | null;
   stdoutExcerpt?: string | null;
   stderrExcerpt?: string | null;
@@ -48,7 +48,7 @@ export interface RunLivenessClassification {
 }
 
 const DEFAULT_EVIDENCE: RunLivenessEvidenceInput = {
-  issueCommentsCreated: 0,
+  taskCommentsCreated: 0,
   documentRevisionsCreated: 0,
   planDocumentRevisionsCreated: 0,
   workProductsCreated: 0,
@@ -119,7 +119,7 @@ function resultRawText(resultJson: Record<string, unknown> | null | undefined) {
 
 function highSignalSources(input: RunLivenessClassificationInput) {
   return [
-    ...(input.issueCommentBodies ?? []).map(readText),
+    ...(input.taskCommentBodies ?? []).map(readText),
     readText(resultFinalText(input.resultJson)),
     readText(input.continuationSummaryBody),
   ].filter((value): value is string => Boolean(value));
@@ -152,7 +152,7 @@ export function hasUsefulOutput(input: RunLivenessClassificationInput) {
 }
 
 export function declaredBlocker(input: RunLivenessClassificationInput) {
-  if (input.issue?.status === "blocked") return true;
+  if (input.task?.status === "blocked") return true;
   const actionability = classifyRunActionability(input);
   return actionability === "blocked_external" || actionability === "approval_required";
 }
@@ -163,15 +163,15 @@ export function looksLikePlanningOnly(input: RunLivenessClassificationInput) {
   return PLANNING_ONLY_RE.test(text) || NEXT_STEPS_RE.test(text) || /^\s*next(?: steps?| action)?\s*:/im.test(text);
 }
 
-export function isPlanningOrDocumentTask(issue: RunLivenessIssueInput | null | undefined) {
-  if (!issue) return false;
-  if (PLAN_TASK_TITLE_RE.test(issue.title)) return true;
-  return PLAN_TASK_DESCRIPTION_RE.test(issue.description ?? "");
+export function isPlanningOrDocumentTask(task: RunLivenessTaskInput | null | undefined) {
+  if (!task) return false;
+  if (PLAN_TASK_TITLE_RE.test(task.title)) return true;
+  return PLAN_TASK_DESCRIPTION_RE.test(task.description ?? "");
 }
 
 function normalizeEvidence(evidence: Partial<RunLivenessEvidenceInput> | null | undefined): RunLivenessEvidenceInput {
   return {
-    issueCommentsCreated: normalizeCount(evidence?.issueCommentsCreated),
+    taskCommentsCreated: normalizeCount(evidence?.taskCommentsCreated),
     documentRevisionsCreated: normalizeCount(evidence?.documentRevisionsCreated),
     planDocumentRevisionsCreated: normalizeCount(evidence?.planDocumentRevisionsCreated),
     workProductsCreated: normalizeCount(evidence?.workProductsCreated),
@@ -188,7 +188,7 @@ export function hasConcreteActionEvidence(evidence: Partial<RunLivenessEvidenceI
   // appear in reasons alongside durable activity, but it must not prevent a
   // planning-only or empty run from receiving a bounded continuation.
   return (
-    normalized.issueCommentsCreated +
+    normalized.taskCommentsCreated +
       normalized.documentRevisionsCreated +
       normalized.workProductsCreated +
       normalized.activityEventsCreated +
@@ -199,7 +199,7 @@ export function hasConcreteActionEvidence(evidence: Partial<RunLivenessEvidenceI
 
 function evidenceReason(evidence: RunLivenessEvidenceInput) {
   const parts: string[] = [];
-  if (evidence.issueCommentsCreated > 0) parts.push(`${evidence.issueCommentsCreated} issue comment(s)`);
+  if (evidence.taskCommentsCreated > 0) parts.push(`${evidence.taskCommentsCreated} task comment(s)`);
   if (evidence.documentRevisionsCreated > 0) parts.push(`${evidence.documentRevisionsCreated} document revision(s)`);
   if (evidence.workProductsCreated > 0) parts.push(`${evidence.workProductsCreated} work product(s)`);
   if (evidence.workspaceOperationsCreated > 0) parts.push(`${evidence.workspaceOperationsCreated} workspace operation(s)`);
@@ -259,7 +259,7 @@ function extractNextActionFromText(text: string) {
 function extractNextAction(input: RunLivenessClassificationInput) {
   const structuredNextAction = readText(input.resultJson?.nextAction);
   const candidates = [
-    ...(input.issueCommentBodies ?? []),
+    ...(input.taskCommentBodies ?? []),
     structuredNextAction ? `Next action: ${structuredNextAction}` : null,
     resultFinalText(input.resultJson),
     input.continuationSummaryBody,
@@ -294,10 +294,10 @@ export function classifyRunLiveness(input: RunLivenessClassificationInput): RunL
   const continuationAttempt = normalizeContinuationAttempt(input.continuationAttempt);
   const actionability = classifyRunActionability(input);
   const nextAction = extractNextAction(input);
-  const issueStatus = input.issue?.status ?? null;
+  const taskStatus = input.task?.status ?? null;
   const usefulOutput = hasUsefulOutput(input);
   const concreteEvidence = hasConcreteActionEvidence(evidence);
-  const planExempt = isPlanningOrDocumentTask(input.issue) || evidence.planDocumentRevisionsCreated > 0;
+  const planExempt = isPlanningOrDocumentTask(input.task) || evidence.planDocumentRevisionsCreated > 0;
   const lastUsefulActionAt = concreteEvidence ? evidence.latestEvidenceAt : null;
 
   const output = (state: RunLivenessState, reason: string, nextAction: string | null = null): RunLivenessClassification => ({
@@ -313,12 +313,12 @@ export function classifyRunLiveness(input: RunLivenessClassificationInput): RunL
     return output("failed", input.errorCode ? `Run ended with ${input.runStatus} (${input.errorCode})` : `Run ended with ${input.runStatus}`);
   }
 
-  if (issueStatus === "done" || issueStatus === "cancelled") {
-    return output("completed", `Issue is ${issueStatus}`);
+  if (taskStatus === "done" || taskStatus === "cancelled") {
+    return output("completed", `Task is ${taskStatus}`);
   }
 
   if (declaredBlocker(input)) {
-    return output("blocked", issueStatus === "blocked" ? "Issue status is blocked" : "Run output declared a concrete blocker", nextAction);
+    return output("blocked", taskStatus === "blocked" ? "Task status is blocked" : "Run output declared a concrete blocker", nextAction);
   }
 
   if (!usefulOutput && !concreteEvidence) {

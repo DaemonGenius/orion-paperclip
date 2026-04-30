@@ -85,7 +85,7 @@ Worker:
 - entities
 - projects and project workspaces
 - companies
-- issues, comments, namespaced `plugin:<pluginKey>` origins, blocker relations, checkout assertions, assignment wakeups, and orchestration summaries
+- tasks, comments, namespaced `plugin:<pluginKey>` origins, blocker relations, checkout assertions, assignment wakeups, and orchestration summaries
 - agents and agent sessions
 - goals
 - data/actions
@@ -101,7 +101,7 @@ First-party or otherwise trusted orchestration plugins can declare:
 ```ts
 database: {
   migrationsDir: "migrations",
-  coreReadTables: ["issues"],
+  coreReadTables: ["tasks"],
 }
 ```
 
@@ -127,11 +127,11 @@ apiRoutes: [
   {
     routeKey: "initialize",
     method: "POST",
-    path: "/issues/:issueId/smoke",
+    path: "/tasks/:taskId/smoke",
     auth: "board-or-agent",
     capability: "api.routes.register",
     checkoutPolicy: "required-for-agent-in-progress",
-    companyResolution: { from: "issue", param: "issueId" },
+    companyResolution: { from: "task", param: "taskId" },
   },
 ]
 ```

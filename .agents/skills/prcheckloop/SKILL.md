@@ -4,7 +4,7 @@ description: >
   Iteratively gets a GitHub pull request's checks green. Detects the PR for the
   current branch or uses a provided PR number, waits for every check on the
   latest head SHA to appear and finish, investigates failing checks, fixes
-  actionable code or test issues, pushes, and repeats. Escalates with a precise
+  actionable code or test tasks, pushes, and repeats. Escalates with a precise
   blocker when failures are external, flaky, or not safely fixable. Use when a
   PR still has unsuccessful checks after review fixes, including after greploop.
 ---
@@ -132,9 +132,9 @@ For each failing check, classify it:
 |---|---|
 | Code/test regression | Reproduce locally, fix, and verify |
 | Lint/type/build mismatch | Run the matching local command from the workflow and fix it |
-| Flake or transient infra issue | Rerun once if evidence supports flakiness |
+| Flake or transient infra task | Rerun once if evidence supports flakiness |
 | External service/status app failure | Escalate with the details URL and owner guess |
-| Missing secret/permission/branch protection issue | Escalate immediately |
+| Missing secret/permission/branch protection task | Escalate immediately |
 
 Only rerun a failed job once without code changes. Do not loop on reruns.
 
