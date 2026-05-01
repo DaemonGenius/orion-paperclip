@@ -4,6 +4,8 @@ This is the canonical Orion V1 release checklist. It turns the current Orion rev
 
 Use this document as the release decision surface. Notion tracks task status and summarizes evidence, but this file is the detailed checklist artifact.
 
+The step-by-step execution companion for this checklist is `doc/orion-v1-end-to-end-test-plan.md`.
+
 ## Release Boundary
 
 Orion V1 is the first releasable control plane for the path:
