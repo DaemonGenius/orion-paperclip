@@ -2,6 +2,8 @@
 
 ORN-V1-013 defines the repeatable smoke for the V1 operator path: a Notion task becomes an Orion task, launches a REQ-ledger-backed run, executes through the Codex adapter in an isolated worktree, verifies, opens a draft PR through Orion, and syncs Orion-owned status fields back to Notion.
 
+The canonical release decision companion for this smoke is `doc/orion-v1-release-checklist.md`.
+
 ## Automated Smoke
 
 Run from the repo root:

@@ -49,6 +49,8 @@ ORN-V1-012 adds task status syncback from Orion to Notion. This is a system-owne
 
 GitHub PR creation remains authoritative in GitHub and Orion DB/REQ ledger. Notion receives PR URL/state and review status as cockpit projection after Orion has recorded the PR receipt.
 
+The release-readiness aggregation point for this V1 path is `doc/orion-v1-release-checklist.md`, which turns these authority boundaries plus the current review gates and smoke evidence into a go/no-go runbook.
+
 ## Obsidian MVP
 
 Obsidian is connected by local vault path. Indexing the vault reads Markdown files and records metadata in

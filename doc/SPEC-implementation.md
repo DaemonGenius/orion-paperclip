@@ -836,6 +836,7 @@ A release candidate is blocked unless these pass:
 - full integration/e2e suite
 - seed/demo company templates for local testing
 - release checklist and docs update
+  - Orion V1 release checklist and smoke evidence live in `doc/orion-v1-release-checklist.md` and `doc/orion-v1-smoke-test.md`
 
 ## 19. Acceptance Criteria (Release Gate)
 
