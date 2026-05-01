@@ -9,11 +9,18 @@ export type {
   OrionWorkflow,
   OrionWorkflowNode,
   OrionWorkflowEdge,
+  OrionTaskPolicy,
+  OrionRunReadiness,
+  OrionRunReadinessAgent,
+  OrionRunReadinessMode,
   OrionTaskWorkflowBinding,
   OrionNotionBinding,
   OrionNotionSyncState,
+  OrionNotionSyncbackResult,
   OrionReqLedger,
   OrionReqLedgerEvent,
+  OrionVerificationCommand,
+  RunOrionVerification,
   OrionPrReceipt,
 } from "./orion.js";
 export type {

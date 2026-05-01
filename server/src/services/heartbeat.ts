@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { and, asc, desc, eq, getTableColumns, gt, inArray, isNull, lte, notInArray, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
@@ -26,6 +26,10 @@ import {
   taskDocuments,
   heartbeatRunEvents,
   heartbeatRuns,
+  orionReqLedgerArtifacts,
+  orionReqLedgerEvents,
+  orionReqLedgers,
+  orionTaskPolicies,
   taskComments,
   taskRelations,
   tasks,
@@ -126,6 +130,7 @@ import { environmentRuntimeService } from "./environment-runtime.js";
 import { environmentRunOrchestrator } from "./environment-run-orchestrator.js";
 import type { PluginWorkerManager } from "./plugin-worker-manager.js";
 import { gitRepositoryService, type GitRepositoryProvider } from "./git-repositories.js";
+import { orionService } from "./orion.js";
 
 const MAX_LIVE_LOG_CHUNK_BYTES = 8 * 1024;
 const MAX_PERSISTED_LOG_CHUNK_CHARS = 64 * 1024;
@@ -197,6 +202,7 @@ const BOUNDED_TRANSIENT_HEARTBEAT_RETRY_JITTER_RATIO = 0.25;
 const BOUNDED_TRANSIENT_HEARTBEAT_RETRY_REASON = "transient_failure";
 const BOUNDED_TRANSIENT_HEARTBEAT_RETRY_WAKE_REASON = "transient_failure_retry";
 const BOUNDED_TRANSIENT_HEARTBEAT_RETRY_MAX_ATTEMPTS = BOUNDED_TRANSIENT_HEARTBEAT_RETRY_DELAYS_MS.length;
+const ORION_CREATE_RUN_SOURCE = "orion.create_run";
 type CodexTransientFallbackMode =
   | "same_session"
   | "safer_invocation"
@@ -263,6 +269,56 @@ function mergeAdapterRecoveryMetadata(input: {
         }
       : {}),
   };
+}
+
+function normalizeOrionPolicyPath(value: string) {
+  return value.replace(/\\/g, "/").replace(/^\.\/+/, "");
+}
+
+function orionPolicyGlobToRegExp(glob: string): RegExp {
+  const normalized = normalizeOrionPolicyPath(glob);
+  let source = "";
+  for (let index = 0; index < normalized.length; index += 1) {
+    const char = normalized[index]!;
+    const next = normalized[index + 1];
+    if (char === "*" && next === "*") {
+      source += ".*";
+      index += 1;
+    } else if (char === "*") {
+      source += "[^/]*";
+    } else {
+      source += char.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
+    }
+  }
+  return new RegExp(`^${source}$`);
+}
+
+function findOrionChangedPathViolations(
+  changedPaths: string[],
+  envelope: Record<string, unknown>,
+) {
+  const allowedPaths = Array.isArray(envelope.allowedPaths)
+    ? envelope.allowedPaths.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    : [];
+  const deniedPaths = Array.isArray(envelope.deniedPaths)
+    ? envelope.deniedPaths.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    : [];
+  const allowed = allowedPaths.map(orionPolicyGlobToRegExp);
+  const denied = deniedPaths.map(orionPolicyGlobToRegExp);
+  const violations: Array<{ path: string; reason: "denied_path" | "not_allowed" }> = [];
+
+  for (const rawPath of changedPaths) {
+    const normalized = normalizeOrionPolicyPath(rawPath);
+    if (denied.some((pattern) => pattern.test(normalized))) {
+      violations.push({ path: rawPath, reason: "denied_path" });
+      continue;
+    }
+    if (allowed.length > 0 && !allowed.some((pattern) => pattern.test(normalized))) {
+      violations.push({ path: rawPath, reason: "not_allowed" });
+    }
+  }
+
+  return violations;
 }
 const RUNNING_TASK_WAKE_REASONS_REQUIRING_FOLLOWUP = new Set(["approval_approved"]);
 const SESSIONED_LOCAL_ADAPTERS = new Set([
@@ -2128,6 +2184,143 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       .from(heartbeatRuns)
       .where(eq(heartbeatRuns.id, runId))
       .then((rows) => rows[0] ?? null);
+  }
+
+  function readOrionExecutionContext(context: Record<string, unknown>) {
+    const orion = parseObject(context.paperclipOrion);
+    return orion.executionRequested === true ? orion : null;
+  }
+
+  function isBlockedQueuedOrionRun(run: Pick<typeof heartbeatRuns.$inferSelect, "contextSnapshot">) {
+    const context = parseObject(run.contextSnapshot);
+    if (readNonEmptyString(context.source) !== ORION_CREATE_RUN_SOURCE) return false;
+    return readOrionExecutionContext(context) === null;
+  }
+
+  async function appendOrionLedgerEvent(input: {
+    ledgerId: string;
+    companyId: string;
+    runId: string;
+    eventType: string;
+    phase?: string | null;
+    message?: string | null;
+    payload?: Record<string, unknown> | null;
+    idempotencyKey?: string | null;
+  }) {
+    if (input.idempotencyKey) {
+      const existing = await db
+        .select()
+        .from(orionReqLedgerEvents)
+        .where(eq(orionReqLedgerEvents.ledgerId, input.ledgerId))
+        .then((rows) => rows.find((event) => (event.payload as Record<string, unknown> | null)?.idempotencyKey === input.idempotencyKey) ?? null);
+      if (existing) return existing;
+    }
+    const latest = await db
+      .select({ seq: orionReqLedgerEvents.seq })
+      .from(orionReqLedgerEvents)
+      .where(eq(orionReqLedgerEvents.ledgerId, input.ledgerId))
+      .orderBy(desc(orionReqLedgerEvents.seq))
+      .limit(1)
+      .then((rows) => rows[0]?.seq ?? 0);
+    const payload = input.idempotencyKey
+      ? { ...(input.payload ?? {}), idempotencyKey: input.idempotencyKey }
+      : input.payload ?? null;
+    return db
+      .insert(orionReqLedgerEvents)
+      .values({
+        ledgerId: input.ledgerId,
+        companyId: input.companyId,
+        runId: input.runId,
+        seq: latest + 1,
+        eventType: input.eventType,
+        phase: input.phase ?? null,
+        message: input.message ?? null,
+        payload,
+      })
+      .returning()
+      .then((rows) => rows[0] ?? null);
+  }
+
+  async function recordOrionLedgerArtifact(input: {
+    ledgerId: string;
+    companyId: string;
+    runId: string;
+    phase: string;
+    kind: string;
+    title: string;
+    body?: string | null;
+    metadata?: Record<string, unknown> | null;
+    sha256?: string | null;
+    idempotencyKey: string;
+  }) {
+    const existingEvent = await db
+      .select()
+      .from(orionReqLedgerEvents)
+      .where(eq(orionReqLedgerEvents.ledgerId, input.ledgerId))
+      .then((rows) => rows.find((event) => (event.payload as Record<string, unknown> | null)?.idempotencyKey === input.idempotencyKey) ?? null);
+    if (existingEvent) return null;
+    const [artifact] = await db
+      .insert(orionReqLedgerArtifacts)
+      .values({
+        ledgerId: input.ledgerId,
+        companyId: input.companyId,
+        phase: input.phase,
+        kind: input.kind,
+        title: input.title,
+        body: input.body ?? null,
+        sha256: input.sha256 ?? (input.body ? createHash("sha256").update(input.body).digest("hex") : null),
+        metadata: input.metadata ?? null,
+      })
+      .returning();
+    await appendOrionLedgerEvent({
+      ledgerId: input.ledgerId,
+      companyId: input.companyId,
+      runId: input.runId,
+      eventType: "orion.evidence.recorded",
+      phase: input.phase,
+      message: `Orion recorded ${input.kind} evidence: ${input.title}.`,
+      payload: {
+        artifactId: artifact!.id,
+        kind: artifact!.kind,
+        title: artifact!.title,
+        sha256: artifact!.sha256,
+      },
+      idempotencyKey: input.idempotencyKey,
+    });
+    return artifact!;
+  }
+
+  async function readOrionLedgerForRun(runId: string) {
+    return db
+      .select()
+      .from(orionReqLedgers)
+      .where(eq(orionReqLedgers.runId, runId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+  }
+
+  async function listChangedPaths(cwd: string) {
+    const result = await execFile("git", ["-C", cwd, "status", "--porcelain=v1", "-z"], { cwd });
+    const paths = new Set<string>();
+    const parts = result.stdout.split("\0").filter(Boolean);
+    for (let index = 0; index < parts.length; index += 1) {
+      const entry = parts[index]!;
+      const status = entry.slice(0, 2);
+      const pathPart = entry.slice(3);
+      if (!pathPart) continue;
+      if (status.includes("R") || status.includes("C")) {
+        const next = parts[index + 1];
+        if (next) {
+          paths.add(next);
+          index += 1;
+        } else {
+          paths.add(pathPart);
+        }
+      } else {
+        paths.add(pathPart);
+      }
+    }
+    return [...paths].sort();
   }
 
   async function getTaskExecutionContext(companyId: string, taskId: string) {
@@ -4661,11 +4854,12 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         .from(heartbeatRuns)
         .where(and(eq(heartbeatRuns.agentId, agentId), eq(heartbeatRuns.status, "queued")))
         .orderBy(asc(heartbeatRuns.createdAt));
-      if (queuedRuns.length === 0) return [];
+      const executableQueuedRuns = queuedRuns.filter((run) => !isBlockedQueuedOrionRun(run));
+      if (executableQueuedRuns.length === 0) return [];
 
-      const dependencyReadiness = await listQueuedRunDependencyReadiness(agent.companyId, queuedRuns);
+      const dependencyReadiness = await listQueuedRunDependencyReadiness(agent.companyId, executableQueuedRuns);
       const queuedTaskIds = [...new Set(
-        queuedRuns
+        executableQueuedRuns
           .map((run) => readNonEmptyString(parseObject(run.contextSnapshot).taskId))
           .filter((taskId): taskId is string => Boolean(taskId)),
       )];
@@ -4682,7 +4876,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
             : sql`false`,
         );
       const taskById = new Map(taskRows.map((row) => [row.id, row]));
-      const prioritizedRuns = [...queuedRuns].sort((left, right) => {
+      const prioritizedRuns = [...executableQueuedRuns].sort((left, right) => {
         const leftTaskId = readNonEmptyString(parseObject(left.contextSnapshot).taskId);
         const rightTaskId = readNonEmptyString(parseObject(right.contextSnapshot).taskId);
         const leftReadiness = leftTaskId ? dependencyReadiness.get(leftTaskId) : null;
@@ -4721,6 +4915,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     let run = await getRun(runId);
     if (!run) return;
     if (run.status !== "queued" && run.status !== "running") return;
+    if (run.status === "queued" && isBlockedQueuedOrionRun(run)) return;
 
     if (run.status === "queued") {
       const claimed = await claimQueuedRun(run);
@@ -4752,6 +4947,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
 
     const runtime = await ensureRuntimeState(agent);
     const context = parseObject(run.contextSnapshot);
+    const orionExecution = readOrionExecutionContext(context);
     const taskKey = deriveTaskKeyWithHeartbeatFallback(context, null);
     const sessionCodec = getAdapterSessionCodec(agent.adapterType);
     const taskId = readNonEmptyString(context.taskId);
@@ -4966,9 +5162,29 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       workspaceConfig: existingExecutionWorkspace?.config ?? null,
       mode: effectiveExecutionWorkspaceMode,
     });
-    const mergedConfig = taskAssigneeOverrides?.adapterConfig
+    let mergedConfig = taskAssigneeOverrides?.adapterConfig
       ? { ...persistedWorkspaceManagedConfig, ...taskAssigneeOverrides.adapterConfig }
       : persistedWorkspaceManagedConfig;
+    if (orionExecution) {
+      const requestedStrategy = parseObject(context.workspaceStrategy);
+      mergedConfig = {
+        ...mergedConfig,
+        workspaceStrategy: {
+          ...parseObject(mergedConfig.workspaceStrategy),
+          type: "git_worktree",
+          branchTemplate:
+            readNonEmptyString(requestedStrategy.branchTemplate) ??
+            readNonEmptyString(parseObject(mergedConfig.workspaceStrategy).branchTemplate) ??
+            "orion/{{task.identifier}}-{{slug}}",
+          ...(readNonEmptyString(requestedStrategy.worktreeParentDir)
+            ? { worktreeParentDir: readNonEmptyString(requestedStrategy.worktreeParentDir) }
+            : {}),
+          ...(readNonEmptyString(requestedStrategy.baseRef)
+            ? { baseRef: readNonEmptyString(requestedStrategy.baseRef) }
+            : {}),
+        },
+      };
+    }
     const configSnapshot = buildExecutionWorkspaceConfigSnapshot(mergedConfig, selectedEnvironmentId);
     const executionRunConfig = stripWorkspaceRuntimeFromExecutionRunConfig(mergedConfig);
     const { resolvedConfig, secretKeys } = await resolveExecutionRunAdapterConfig({
@@ -5287,6 +5503,31 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         return home;
       })(),
     };
+    if (orionExecution) {
+      const ledgerId = readNonEmptyString(orionExecution.ledgerId);
+      if (ledgerId) {
+        await recordOrionLedgerArtifact({
+          ledgerId,
+          companyId: run.companyId,
+          runId: run.id,
+          phase: "execution",
+          kind: "workspace",
+          title: "Codex isolated worktree",
+          metadata: {
+            source: "orion.codex_runner",
+            repoUrl: executionWorkspace.repoUrl,
+            repoRef: executionWorkspace.repoRef,
+            strategy: executionWorkspace.strategy,
+            cwd: executionWorkspace.cwd,
+            worktreePath: executionWorkspace.worktreePath,
+            branchName: executionWorkspace.branchName,
+            created: executionWorkspace.created,
+            ownership: "orion_prepared_codex_worker_workspace",
+          },
+          idempotencyKey: `orion-workspace-${run.id}`,
+        });
+      }
+    }
     context.paperclipWorkspaces = resolvedWorkspace.workspaceHints;
     const runtimeServiceIntents = (() => {
       const runtimeConfig = parseObject(resolvedConfig.workspaceRuntime);
@@ -5574,7 +5815,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           "local agent jwt secret missing or invalid; running without injected PAPERCLIP_API_KEY",
         );
       }
-      const adapterResult = await adapter.execute({
+      let adapterResult = await adapter.execute({
         runId: run.id,
         agent,
         runtime: runtimeForAdapter,
@@ -5598,6 +5839,77 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         },
         authToken: authToken ?? undefined,
       });
+      if (orionExecution) {
+        const ledgerId = readNonEmptyString(orionExecution.ledgerId);
+        const approvedPlanSha256 = readNonEmptyString(orionExecution.approvedPlanSha256);
+        const envelope = parseObject(orionExecution.autonomyEnvelope);
+        const changedPaths = await listChangedPaths(executionWorkspace.cwd).catch((err) => {
+          logger.warn({ err, runId: run.id, cwd: executionWorkspace.cwd }, "failed to inspect Orion Codex changed paths");
+          return [] as string[];
+        });
+        if (ledgerId) {
+          await recordOrionLedgerArtifact({
+            ledgerId,
+            companyId: run.companyId,
+            runId: run.id,
+            phase: "execution",
+            kind: "codex_result",
+            title: "Codex execution result",
+            body: adapterResult.summary ?? adapterResult.errorMessage ?? null,
+            metadata: {
+              source: "orion.codex_runner",
+              planSha256: approvedPlanSha256,
+              exitCode: adapterResult.exitCode,
+              signal: adapterResult.signal,
+              timedOut: adapterResult.timedOut,
+              errorMessage: adapterResult.errorMessage ?? null,
+              changedPaths,
+              logStore: run.logStore ?? null,
+              logRef: run.logRef ?? null,
+            },
+            idempotencyKey: `orion-codex-result-${run.id}`,
+          });
+        }
+        const violations = findOrionChangedPathViolations(changedPaths, envelope);
+        if (violations.length > 0) {
+          if (ledgerId) {
+            await recordOrionLedgerArtifact({
+              ledgerId,
+              companyId: run.companyId,
+              runId: run.id,
+              phase: "execution",
+              kind: "envelope_violation",
+              title: "Changed paths violated autonomy envelope",
+              body: violations.map((item) => `${item.reason}: ${item.path}`).join("\n"),
+              metadata: {
+                source: "orion.codex_runner",
+                planSha256: approvedPlanSha256,
+                violations,
+                changedPaths,
+              },
+              idempotencyKey: `orion-envelope-violation-${run.id}`,
+            });
+          }
+          adapterResult = {
+            ...adapterResult,
+            exitCode: adapterResult.exitCode ?? 1,
+            errorMessage: "Changed paths violate the autonomy envelope",
+            resultJson: {
+              ...(adapterResult.resultJson ?? {}),
+              orionChangedPaths: changedPaths,
+              orionEnvelopeViolations: violations,
+            },
+          };
+        } else {
+          adapterResult = {
+            ...adapterResult,
+            resultJson: {
+              ...(adapterResult.resultJson ?? {}),
+              orionChangedPaths: changedPaths,
+            },
+          };
+        }
+      }
       const adapterManagedRuntimeServices = adapterResult.runtimeServices
         ? await persistAdapterManagedRuntimeServices({
             db,
@@ -5767,6 +6079,67 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       if (persistedRun) {
         persistedRun = await classifyAndPersistRunLiveness(persistedRun, persistedResultJson) ?? persistedRun;
       }
+      if (orionExecution) {
+        const ledgerId = readNonEmptyString(orionExecution.ledgerId);
+        if (ledgerId) {
+          const nextLedgerStatus =
+            outcome === "succeeded"
+              ? "awaiting_verification"
+              : outcome === "timed_out"
+                ? "execution_timed_out"
+                : outcome === "cancelled"
+                  ? "cancelled"
+                  : "execution_failed";
+          const nextPhase = outcome === "succeeded" ? "verification" : nextLedgerStatus;
+          await db
+            .update(orionReqLedgers)
+            .set({
+              status: nextLedgerStatus,
+              currentPhase: nextPhase,
+              updatedAt: new Date(),
+            })
+            .where(eq(orionReqLedgers.id, ledgerId));
+          await appendOrionLedgerEvent({
+            ledgerId,
+            companyId: run.companyId,
+            runId: run.id,
+            eventType: outcome === "succeeded" ? "orion.execution.completed" : "orion.execution.failed",
+            phase: nextPhase,
+            message: outcome === "succeeded"
+              ? "Codex execution completed and is awaiting verification."
+              : `Codex execution ended with status ${outcome}.`,
+            payload: {
+              status,
+              outcome,
+              exitCode: adapterResult.exitCode,
+              errorMessage: runErrorMessage,
+            },
+            idempotencyKey: `orion-execution-final-${run.id}`,
+          });
+          const verification = parseObject(orionExecution.verification);
+          if (outcome === "succeeded" && verification.autoRun === true) {
+            const commands = Array.isArray(verification.commands)
+              ? verification.commands.filter((value): value is Record<string, unknown> => typeof value === "object" && value !== null)
+              : [];
+            if (commands.length > 0) {
+              await orionService(db).runVerification(run.id, {
+                planSha256: readNonEmptyString(orionExecution.approvedPlanSha256),
+                commands: commands.map((command, index) => ({
+                  name: readNonEmptyString(command.name) ?? `Verification command ${index + 1}`,
+                  command: readNonEmptyString(command.command) ?? "",
+                  cwd: readNonEmptyString(command.cwd),
+                  timeoutSeconds: typeof command.timeoutSeconds === "number" ? command.timeoutSeconds : null,
+                  required: command.required !== false,
+                })),
+                mode: "auto",
+                idempotencyKey: `orion-auto-verification-${run.id}`,
+              }).catch((err) => {
+                logger.warn({ err, runId: run.id }, "Orion automatic verification failed");
+              });
+            }
+          }
+        }
+      }
 
       await setWakeupStatus(run.wakeupRequestId, outcome === "succeeded" ? "completed" : status, {
         finishedAt: new Date(),
@@ -5873,6 +6246,39 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         logSha256: logSummary?.sha256,
         logCompressed: logSummary?.compressed ?? false,
       });
+      if (orionExecution) {
+        const ledgerId = readNonEmptyString(orionExecution.ledgerId);
+        if (ledgerId) {
+          await recordOrionLedgerArtifact({
+            ledgerId,
+            companyId: run.companyId,
+            runId: run.id,
+            phase: "execution_failed",
+            kind: "codex_failure",
+            title: "Codex execution failed",
+            body: message,
+            metadata: {
+              source: "orion.codex_runner",
+              errorCode: "adapter_failed",
+            },
+            idempotencyKey: `orion-codex-failure-${run.id}`,
+          });
+          await db
+            .update(orionReqLedgers)
+            .set({ status: "execution_failed", currentPhase: "execution_failed", updatedAt: new Date() })
+            .where(eq(orionReqLedgers.id, ledgerId));
+          await appendOrionLedgerEvent({
+            ledgerId,
+            companyId: run.companyId,
+            runId: run.id,
+            eventType: "orion.execution.failed",
+            phase: "execution_failed",
+            message,
+            payload: { errorCode: "adapter_failed" },
+            idempotencyKey: `orion-execution-final-${run.id}`,
+          });
+        }
+      }
       await setWakeupStatus(run.wakeupRequestId, "failed", {
         finishedAt: new Date(),
         error: message,
@@ -5937,6 +6343,39 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
             error: message,
           }).catch(() => undefined);
           const failedRun = await getRun(runId).catch(() => null);
+          const outerOrionContext = readOrionExecutionContext(parseObject(run.contextSnapshot));
+          const outerLedgerId = outerOrionContext ? readNonEmptyString(outerOrionContext.ledgerId) : null;
+          if (outerLedgerId) {
+            await recordOrionLedgerArtifact({
+              ledgerId: outerLedgerId,
+              companyId: run.companyId,
+              runId: run.id,
+              phase: "execution_failed",
+              kind: "codex_setup_failure",
+              title: "Codex setup failed",
+              body: message,
+              metadata: {
+                source: "orion.codex_runner",
+                errorCode: "adapter_failed",
+              },
+              idempotencyKey: `orion-codex-setup-failure-${run.id}`,
+            }).catch(() => null);
+            await db
+              .update(orionReqLedgers)
+              .set({ status: "execution_failed", currentPhase: "execution_failed", updatedAt: new Date() })
+              .where(eq(orionReqLedgers.id, outerLedgerId))
+              .catch(() => undefined);
+            await appendOrionLedgerEvent({
+              ledgerId: outerLedgerId,
+              companyId: run.companyId,
+              runId: run.id,
+              eventType: "orion.execution.failed",
+              phase: "execution_failed",
+              message,
+              payload: { errorCode: "adapter_failed", setupFailure: true },
+              idempotencyKey: `orion-execution-final-${run.id}`,
+            }).catch(() => null);
+          }
           if (failedRun) {
             // Emit a run-log event so the failure is visible in the run timeline,
             // consistent with what the inner catch block does for adapter failures.
@@ -7553,6 +7992,8 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     wakeup: enqueueWakeup,
 
     reportRunActivity: clearDetachedRunWarning,
+
+    executeQueuedRun: executeRun,
 
     reapOrphanedRuns,
 

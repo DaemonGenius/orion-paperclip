@@ -71,6 +71,7 @@ import { TaskReferenceActivitySummary } from "../components/TaskReferenceActivit
 import { TaskRelatedWorkPanel } from "../components/TaskRelatedWorkPanel";
 import { TaskProperties } from "../components/TaskProperties";
 import { TaskRunLedger } from "../components/TaskRunLedger";
+import { OrionRunLauncher } from "../components/OrionRunLauncher";
 import { TaskWorkspaceCard } from "../components/TaskWorkspaceCard";
 import type { MentionOption } from "../components/MarkdownEditor";
 import { ImageGalleryModal } from "../components/ImageGalleryModal";
@@ -945,6 +946,9 @@ function TaskDetailActivityTab({
 
   return (
     <>
+      <div className="mb-3">
+        <OrionRunLauncher taskId={taskId} />
+      </div>
       <div className="mb-3">
         <TaskRunLedger
           taskId={taskId}

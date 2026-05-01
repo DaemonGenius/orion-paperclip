@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  NOTION_TASK_PROPERTY_NAMES,
   mapNotionTaskPriority,
   mapNotionTaskRouteMode,
   mapNotionTaskStatus,
@@ -10,6 +11,8 @@ describe("notion task field mapping", () => {
   it("normalizes canonical property names", () => {
     expect(normalizeNotionTaskPropertyName(" Task_Key ")).toBe("task key");
     expect(normalizeNotionTaskPropertyName("Route-Mode")).toBe("route mode");
+    expect(normalizeNotionTaskPropertyName(NOTION_TASK_PROPERTY_NAMES.projectTag)).toBe("project tag");
+    expect(NOTION_TASK_PROPERTY_NAMES.projectCategory).toBe("Project Category");
   });
 
   it("maps canonical Notion task statuses", () => {

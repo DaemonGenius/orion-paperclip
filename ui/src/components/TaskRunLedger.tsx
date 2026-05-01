@@ -11,6 +11,7 @@ import {
   type LiveRunForTask,
   type WatchdogDecisionInput,
 } from "../api/heartbeats";
+import { orionApi } from "../api/orion";
 import { useToastActions } from "../context/ToastContext";
 import { cn, relativeTime } from "../lib/utils";
 import { queryKeys } from "../lib/queryKeys";
@@ -37,6 +38,25 @@ type TaskRunLedgerContentProps = {
   canRecordWatchdogDecisions?: boolean;
   watchdogDecisionError?: string | null;
   onWatchdogDecision?: (input: WatchdogDecisionInput) => void;
+  pendingCodexStartRunId?: string | null;
+  codexStartError?: string | null;
+  onStartCodex?: (run: LedgerRun) => void;
+  pendingVerificationRunId?: string | null;
+  verificationError?: string | null;
+  verificationCommands?: string;
+  onVerificationCommandsChange?: (value: string) => void;
+  onRunVerification?: (run: LedgerRun) => void;
+  pendingOpenPrRunId?: string | null;
+  openPrError?: string | null;
+  prTitle?: string;
+  prBody?: string;
+  prBaseBranch?: string;
+  prDraft?: boolean;
+  onPrTitleChange?: (value: string) => void;
+  onPrBodyChange?: (value: string) => void;
+  onPrBaseBranchChange?: (value: string) => void;
+  onPrDraftChange?: (value: boolean) => void;
+  onOpenPr?: (run: LedgerRun) => void;
 };
 
 type LedgerRun = RunForTask & {
@@ -338,6 +358,61 @@ function watchdogDecisionErrorMessage(error: unknown) {
     : "Paperclip could not record the watchdog decision.";
 }
 
+function codexStartErrorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    return error.message || "Orion could not start Codex execution.";
+  }
+  return error instanceof Error && error.message.trim().length > 0
+    ? error.message
+    : "Orion could not start Codex execution.";
+}
+
+function canStartCodex(run: LedgerRun) {
+  return (
+    run.status === "queued" &&
+    run.adapterType === "codex_local" &&
+    Boolean(run.orionLedger?.id) &&
+    Boolean(run.orionLedger?.approvedPlanSha256) &&
+    (run.orionLedger?.status === "awaiting_execution" || run.orionLedger?.status === "approved")
+  );
+}
+
+function verificationErrorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    return error.message || "Orion verification did not complete.";
+  }
+  return error instanceof Error && error.message.trim().length > 0
+    ? error.message
+    : "Orion verification did not complete.";
+}
+
+function canRunVerification(run: LedgerRun) {
+  return (
+    Boolean(run.orionLedger?.id) &&
+    Boolean(run.orionLedger?.approvedPlanSha256) &&
+    ["awaiting_verification", "verification_failed", "verification_blocked"].includes(run.orionLedger?.status ?? "")
+  );
+}
+
+function prOpenErrorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    return error.message || "Orion could not open the PR.";
+  }
+  return error instanceof Error && error.message.trim().length > 0
+    ? error.message
+    : "Orion could not open the PR.";
+}
+
+function canOpenPr(run: LedgerRun) {
+  return (
+    Boolean(run.orionLedger?.id) &&
+    run.orionLedger?.status === "verified" &&
+    run.orionLedger?.verificationStatus === "passed" &&
+    Boolean(run.orionLedger?.approvedPlanSha256) &&
+    !run.orionLedger?.prReceipt?.prUrl
+  );
+}
+
 export function TaskRunLedger({
   taskId,
   companyId,
@@ -349,6 +424,14 @@ export function TaskRunLedger({
   const queryClient = useQueryClient();
   const { pushToast } = useToastActions();
   const [watchdogDecisionError, setWatchdogDecisionError] = useState<string | null>(null);
+  const [codexStartError, setCodexStartError] = useState<string | null>(null);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
+  const [openPrError, setOpenPrError] = useState<string | null>(null);
+  const [verificationCommands, setVerificationCommands] = useState("node --version");
+  const [prTitle, setPrTitle] = useState("");
+  const [prBody, setPrBody] = useState("");
+  const [prBaseBranch, setPrBaseBranch] = useState("");
+  const [prDraft, setPrDraft] = useState(true);
   const { data: boardAccess } = useQuery({
     queryKey: queryKeys.access.currentBoardAccess,
     queryFn: () => accessApi.getCurrentBoardAccess(),
@@ -396,6 +479,110 @@ export function TaskRunLedger({
       });
     },
   });
+  const startCodex = useMutation({
+    mutationFn: (run: LedgerRun) =>
+      orionApi.startCodexRun(run.runId, {
+        planSha256: run.orionLedger?.approvedPlanSha256 ?? null,
+        idempotencyKey: `ui-codex-start-${run.runId}`,
+      }),
+    onMutate: () => {
+      setCodexStartError(null);
+    },
+    onSuccess: (_result, run) => {
+      setCodexStartError(null);
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.detail(taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.runs(taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.activeRun(taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.liveRuns(taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orion.runReadiness(taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orion.runLedger(run.runId) });
+    },
+    onError: (error) => {
+      const message = codexStartErrorMessage(error);
+      setCodexStartError(message);
+      pushToast({
+        title: "Codex execution not started",
+        body: message,
+        tone: "error",
+        dedupeKey: `orion-codex-start:${taskId}`,
+      });
+    },
+  });
+  const runVerification = useMutation({
+    mutationFn: (run: LedgerRun) => {
+      const commands = verificationCommands
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((command, index) => ({
+          name: `Command ${index + 1}`,
+          command,
+          required: true,
+        }));
+      return orionApi.runVerification(run.runId, {
+        planSha256: run.orionLedger?.approvedPlanSha256 ?? null,
+        commands,
+        mode: "manual",
+        idempotencyKey: `ui-verification-${run.runId}-${Date.now()}`,
+      });
+    },
+    onMutate: () => {
+      setVerificationError(null);
+    },
+    onSuccess: (_result, run) => {
+      setVerificationError(null);
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.detail(taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.runs(taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.activeRun(taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.liveRuns(taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orion.runReadiness(taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orion.runLedger(run.runId) });
+    },
+    onError: (error) => {
+      const message = verificationErrorMessage(error);
+      setVerificationError(message);
+      pushToast({
+        title: "Verification did not complete",
+        body: message,
+        tone: "error",
+        dedupeKey: `orion-verification:${taskId}`,
+      });
+    },
+  });
+  const openPr = useMutation({
+    mutationFn: (run: LedgerRun) =>
+      orionApi.openPr(run.runId, {
+        planSha256: run.orionLedger?.approvedPlanSha256 ?? null,
+        title: prTitle.trim() || null,
+        body: prBody.trim() || null,
+        baseBranch: prBaseBranch.trim() || null,
+        draft: prDraft,
+        idempotencyKey: `ui-open-pr-${run.runId}`,
+      }),
+    onMutate: () => {
+      setOpenPrError(null);
+    },
+    onSuccess: (_result, run) => {
+      setOpenPrError(null);
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.detail(taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.runs(taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.workProducts(taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.activeRun(taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.liveRuns(taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orion.runReadiness(taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orion.runLedger(run.runId) });
+    },
+    onError: (error) => {
+      const message = prOpenErrorMessage(error);
+      setOpenPrError(message);
+      pushToast({
+        title: "PR not opened",
+        body: message,
+        tone: "error",
+        dedupeKey: `orion-open-pr:${taskId}`,
+      });
+    },
+  });
 
   return (
     <TaskRunLedgerContent
@@ -409,6 +596,25 @@ export function TaskRunLedger({
       canRecordWatchdogDecisions={canBoardRecordWatchdogDecision(companyId, boardAccess)}
       watchdogDecisionError={watchdogDecisionError}
       onWatchdogDecision={(input) => watchdogDecision.mutate(input)}
+      pendingCodexStartRunId={startCodex.variables?.runId ?? null}
+      codexStartError={codexStartError}
+      onStartCodex={(run) => startCodex.mutate(run)}
+      pendingVerificationRunId={runVerification.variables?.runId ?? null}
+      verificationError={verificationError}
+      verificationCommands={verificationCommands}
+      onVerificationCommandsChange={setVerificationCommands}
+      onRunVerification={(run) => runVerification.mutate(run)}
+      pendingOpenPrRunId={openPr.variables?.runId ?? null}
+      openPrError={openPrError}
+      prTitle={prTitle}
+      prBody={prBody}
+      prBaseBranch={prBaseBranch}
+      prDraft={prDraft}
+      onPrTitleChange={setPrTitle}
+      onPrBodyChange={setPrBody}
+      onPrBaseBranchChange={setPrBaseBranch}
+      onPrDraftChange={setPrDraft}
+      onOpenPr={(run) => openPr.mutate(run)}
     />
   );
 }
@@ -424,6 +630,25 @@ export function TaskRunLedgerContent({
   canRecordWatchdogDecisions = true,
   watchdogDecisionError,
   onWatchdogDecision,
+  pendingCodexStartRunId,
+  codexStartError,
+  onStartCodex,
+  pendingVerificationRunId,
+  verificationError,
+  verificationCommands = "",
+  onVerificationCommandsChange,
+  onRunVerification,
+  pendingOpenPrRunId,
+  openPrError,
+  prTitle = "",
+  prBody = "",
+  prBaseBranch = "",
+  prDraft = true,
+  onPrTitleChange,
+  onPrBodyChange,
+  onPrBaseBranchChange,
+  onPrDraftChange,
+  onOpenPr,
 }: TaskRunLedgerContentProps) {
   const ledgerRuns = useMemo(() => mergeRuns(runs, liveRuns, activeRun), [activeRun, liveRuns, runs]);
   const latestRun = ledgerRuns[0] ?? null;
@@ -646,7 +871,117 @@ export function TaskRunLedgerContent({
                       {RUN_OUTPUT_SILENCE_COPY[run.outputSilence.level]?.label}
                     </span>
                   ) : null}
+                  {onStartCodex && canStartCodex(run) ? (
+                    <button
+                      type="button"
+                      className="ml-auto rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium text-foreground hover:bg-accent/50 disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={() => onStartCodex(run)}
+                      disabled={pendingCodexStartRunId === run.runId}
+                    >
+                      {pendingCodexStartRunId === run.runId ? "Starting Codex" : "Start Codex"}
+                    </button>
+                  ) : null}
+                  {onRunVerification && canRunVerification(run) ? (
+                    <button
+                      type="button"
+                      className={cn(
+                        "rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium text-foreground hover:bg-accent/50 disabled:cursor-not-allowed disabled:opacity-60",
+                        !onStartCodex || !canStartCodex(run) ? "ml-auto" : "",
+                      )}
+                      onClick={() => onRunVerification(run)}
+                      disabled={pendingVerificationRunId === run.runId}
+                    >
+                      {pendingVerificationRunId === run.runId ? "Verifying" : "Run Verification"}
+                    </button>
+                  ) : null}
+                  {onOpenPr && canOpenPr(run) ? (
+                    <button
+                      type="button"
+                      className={cn(
+                        "rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium text-foreground hover:bg-accent/50 disabled:cursor-not-allowed disabled:opacity-60",
+                        (!onStartCodex || !canStartCodex(run)) && (!onRunVerification || !canRunVerification(run)) ? "ml-auto" : "",
+                      )}
+                      onClick={() => onOpenPr(run)}
+                      disabled={pendingOpenPrRunId === run.runId}
+                    >
+                      {pendingOpenPrRunId === run.runId ? "Opening PR" : "Open PR"}
+                    </button>
+                  ) : null}
                 </div>
+
+                {codexStartError && canStartCodex(run) ? (
+                  <p className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] text-red-900 dark:text-red-200">
+                    {codexStartError}
+                  </p>
+                ) : null}
+                {canRunVerification(run) ? (
+                  <div className="space-y-1 rounded-md border border-border/70 bg-accent/20 px-2 py-2">
+                    <label className="block text-[11px] font-medium text-foreground" htmlFor={`orion-verification-${run.runId}`}>
+                      Verification commands
+                    </label>
+                    <textarea
+                      id={`orion-verification-${run.runId}`}
+                      className="min-h-16 w-full resize-y rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-foreground outline-none focus:border-primary"
+                      value={verificationCommands}
+                      onChange={(event) => onVerificationCommandsChange?.(event.target.value)}
+                      placeholder="node_modules/.bin/vitest.cmd run server/src/__tests__/orion-routes.test.ts"
+                    />
+                    {verificationError ? (
+                      <p className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] text-red-900 dark:text-red-200">
+                        {verificationError}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+                {canOpenPr(run) ? (
+                  <div className="space-y-2 rounded-md border border-border/70 bg-accent/20 px-2 py-2">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <label className="block text-[11px] font-medium text-foreground" htmlFor={`orion-pr-title-${run.runId}`}>
+                        PR title
+                        <input
+                          id={`orion-pr-title-${run.runId}`}
+                          className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1 text-[11px] font-normal text-foreground outline-none focus:border-primary"
+                          value={prTitle}
+                          onChange={(event) => onPrTitleChange?.(event.target.value)}
+                          placeholder="Use task title"
+                        />
+                      </label>
+                      <label className="block text-[11px] font-medium text-foreground" htmlFor={`orion-pr-base-${run.runId}`}>
+                        Base branch
+                        <input
+                          id={`orion-pr-base-${run.runId}`}
+                          className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] font-normal text-foreground outline-none focus:border-primary"
+                          value={prBaseBranch}
+                          onChange={(event) => onPrBaseBranchChange?.(event.target.value)}
+                          placeholder="Use workspace base ref"
+                        />
+                      </label>
+                    </div>
+                    <label className="block text-[11px] font-medium text-foreground" htmlFor={`orion-pr-body-${run.runId}`}>
+                      PR body
+                      <textarea
+                        id={`orion-pr-body-${run.runId}`}
+                        className="mt-1 min-h-16 w-full resize-y rounded-md border border-border bg-background px-2 py-1 text-[11px] font-normal text-foreground outline-none focus:border-primary"
+                        value={prBody}
+                        onChange={(event) => onPrBodyChange?.(event.target.value)}
+                        placeholder="Optional operator summary"
+                      />
+                    </label>
+                    <label className="inline-flex items-center gap-2 text-[11px] font-medium text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={prDraft}
+                        onChange={(event) => onPrDraftChange?.(event.target.checked)}
+                      />
+                      Open as draft
+                    </label>
+                    {openPrError ? (
+                      <p className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] text-red-900 dark:text-red-200">
+                        {openPrError}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
                   <div className="min-w-0">
@@ -691,6 +1026,73 @@ export function TaskRunLedgerContent({
                   <div className="min-w-0 rounded-md bg-accent/40 px-2 py-1.5 text-xs leading-5">
                     <span className="font-medium text-foreground">Next action: </span>
                     <span className="break-words text-muted-foreground">{run.nextAction}</span>
+                  </div>
+                ) : null}
+
+                {run.orionLedger?.id ? (
+                  <div className="grid gap-1 rounded-md border border-border/70 bg-accent/20 px-2 py-2 text-[11px] text-muted-foreground sm:grid-cols-2">
+                    <div>
+                      <span className="font-medium text-foreground">Ledger</span>{" "}
+                      <span className="font-mono">{run.orionLedger.id.slice(0, 8)}</span>
+                    </div>
+                    <div>
+                      <span className="font-medium text-foreground">Mode</span>{" "}
+                      {statusLabel(run.orionLedger.mode ?? "unknown")}
+                    </div>
+                    <div>
+                      <span className="font-medium text-foreground">Status</span>{" "}
+                      {statusLabel(run.orionLedger.status ?? "unknown")}
+                    </div>
+                    <div>
+                      <span className="font-medium text-foreground">Phase</span>{" "}
+                      {statusLabel(run.orionLedger.currentPhase ?? "unknown")}
+                    </div>
+                    {run.orionLedger.planSha256 ? (
+                      <div className="min-w-0 sm:col-span-2">
+                        <span className="font-medium text-foreground">Plan</span>{" "}
+                        <span className="font-mono">{run.orionLedger.planSha256.slice(0, 12)}</span>
+                        {run.orionLedger.approvedPlanSha256 ? (
+                          <>
+                            {" "}
+                            <span className="font-medium text-foreground">Approved</span>{" "}
+                            <span className="font-mono">{run.orionLedger.approvedPlanSha256.slice(0, 12)}</span>
+                          </>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {run.orionLedger.verificationStatus ? (
+                      <div>
+                        <span className="font-medium text-foreground">Verification</span>{" "}
+                        {statusLabel(run.orionLedger.verificationStatus)}
+                      </div>
+                    ) : null}
+                    {run.orionLedger.artifacts?.length ? (
+                      <div>
+                        <span className="font-medium text-foreground">Evidence</span>{" "}
+                        {run.orionLedger.artifacts.length}
+                      </div>
+                    ) : null}
+                    {run.orionLedger.events?.length ? (
+                      <div className="min-w-0 sm:col-span-2">
+                        <span className="font-medium text-foreground">Latest event</span>{" "}
+                        <span className="break-words">
+                          {run.orionLedger.events[run.orionLedger.events.length - 1]?.eventType}
+                        </span>
+                      </div>
+                    ) : null}
+                    {typeof run.orionLedger.prReceipt?.prUrl === "string" ? (
+                      <div className="min-w-0 sm:col-span-2">
+                        <span className="font-medium text-foreground">PR</span>{" "}
+                        <a
+                          href={run.orionLedger.prReceipt.prUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="break-all text-primary hover:underline"
+                        >
+                          {run.orionLedger.prReceipt.prUrl}
+                        </a>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </article>

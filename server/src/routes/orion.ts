@@ -12,19 +12,32 @@ import {
   createOrionWorkflowNodeSchema,
   createOrionRunSchema,
   indexObsidianVaultSchema,
+  openOrionPrSchema,
   orionBootstrapNotionSchema,
   orionSyncNotionSchema,
+  approveOrionLedgerPlanSchema,
   recordOrionPrSchema,
+  recordOrionLedgerEvidenceSchema,
+  recordOrionLedgerVerificationSchema,
+  runOrionVerificationSchema,
+  saveOrionLedgerPlanSchema,
+  startOrionCodexRunSchema,
+  startOrionLedgerExecutionSchema,
+  syncbackOrionNotionSchema,
   syncNotionKnowledgeSchema,
+  upsertOrionTaskPolicySchema,
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import { knowledgeService } from "../services/knowledge.js";
+import { heartbeatService } from "../services/heartbeat.js";
 import { orionService } from "../services/orion.js";
-import { assertBoard, assertCompanyAccess } from "./authz.js";
+import { logActivity } from "../services/activity-log.js";
+import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 
 export function orionRoutes(db: Db) {
   const router = Router();
   const svc = orionService(db);
+  const heartbeat = heartbeatService(db);
   const knowledge = knowledgeService(db);
 
   router.get("/orion/workflow-presets", async (_req, res) => {
@@ -85,6 +98,30 @@ export function orionRoutes(db: Db) {
     res.status(201).json(binding);
   });
 
+  router.get("/orion/tasks/:taskId/policy", async (req, res) => {
+    const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
+    if (task) assertCompanyAccess(req, task.companyId);
+    res.json(await svc.getTaskPolicy(req.params.taskId as string));
+  });
+
+  router.put("/orion/tasks/:taskId/policy", validate(upsertOrionTaskPolicySchema), async (req, res) => {
+    assertBoard(req);
+    const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
+    if (task) assertCompanyAccess(req, task.companyId);
+    const policy = await svc.upsertTaskPolicy(
+      req.params.taskId as string,
+      req.body,
+      req.actor.type === "board" ? req.actor.userId ?? null : null,
+    );
+    res.json(policy);
+  });
+
+  router.get("/orion/tasks/:taskId/run-readiness", async (req, res) => {
+    const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
+    if (task) assertCompanyAccess(req, task.companyId);
+    res.json(await svc.getRunReadiness(req.params.taskId as string));
+  });
+
   router.post(
     "/orion/companies/:companyId/notion/bootstrap",
     validate(orionBootstrapNotionSchema),
@@ -108,19 +145,87 @@ export function orionRoutes(db: Db) {
     },
   );
 
+  router.post(
+    "/orion/companies/:companyId/notion/syncback",
+    validate(syncbackOrionNotionSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      res.json(await svc.syncbackNotion(companyId, req.body));
+    },
+  );
+
+  router.post(
+    "/orion/tasks/:taskId/notion/syncback",
+    validate(syncbackOrionNotionSchema.omit({ taskId: true })),
+    async (req, res) => {
+      assertBoard(req);
+      const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
+      if (!task) {
+        res.status(404).json({ error: "Task not found" });
+        return;
+      }
+      assertCompanyAccess(req, task.companyId);
+      res.json(await svc.syncbackNotion(task.companyId, { ...req.body, taskId: req.params.taskId as string }));
+    },
+  );
+
   router.post("/orion/tasks/:taskId/runs", validate(createOrionRunSchema), async (req, res) => {
     assertBoard(req);
     const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
     if (task) assertCompanyAccess(req, task.companyId);
     const result = await svc.createRun(req.params.taskId as string, req.body);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: result.run.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      action: "orion.run_launched",
+      entityType: "task",
+      entityId: req.params.taskId as string,
+      agentId: result.run.agentId,
+      runId: result.run.id,
+      details: {
+        mode: req.body.mode,
+        ledgerId: result.ledger.id,
+        ledgerStatus: result.ledger.status,
+      },
+    });
     res.status(201).json(result);
   });
 
   router.post("/orion/runs/:runId/cancel", validate(cancelOrionRunSchema), async (req, res) => {
     assertBoard(req);
-    const existing = await db.select({ companyId: heartbeatRuns.companyId }).from(heartbeatRuns).where(eq(heartbeatRuns.id, req.params.runId as string)).limit(1).then((rows) => rows[0] ?? null);
+    const existing = await db
+      .select({
+        companyId: heartbeatRuns.companyId,
+        agentId: heartbeatRuns.agentId,
+        taskId: orionReqLedgers.taskId,
+      })
+      .from(heartbeatRuns)
+      .leftJoin(orionReqLedgers, eq(orionReqLedgers.runId, heartbeatRuns.id))
+      .where(eq(heartbeatRuns.id, req.params.runId as string))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
     if (existing) assertCompanyAccess(req, existing.companyId);
     const run = await svc.cancelRun(req.params.runId as string, req.body.reason);
+    if (existing) {
+      const actor = getActorInfo(req);
+      await logActivity(db, {
+        companyId: existing.companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        action: "orion.run_cancelled",
+        entityType: existing.taskId ? "task" : "heartbeat_run",
+        entityId: existing.taskId ?? run.id,
+        agentId: existing.agentId,
+        runId: run.id,
+        details: {
+          reason: req.body.reason ?? null,
+        },
+      });
+    }
     res.json(run);
   });
 
@@ -130,12 +235,196 @@ export function orionRoutes(db: Db) {
     res.json(ledger);
   });
 
+  router.post("/orion/runs/:runId/ledger/plan", validate(saveOrionLedgerPlanSchema), async (req, res) => {
+    assertBoard(req);
+    const existing = await db.select({ companyId: orionReqLedgers.companyId }).from(orionReqLedgers).where(eq(orionReqLedgers.runId, req.params.runId as string)).limit(1).then((rows) => rows[0] ?? null);
+    if (existing) assertCompanyAccess(req, existing.companyId);
+    const ledger = await svc.saveLedgerPlan(req.params.runId as string, req.body);
+    res.json(ledger);
+  });
+
+  router.post("/orion/runs/:runId/ledger/approval", validate(approveOrionLedgerPlanSchema), async (req, res) => {
+    assertBoard(req);
+    const existing = await db.select({ companyId: orionReqLedgers.companyId }).from(orionReqLedgers).where(eq(orionReqLedgers.runId, req.params.runId as string)).limit(1).then((rows) => rows[0] ?? null);
+    if (existing) assertCompanyAccess(req, existing.companyId);
+    const ledger = await svc.approveLedgerPlan(req.params.runId as string, req.body);
+    res.json(ledger);
+  });
+
+  router.post("/orion/runs/:runId/ledger/execution/start", validate(startOrionLedgerExecutionSchema), async (req, res) => {
+    assertBoard(req);
+    const existing = await db.select({ companyId: orionReqLedgers.companyId }).from(orionReqLedgers).where(eq(orionReqLedgers.runId, req.params.runId as string)).limit(1).then((rows) => rows[0] ?? null);
+    if (existing) assertCompanyAccess(req, existing.companyId);
+    const ledger = await svc.startLedgerExecution(req.params.runId as string, req.body);
+    res.json(ledger);
+  });
+
+  router.post("/orion/runs/:runId/codex/start", validate(startOrionCodexRunSchema), async (req, res) => {
+    assertBoard(req);
+    const existing = await db
+      .select({
+        companyId: orionReqLedgers.companyId,
+        agentId: heartbeatRuns.agentId,
+        taskId: orionReqLedgers.taskId,
+      })
+      .from(orionReqLedgers)
+      .innerJoin(heartbeatRuns, eq(heartbeatRuns.id, orionReqLedgers.runId))
+      .where(eq(orionReqLedgers.runId, req.params.runId as string))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    if (existing) assertCompanyAccess(req, existing.companyId);
+    const result = await svc.startCodexRun(req.params.runId as string, req.body);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: result.run.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      action: "orion.codex_execution_started",
+      entityType: existing?.taskId ? "task" : "heartbeat_run",
+      entityId: existing?.taskId ?? result.run.id,
+      agentId: result.run.agentId,
+      runId: result.run.id,
+      details: {
+        ledgerId: result.ledger.id,
+        alreadyStarted: result.alreadyStarted,
+      },
+    });
+    void heartbeat.executeQueuedRun(result.run.id).catch((err) => {
+      console.error("Orion Codex execution failed", err);
+    });
+    res.status(202).json(result);
+  });
+
+  router.post("/orion/runs/:runId/ledger/evidence", validate(recordOrionLedgerEvidenceSchema), async (req, res) => {
+    assertBoard(req);
+    const existing = await db.select({ companyId: orionReqLedgers.companyId }).from(orionReqLedgers).where(eq(orionReqLedgers.runId, req.params.runId as string)).limit(1).then((rows) => rows[0] ?? null);
+    if (existing) assertCompanyAccess(req, existing.companyId);
+    const artifact = await svc.recordLedgerEvidence(req.params.runId as string, req.body);
+    res.status(201).json(artifact);
+  });
+
+  router.post("/orion/runs/:runId/ledger/verification", validate(recordOrionLedgerVerificationSchema), async (req, res) => {
+    assertBoard(req);
+    const existing = await db.select({ companyId: orionReqLedgers.companyId }).from(orionReqLedgers).where(eq(orionReqLedgers.runId, req.params.runId as string)).limit(1).then((rows) => rows[0] ?? null);
+    if (existing) assertCompanyAccess(req, existing.companyId);
+    const ledger = await svc.recordLedgerVerification(req.params.runId as string, req.body);
+    res.json(ledger);
+  });
+
+  router.post("/orion/runs/:runId/verification/run", validate(runOrionVerificationSchema), async (req, res) => {
+    assertBoard(req);
+    const existing = await db
+      .select({
+        companyId: orionReqLedgers.companyId,
+        agentId: heartbeatRuns.agentId,
+        taskId: orionReqLedgers.taskId,
+      })
+      .from(orionReqLedgers)
+      .innerJoin(heartbeatRuns, eq(heartbeatRuns.id, orionReqLedgers.runId))
+      .where(eq(orionReqLedgers.runId, req.params.runId as string))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    if (existing) assertCompanyAccess(req, existing.companyId);
+    const ledger = await svc.runVerification(req.params.runId as string, req.body);
+    if (existing) {
+      const actor = getActorInfo(req);
+      await logActivity(db, {
+        companyId: existing.companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        action: "orion.verification_run",
+        entityType: existing.taskId ? "task" : "heartbeat_run",
+        entityId: existing.taskId ?? req.params.runId as string,
+        agentId: existing.agentId,
+        runId: req.params.runId as string,
+        details: {
+          ledgerId: ledger.id,
+          status: ledger.status,
+          verificationStatus: ledger.verificationStatus,
+        },
+      });
+    }
+    res.json(ledger);
+  });
+
   router.post("/orion/runs/:runId/pr", validate(recordOrionPrSchema), async (req, res) => {
     assertBoard(req);
     const existing = await db.select({ companyId: orionReqLedgers.companyId }).from(orionReqLedgers).where(eq(orionReqLedgers.runId, req.params.runId as string)).limit(1).then((rows) => rows[0] ?? null);
     if (existing) assertCompanyAccess(req, existing.companyId);
     const receipt = await svc.recordPr(req.params.runId as string, req.body);
     res.status(201).json(receipt);
+  });
+
+  router.post("/orion/runs/:runId/pr/open", validate(openOrionPrSchema), async (req, res) => {
+    assertBoard(req);
+    const existing = await db
+      .select({
+        companyId: orionReqLedgers.companyId,
+        agentId: heartbeatRuns.agentId,
+        taskId: orionReqLedgers.taskId,
+      })
+      .from(orionReqLedgers)
+      .innerJoin(heartbeatRuns, eq(heartbeatRuns.id, orionReqLedgers.runId))
+      .where(eq(orionReqLedgers.runId, req.params.runId as string))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    if (existing) assertCompanyAccess(req, existing.companyId);
+    const actor = getActorInfo(req);
+    if (existing) {
+      await logActivity(db, {
+        companyId: existing.companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        action: "orion.pr_publish_started",
+        entityType: existing.taskId ? "task" : "heartbeat_run",
+        entityId: existing.taskId ?? req.params.runId as string,
+        agentId: existing.agentId,
+        runId: req.params.runId as string,
+        details: {
+          draft: req.body.draft ?? true,
+          baseBranch: req.body.baseBranch ?? null,
+        },
+      });
+    }
+    try {
+      const receipt = await svc.openPr(req.params.runId as string, req.body);
+      if (existing) {
+        await logActivity(db, {
+          companyId: existing.companyId,
+          actorType: actor.actorType,
+          actorId: actor.actorId,
+          action: "orion.pr_published",
+          entityType: existing.taskId ? "task" : "heartbeat_run",
+          entityId: existing.taskId ?? req.params.runId as string,
+          agentId: existing.agentId,
+          runId: req.params.runId as string,
+          details: {
+            prUrl: receipt.prUrl,
+            prNumber: receipt.prNumber,
+            repository: receipt.repository,
+            branch: receipt.branch,
+          },
+        });
+    }
+    res.status(201).json(receipt);
+  } catch (error) {
+      if (existing) {
+        await logActivity(db, {
+          companyId: existing.companyId,
+          actorType: actor.actorType,
+          actorId: actor.actorId,
+          action: "orion.pr_publish_blocked",
+          entityType: existing.taskId ? "task" : "heartbeat_run",
+          entityId: existing.taskId ?? req.params.runId as string,
+          agentId: existing.agentId,
+          runId: req.params.runId as string,
+          details: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
+      }
+      throw error;
+    }
   });
 
   router.get("/orion/companies/:companyId/knowledge/refs", async (req, res) => {

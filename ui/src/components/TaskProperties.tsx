@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import { Link } from "@/lib/router";
-import type { Task, TaskLabel, Project, WorkspaceRuntimeService } from "@paperclipai/shared";
+import { NOTION_TASK_PROPERTY_NAMES, type Task, type TaskLabel, type Project, type WorkspaceRuntimeService } from "@paperclipai/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { accessApi } from "../api/access";
 import { agentsApi } from "../api/agents";
@@ -29,6 +29,7 @@ import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
 import { Identity } from "./Identity";
 import { TaskReferencePill } from "./TaskReferencePill";
+import { AutonomyEnvelopeEditor } from "./AutonomyEnvelopeEditor";
 import { formatDate, cn, projectUrl } from "../lib/utils";
 import { timeAgo } from "../lib/timeAgo";
 import { Separator } from "@/components/ui/separator";
@@ -138,6 +139,13 @@ function PropertyRow({ label, children }: { label: string; children: React.React
 function displayOptional(value: string | null | undefined) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+function notionPropertyText(task: Task, propertyName: string) {
+  const property = task.notionProperties?.[propertyName];
+  if (!property || typeof property !== "object" || Array.isArray(property)) return null;
+  const text = (property as { text?: unknown }).text;
+  return typeof text === "string" ? displayOptional(text) : null;
 }
 
 function notionRelationEntries(task: Task) {
@@ -394,6 +402,9 @@ export function TaskProperties({
   }, [childTasks, task.blockedBy, task.blocks, task.relatedWork?.outbound, referencedTaskIdentifiers]);
   const importedNotionRelationEntries = useMemo(() => notionRelationEntries(task), [task]);
   const showImportedNotionProperties = task.originKind === "notion_task";
+  const importedNotionProjectTag = showImportedNotionProperties
+    ? notionPropertyText(task, NOTION_TASK_PROPERTY_NAMES.projectTag)
+    : null;
   const projectLink = (id: string | null) => {
     if (!id) return null;
     const project = projects?.find((p) => p.id === id) ?? null;
@@ -1253,6 +1264,9 @@ export function TaskProperties({
               {displayOptional(task.taskKey) ? (
                 <PropertyRow label="Task Key"><ReadOnlyTextValue value={displayOptional(task.taskKey)!} mono /></PropertyRow>
               ) : null}
+              {importedNotionProjectTag ? (
+                <PropertyRow label="Project Tag"><ReadOnlyTextValue value={importedNotionProjectTag} mono /></PropertyRow>
+              ) : null}
               {displayOptional(task.acceptanceCriteria) ? (
                 <PropertyRow label="Acceptance"><ReadOnlyTextValue value={displayOptional(task.acceptanceCriteria)!} /></PropertyRow>
               ) : null}
@@ -1371,6 +1385,8 @@ export function TaskProperties({
           </PropertyRow>
         )}
       </div>
+
+      <AutonomyEnvelopeEditor taskId={task.id} />
 
       {liveWorkspaceService || task.currentExecutionWorkspace?.branchName || task.currentExecutionWorkspace?.cwd || task.executionWorkspaceId ? (
         <>

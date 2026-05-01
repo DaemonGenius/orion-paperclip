@@ -1,9 +1,15 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { execFile as execFileCallback } from "node:child_process";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { promisify } from "node:util";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   agents,
+  companyExternalAppBindings,
   companyNotionBindings,
+  executionWorkspaces,
   externalObjectRefs,
   heartbeatRuns,
   taskWorkProducts,
@@ -11,6 +17,7 @@ import {
   notionSyncState,
   orionDecisions,
   orionPrReceipts,
+  orionReqLedgerArtifacts,
   orionReqLedgerEvents,
   orionReqLedgers,
   orionTaskPolicies,
@@ -30,14 +37,50 @@ import type {
   CreateOrionRun,
   OrionAutonomyEnvelope,
   OrionBootstrapNotion,
+  OpenOrionPr,
+  OrionRunReadiness,
   OrionWorkflowDefinition,
   OrionWorkflowPresetId,
   OrionSyncNotion,
+  ApproveOrionLedgerPlan,
+  RecordOrionLedgerEvidence,
+  RecordOrionLedgerVerification,
   RecordOrionPr,
+  RunOrionVerification,
+  SaveOrionLedgerPlan,
+  StartOrionCodexRun,
+  StartOrionLedgerExecution,
+  UpsertOrionTaskPolicy,
+  SyncbackOrionNotion,
 } from "@paperclipai/shared";
+import { NOTION_TASK_PROPERTY_NAMES } from "@paperclipai/shared";
 import { conflict, notFound, unprocessable } from "../errors.js";
+import { resolveShell, sanitizeRuntimeServiceBaseEnv } from "./workspace-runtime.js";
+import { assertProviderHost, cleanGitError, parseRepoUrl, resolveGitAuth, runGitWithAuth } from "./git-repositories.js";
+import { ghFetch, gitHubApiBase } from "./github-fetch.js";
+import { secretService } from "./secrets.js";
 
 const ORION_OPERATOR_FIELDS = ["title", "description", "priority", "projectId", "requestedMode", "humanNotes"];
+const NOTION_VERSION = "2022-06-28";
+const ORION_NOTION_SYNCBACK_FIELDS = [
+  NOTION_TASK_PROPERTY_NAMES.status,
+  NOTION_TASK_PROPERTY_NAMES.prUrl,
+  NOTION_TASK_PROPERTY_NAMES.prState,
+  NOTION_TASK_PROPERTY_NAMES.reqId,
+  NOTION_TASK_PROPERTY_NAMES.runId,
+  NOTION_TASK_PROPERTY_NAMES.runStatus,
+  NOTION_TASK_PROPERTY_NAMES.ledgerId,
+  NOTION_TASK_PROPERTY_NAMES.ledgerStatus,
+  NOTION_TASK_PROPERTY_NAMES.ledgerPhase,
+  NOTION_TASK_PROPERTY_NAMES.verificationStatus,
+  NOTION_TASK_PROPERTY_NAMES.activeAgent,
+  NOTION_TASK_PROPERTY_NAMES.branch,
+  NOTION_TASK_PROPERTY_NAMES.lastOrionSync,
+] as const;
+const ACTIVE_ORION_RUN_STATUSES = ["queued", "running"] as const;
+const ORION_TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed", "cancelled", "timed_out"]);
+const execFile = promisify(execFileCallback);
+const VERIFICATION_OUTPUT_MAX_CHARS = 12_000;
 
 export const ORION_WORKFLOW_PRESETS: Record<OrionWorkflowPresetId, OrionWorkflowDefinition> = {
   paperclip_company: {
@@ -125,7 +168,7 @@ function globToRegExp(glob: string): RegExp {
   return new RegExp(`^${source}$`);
 }
 
-export function validateChangedPathsAgainstEnvelope(
+function findChangedPathViolations(
   changedPaths: string[],
   envelope: OrionAutonomyEnvelope,
 ) {
@@ -144,14 +187,108 @@ export function validateChangedPathsAgainstEnvelope(
     }
   }
 
+  return violations;
+}
+
+export function validateChangedPathsAgainstEnvelope(
+  changedPaths: string[],
+  envelope: OrionAutonomyEnvelope,
+) {
+  const violations = findChangedPathViolations(changedPaths, envelope);
   if (violations.length > 0) {
     throw unprocessable("Changed paths violate the autonomy envelope", { violations });
   }
 }
 
+function truncateVerificationOutput(value: string) {
+  if (value.length <= VERIFICATION_OUTPUT_MAX_CHARS) return value;
+  return `[output truncated to last ${VERIFICATION_OUTPUT_MAX_CHARS} chars]\n${value.slice(-VERIFICATION_OUTPUT_MAX_CHARS)}`;
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function prTemplateTitle(task: { identifier: string | null; taskKey: string | null; title: string }) {
+  const key = task.identifier ?? task.taskKey;
+  return key ? `${key}: ${task.title}` : task.title;
+}
+
+function normalizeRepositoryKey(input: { host: string; owner: string; repo: string }) {
+  return `${input.host}/${input.owner}/${input.repo}`;
+}
+
+function resolveVerificationCwd(worktreeCwd: string, commandCwd: string | null | undefined) {
+  const resolved = path.resolve(worktreeCwd, commandCwd?.trim() || ".");
+  const relative = path.relative(worktreeCwd, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw unprocessable("Verification command cwd must stay inside the execution worktree", {
+      cwd: commandCwd,
+    });
+  }
+  return resolved;
+}
+
+async function listChangedPaths(cwd: string) {
+  const { stdout } = await execFile("git", ["-C", cwd, "status", "--porcelain=v1", "-z", "--untracked-files=all"], {
+    cwd,
+    timeout: 30_000,
+    maxBuffer: 1024 * 1024,
+  });
+  const entries = stdout.split("\0").filter(Boolean);
+  const paths: string[] = [];
+  for (const entry of entries) {
+    const first = entry.slice(3).trim();
+    if (!first) continue;
+    const renamed = first.includes(" -> ") ? first.split(" -> ").at(-1)! : first;
+    paths.push(normalizePathForPolicy(renamed));
+  }
+  return Array.from(new Set(paths)).sort();
+}
+
+async function runVerificationShellCommand(input: {
+  command: string;
+  cwd: string;
+  timeoutSeconds: number;
+}) {
+  const startedAt = Date.now();
+  try {
+    const result = await execFile(resolveShell(), ["-c", input.command], {
+      cwd: input.cwd,
+      env: sanitizeRuntimeServiceBaseEnv(process.env),
+      timeout: input.timeoutSeconds * 1000,
+      maxBuffer: 1024 * 1024,
+    });
+      return {
+        status: "passed" as const,
+        exitCode: 0,
+        signal: null,
+        stdout: truncateVerificationOutput(result.stdout ?? ""),
+        stderr: truncateVerificationOutput(result.stderr ?? ""),
+        durationMs: Date.now() - startedAt,
+    };
+  } catch (error) {
+    const err = error as Error & {
+      code?: number | string | null;
+      signal?: string | null;
+      stdout?: string;
+      stderr?: string;
+      killed?: boolean;
+    };
+    return {
+      status: err.killed ? "timed_out" as const : "failed" as const,
+      exitCode: typeof err.code === "number" ? err.code : null,
+      signal: err.signal ?? null,
+      stdout: truncateVerificationOutput(err.stdout ?? ""),
+      stderr: truncateVerificationOutput(err.stderr ?? err.message),
+      durationMs: Date.now() - startedAt,
+    };
+  }
+}
+
 function requireAutoEnvelope(input: {
   mode: string;
-  autonomyEnvelope?: OrionAutonomyEnvelope | null;
+  autonomyEnvelope: OrionAutonomyEnvelope | null;
 }) {
   if (input.mode !== "auto_to_pr") return;
   if (!input.autonomyEnvelope) {
@@ -162,7 +299,80 @@ function requireAutoEnvelope(input: {
   }
 }
 
+function isOrionAutonomyMode(value: string | null | undefined): value is "pair" | "auto_to_pr" {
+  return value === "pair" || value === "auto_to_pr";
+}
+
+function taskContextFilter(taskId: string) {
+  return sql`${heartbeatRuns.contextSnapshot} ->> 'source' = 'orion.create_run'
+    and ${heartbeatRuns.contextSnapshot} ->> 'taskId' = ${taskId}`;
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function notionStatusFromTaskStatus(status: string) {
+  switch (status) {
+    case "todo": return "Ready";
+    case "in_progress": return "In Progress";
+    case "in_review": return "Review";
+    case "blocked": return "Blocked";
+    case "done": return "Done";
+    case "cancelled": return "Deferred";
+    case "backlog":
+    default:
+      return "Backlog";
+  }
+}
+
+function richTextProperty(value: string | null | undefined) {
+  const content = value?.trim() ?? "";
+  return { rich_text: content ? [{ text: { content } }] : [] };
+}
+
+function selectLikeProperty(type: string, value: string | null | undefined) {
+  const name = value?.trim() ?? "";
+  return type === "status"
+    ? { status: name ? { name } : null }
+    : { select: name ? { name } : null };
+}
+
+function urlProperty(value: string | null | undefined) {
+  const url = value?.trim() ?? "";
+  return { url: url || null };
+}
+
+function dateProperty(value: Date) {
+  return { date: { start: value.toISOString() } };
+}
+
+function notionPropertyPayload(property: Record<string, unknown>, value: string | null | undefined, now: Date) {
+  const type = readString(property.type);
+  switch (type) {
+    case "status":
+    case "select":
+      return selectLikeProperty(type, value);
+    case "rich_text":
+      return richTextProperty(value);
+    case "url":
+      return urlProperty(value);
+    case "date":
+      return dateProperty(now);
+    default:
+      return null;
+  }
+}
+
+function systemProjectionChecksum(value: Record<string, unknown>) {
+  return sha256(stableJson(value));
+}
+
 export function orionService(db: Db) {
+  const secrets = secretService(db);
+
   async function getWorkflowDetail(workflowId: string) {
     const workflow = await db
       .select()
@@ -255,15 +465,32 @@ export function orionService(db: Db) {
     phase?: string | null;
     message?: string | null;
     payload?: Record<string, unknown> | null;
+    idempotencyKey?: string | null;
+    client?: Pick<typeof db, "select" | "insert">;
   }) {
-    const latest = await db
+    const client = input.client ?? db;
+    if (input.idempotencyKey) {
+      const existingEvents = await client
+        .select()
+        .from(orionReqLedgerEvents)
+        .where(eq(orionReqLedgerEvents.ledgerId, input.ledgerId));
+      const existing = existingEvents.find((event) => {
+        const payload = event.payload as Record<string, unknown> | null;
+        return payload?.idempotencyKey === input.idempotencyKey;
+      });
+      if (existing) return existing;
+    }
+    const latest = await client
       .select({ seq: orionReqLedgerEvents.seq })
       .from(orionReqLedgerEvents)
       .where(eq(orionReqLedgerEvents.ledgerId, input.ledgerId))
       .orderBy(desc(orionReqLedgerEvents.seq))
       .limit(1)
       .then((rows) => rows[0]?.seq ?? 0);
-    const [event] = await db
+    const payload = input.idempotencyKey
+      ? { ...(input.payload ?? {}), idempotencyKey: input.idempotencyKey }
+      : input.payload ?? null;
+    const [event] = await client
       .insert(orionReqLedgerEvents)
       .values({
         ledgerId: input.ledgerId,
@@ -273,10 +500,706 @@ export function orionService(db: Db) {
         eventType: input.eventType,
         phase: input.phase ?? null,
         message: input.message ?? null,
-        payload: input.payload ?? null,
+        payload,
       })
       .returning();
     return event!;
+  }
+
+  async function getLedgerByRunId(runId: string) {
+    const ledger = await db.select().from(orionReqLedgers).where(eq(orionReqLedgers.runId, runId)).limit(1).then((rows) => rows[0] ?? null);
+    if (!ledger) throw notFound("Ledger not found");
+    return ledger;
+  }
+
+  function expectedPlanSha(ledger: { approvedPlanSha256: string | null; planSha256: string | null }) {
+    return ledger.approvedPlanSha256 ?? ledger.planSha256;
+  }
+
+  function assertPlanMatchesLedger(
+    ledger: { approvedPlanSha256: string | null; planSha256: string | null },
+    planSha256?: string | null,
+    message = "Plan hash does not match the current ledger plan hash",
+  ) {
+    const expected = expectedPlanSha(ledger);
+    if (expected && planSha256 && planSha256 !== expected) {
+      throw conflict(message);
+    }
+    return expected;
+  }
+
+  async function resolveRunWorkspace(run: typeof heartbeatRuns.$inferSelect) {
+    const runContext = readRecord(run.contextSnapshot);
+    const workspaceContext = readRecord(runContext.paperclipWorkspace);
+    const contextCwd = readString(workspaceContext.cwd);
+    const executionWorkspaceId = readString(runContext.executionWorkspaceId) ?? readString(workspaceContext.executionWorkspaceId);
+    const persisted = executionWorkspaceId
+      ? await db
+        .select()
+        .from(executionWorkspaces)
+        .where(eq(executionWorkspaces.id, executionWorkspaceId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null)
+      : null;
+    return {
+      cwd: contextCwd ?? persisted?.cwd ?? null,
+      repoUrl: readString(workspaceContext.repoUrl) ?? persisted?.repoUrl ?? null,
+      branchName: readString(workspaceContext.branchName) ?? persisted?.branchName ?? null,
+      baseRef: readString(workspaceContext.baseRef) ?? readString(workspaceContext.repoRef) ?? persisted?.baseRef ?? null,
+      executionWorkspaceId,
+    };
+  }
+
+  async function currentGitBranch(cwd: string) {
+    const { stdout } = await execFile("git", ["-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd,
+      timeout: 30_000,
+      maxBuffer: 1024 * 1024,
+    });
+    return stdout.trim();
+  }
+
+  async function currentGitHead(cwd: string) {
+    const { stdout } = await execFile("git", ["-C", cwd, "rev-parse", "HEAD"], {
+      cwd,
+      timeout: 30_000,
+      maxBuffer: 1024 * 1024,
+    });
+    return stdout.trim();
+  }
+
+  async function readPullRequestTemplate(cwd: string) {
+    const candidates = [
+      path.join(cwd, ".github", "PULL_REQUEST_TEMPLATE.md"),
+      path.join(cwd, "PULL_REQUEST_TEMPLATE.md"),
+    ];
+    for (const candidate of candidates) {
+      const content = await fs.readFile(candidate, "utf8").catch(() => null);
+      if (content && content.trim().length > 0) return content.trim();
+    }
+    return null;
+  }
+
+  async function createOrionCommit(input: {
+    cwd: string;
+    task: typeof tasks.$inferSelect;
+    runId: string;
+    ledgerId: string;
+    planSha256: string;
+    changedPaths: string[];
+  }) {
+    await execFile("git", ["-C", input.cwd, "add", "-A"], {
+      cwd: input.cwd,
+      timeout: 60_000,
+      maxBuffer: 1024 * 1024,
+    });
+    const subject = prTemplateTitle(input.task);
+    const body = [
+      "Orion-owned commit for verified Codex output.",
+      "",
+      `Run: ${input.runId}`,
+      `Ledger: ${input.ledgerId}`,
+      `Approved plan: ${input.planSha256}`,
+      `Changed paths: ${input.changedPaths.join(", ")}`,
+    ].join("\n");
+    try {
+      await execFile(
+        "git",
+        [
+          "-C",
+          input.cwd,
+          "-c",
+          "user.name=Paperclip Orion",
+          "-c",
+          "user.email=orion@paperclip.local",
+          "commit",
+          "-m",
+          subject,
+          "-m",
+          body,
+        ],
+        {
+          cwd: input.cwd,
+          timeout: 90_000,
+          maxBuffer: 1024 * 1024,
+        },
+      );
+    } catch (error) {
+      throw unprocessable("Orion could not create a commit for the verified worktree changes", {
+        reason: cleanGitError(error),
+      });
+    }
+    return currentGitHead(input.cwd);
+  }
+
+  async function openGitHubPullRequest(input: {
+    host: string;
+    owner: string;
+    repo: string;
+    token: string;
+    branch: string;
+    baseBranch: string;
+    title: string;
+    body: string;
+    draft: boolean;
+  }) {
+    const apiBase = gitHubApiBase(input.host);
+    const headers = {
+      Authorization: `Bearer ${input.token}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "paperclip",
+    };
+    const existingUrl = new URL(`${apiBase}/repos/${input.owner}/${input.repo}/pulls`);
+    existingUrl.searchParams.set("state", "open");
+    existingUrl.searchParams.set("head", `${input.owner}:${input.branch}`);
+    const existingResponse = await ghFetch(existingUrl.toString(), { headers });
+    const existingBody = await existingResponse.json().catch(() => null);
+    if (existingResponse.ok && Array.isArray(existingBody) && existingBody.length > 0) {
+      return existingBody[0] as Record<string, unknown>;
+    }
+
+    const response = await ghFetch(`${apiBase}/repos/${input.owner}/${input.repo}/pulls`, {
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: input.title,
+        head: input.branch,
+        base: input.baseBranch,
+        body: input.body,
+        draft: input.draft,
+      }),
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw unprocessable(`GitHub PR creation failed with HTTP ${response.status}`, {
+        status: response.status,
+        response: body,
+      });
+    }
+    return body as Record<string, unknown>;
+  }
+
+  function githubPrNumber(value: Record<string, unknown>) {
+    return typeof value.number === "number" && Number.isInteger(value.number) ? value.number : null;
+  }
+
+  function githubPrUrl(value: Record<string, unknown>) {
+    const htmlUrl = readString(value.html_url);
+    if (!htmlUrl) throw unprocessable("GitHub PR response did not include a PR URL");
+    return htmlUrl;
+  }
+
+  async function recordPrReceipt(runId: string, input: RecordOrionPr) {
+    const ledger = await getLedgerByRunId(runId);
+    if (input.idempotencyKey) {
+      const existingEvent = await db
+        .select()
+        .from(orionReqLedgerEvents)
+        .where(eq(orionReqLedgerEvents.ledgerId, ledger.id))
+        .then((rows) => rows.find((event) => (event.payload as Record<string, unknown> | null)?.idempotencyKey === input.idempotencyKey) ?? null);
+      if (existingEvent) {
+        const receipt = await db
+          .select()
+          .from(orionPrReceipts)
+          .where(eq(orionPrReceipts.runId, runId))
+          .limit(1)
+          .then((rows) => rows[0] ?? null);
+        if (receipt) return receipt;
+      }
+    }
+    if (ledger.status !== "verified" || ledger.verificationStatus !== "passed") {
+      throw conflict("PR receipt requires passed Orion verification for the approved plan", {
+        status: ledger.status,
+        verificationStatus: ledger.verificationStatus,
+      });
+    }
+    if (!ledger.approvedPlanSha256 || ledger.approvedPlanSha256 !== ledger.planSha256) {
+      throw conflict("PR receipt requires an approved current plan hash");
+    }
+    const policy = await db.select().from(orionTaskPolicies).where(eq(orionTaskPolicies.taskId, ledger.taskId)).limit(1).then((rows) => rows[0] ?? null);
+    const envelope = policy?.autonomyEnvelope as OrionAutonomyEnvelope | null | undefined;
+    if (envelope) {
+      if (!envelope.allowedRepos.includes(input.repository)) {
+        throw unprocessable("PR repository is outside the autonomy envelope", {
+          repository: input.repository,
+          allowedRepos: envelope.allowedRepos,
+        });
+      }
+      validateChangedPathsAgainstEnvelope(input.changedPaths, envelope);
+    }
+    const expectedPlanSha = assertPlanMatchesLedger(
+      ledger,
+      input.planSha256,
+      "PR receipt plan hash does not match the approved ledger plan hash",
+    );
+
+    return await db.transaction(async (tx) => {
+      const [receipt] = await tx
+        .insert(orionPrReceipts)
+        .values({
+          companyId: ledger.companyId,
+          taskId: ledger.taskId,
+          runId,
+          ledgerId: ledger.id,
+          repository: input.repository,
+          branch: input.branch,
+          baseBranch: input.baseBranch ?? null,
+          prNumber: input.prNumber ?? null,
+          prUrl: input.prUrl,
+          title: input.title,
+          draft: input.draft,
+          planSha256: input.planSha256 ?? expectedPlanSha ?? null,
+          changedPaths: input.changedPaths,
+        })
+        .onConflictDoUpdate({
+          target: orionPrReceipts.runId,
+          set: {
+            repository: input.repository,
+            branch: input.branch,
+            baseBranch: input.baseBranch ?? null,
+            prNumber: input.prNumber ?? null,
+            prUrl: input.prUrl,
+            title: input.title,
+            draft: input.draft,
+            planSha256: input.planSha256 ?? expectedPlanSha ?? null,
+            changedPaths: input.changedPaths,
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+
+      await tx
+        .insert(taskWorkProducts)
+        .values({
+          companyId: ledger.companyId,
+          taskId: ledger.taskId,
+          type: "pull_request",
+          provider: "github",
+          externalId: receipt!.prNumber == null ? receipt!.prUrl : String(receipt!.prNumber),
+          title: receipt!.title,
+          url: receipt!.prUrl,
+          status: receipt!.draft ? "draft" : "ready_for_review",
+          reviewState: "needs_board_review",
+          isPrimary: true,
+          healthStatus: "unknown",
+          metadata: {
+            repository: receipt!.repository,
+            branch: receipt!.branch,
+            baseBranch: receipt!.baseBranch,
+            changedPaths: receipt!.changedPaths,
+          },
+          createdByRunId: runId,
+        });
+
+      await tx
+        .update(tasks)
+        .set({
+          status: "in_review",
+          prState: "open",
+          prUrl: receipt!.prUrl,
+          updatedAt: new Date(),
+        })
+        .where(eq(tasks.id, ledger.taskId));
+
+      await tx
+        .update(orionReqLedgers)
+        .set({
+          status: "pr_opened",
+          currentPhase: "publishing",
+          prReceipt: receipt!,
+          updatedAt: new Date(),
+        })
+        .where(eq(orionReqLedgers.id, ledger.id));
+
+      await appendLedgerEvent({
+        client: tx,
+        ledgerId: ledger.id,
+        companyId: ledger.companyId,
+        runId,
+        eventType: "orion.pr.recorded",
+        phase: "publishing",
+        message: "Orion recorded the PR receipt.",
+        payload: {
+          prUrl: receipt!.prUrl,
+          repository: receipt!.repository,
+          branch: receipt!.branch,
+          planSha256: receipt!.planSha256,
+        },
+        idempotencyKey: input.idempotencyKey,
+      });
+
+      return receipt!;
+    });
+  }
+
+  async function resolveNotionToken(companyId: string) {
+    const externalBinding = await db
+      .select()
+      .from(companyExternalAppBindings)
+      .where(and(
+        eq(companyExternalAppBindings.companyId, companyId),
+        eq(companyExternalAppBindings.provider, "notion"),
+      ))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    if (externalBinding?.secretId) {
+      return secrets.resolveSecretValue(companyId, externalBinding.secretId, "latest");
+    }
+
+    const legacyBinding = await db
+      .select()
+      .from(companyNotionBindings)
+      .where(eq(companyNotionBindings.companyId, companyId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    if (legacyBinding?.tokenSecretId) {
+      return secrets.resolveSecretValue(companyId, legacyBinding.tokenSecretId, "latest");
+    }
+    if (externalBinding || legacyBinding) {
+      throw unprocessable("Notion token is not configured for this company");
+    }
+    throw notFound("Notion is not configured for this company");
+  }
+
+  async function notionApi(token: string, endpoint: string, init?: RequestInit) {
+    const response = await fetch(`https://api.notion.com/v1${endpoint}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Notion-Version": NOTION_VERSION,
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      const message = readString(readRecord(body).message);
+      throw unprocessable(`Notion request failed with HTTP ${response.status}${message ? `: ${message}` : ""}`, {
+        status: response.status,
+        response: body,
+      });
+    }
+    return readRecord(body);
+  }
+
+  async function recordNotionSyncbackConflict(input: {
+    companyId: string;
+    taskId: string;
+    notionPageId?: string | null;
+    reason: string;
+    details?: Record<string, unknown>;
+  }) {
+    const [conflictRow] = await db
+      .insert(syncConflicts)
+      .values({
+        companyId: input.companyId,
+        provider: "notion",
+        localObjectType: "task",
+        localObjectId: input.taskId,
+        externalObjectId: input.notionPageId ?? null,
+        status: "open",
+        conflictJson: {
+          ownerClass: "system_owned",
+          kind: "notion_status_syncback",
+          reason: input.reason,
+          ...(input.details ?? {}),
+        },
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    await db
+      .update(externalObjectRefs)
+      .set({ syncStatus: "conflict", updatedAt: new Date() })
+      .where(and(
+        eq(externalObjectRefs.companyId, input.companyId),
+        eq(externalObjectRefs.provider, "notion"),
+        eq(externalObjectRefs.localObjectType, "task"),
+        eq(externalObjectRefs.localObjectId, input.taskId),
+      ));
+    await db
+      .update(notionSyncState)
+      .set({
+        status: "conflict",
+        conflictJson: { conflictId: conflictRow!.id, reason: input.reason },
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(notionSyncState.companyId, input.companyId),
+        eq(notionSyncState.objectType, "task"),
+        eq(notionSyncState.objectId, input.taskId),
+      ));
+    return conflictRow!;
+  }
+
+  async function hasNotionTaskRef(companyId: string, taskId: string) {
+    const [state, ref] = await Promise.all([
+      db
+        .select({ id: notionSyncState.id })
+        .from(notionSyncState)
+        .where(and(
+          eq(notionSyncState.companyId, companyId),
+          eq(notionSyncState.objectType, "task"),
+          eq(notionSyncState.objectId, taskId),
+        ))
+        .limit(1)
+        .then((rows) => rows[0] ?? null),
+      db
+        .select({ id: externalObjectRefs.id })
+        .from(externalObjectRefs)
+        .where(and(
+          eq(externalObjectRefs.companyId, companyId),
+          eq(externalObjectRefs.provider, "notion"),
+          eq(externalObjectRefs.localObjectType, "task"),
+          eq(externalObjectRefs.localObjectId, taskId),
+        ))
+        .limit(1)
+        .then((rows) => rows[0] ?? null),
+    ]);
+    return Boolean(state || ref);
+  }
+
+  async function notionSyncbackCandidates(companyId: string, input: SyncbackOrionNotion) {
+    const candidates = new Map<string, { taskId: string; notionPageId: string }>();
+    const stateRows = await db
+      .select()
+      .from(notionSyncState)
+      .where(and(
+        eq(notionSyncState.companyId, companyId),
+        eq(notionSyncState.objectType, "task"),
+        ...(input.taskId ? [eq(notionSyncState.objectId, input.taskId)] : []),
+      ));
+    for (const state of stateRows) {
+      candidates.set(state.objectId, { taskId: state.objectId, notionPageId: state.notionPageId });
+    }
+
+    const refRows = await db
+      .select()
+      .from(externalObjectRefs)
+      .where(and(
+        eq(externalObjectRefs.companyId, companyId),
+        eq(externalObjectRefs.provider, "notion"),
+        eq(externalObjectRefs.localObjectType, "task"),
+        ...(input.taskId ? [eq(externalObjectRefs.localObjectId, input.taskId)] : []),
+      ));
+    for (const ref of refRows) {
+      candidates.set(ref.localObjectId, { taskId: ref.localObjectId, notionPageId: ref.externalObjectId });
+    }
+    return [...candidates.values()];
+  }
+
+  async function syncbackNotion(companyId: string, input: SyncbackOrionNotion) {
+    const now = new Date();
+    const candidates = await notionSyncbackCandidates(companyId, input);
+    if (candidates.length === 0) {
+      return { syncedAt: now.toISOString(), dryRun: input.dryRun ?? false, results: [] };
+    }
+
+    const token = await resolveNotionToken(companyId);
+    const results: Array<{
+      taskId: string;
+      notionPageId: string;
+      status: "synced" | "dry_run" | "skipped" | "conflict";
+      fields: string[];
+      conflictId?: string | null;
+      reason?: string | null;
+    }> = [];
+
+    for (const candidate of candidates) {
+      const task = await db
+        .select()
+        .from(tasks)
+        .where(and(eq(tasks.companyId, companyId), eq(tasks.id, candidate.taskId)))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      if (!task) {
+        results.push({ ...candidate, status: "skipped", fields: [], reason: "Task not found" });
+        continue;
+      }
+
+      const ledger = input.runId
+        ? await db
+          .select()
+          .from(orionReqLedgers)
+          .where(and(eq(orionReqLedgers.companyId, companyId), eq(orionReqLedgers.taskId, task.id), eq(orionReqLedgers.runId, input.runId)))
+          .limit(1)
+          .then((rows) => rows[0] ?? null)
+        : await db
+          .select()
+          .from(orionReqLedgers)
+          .where(and(eq(orionReqLedgers.companyId, companyId), eq(orionReqLedgers.taskId, task.id)))
+          .orderBy(desc(orionReqLedgers.updatedAt))
+          .limit(1)
+          .then((rows) => rows[0] ?? null);
+      const run = ledger
+        ? await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, ledger.runId)).limit(1).then((rows) => rows[0] ?? null)
+        : null;
+      const agent = run?.agentId
+        ? await db.select().from(agents).where(eq(agents.id, run.agentId)).limit(1).then((rows) => rows[0] ?? null)
+        : null;
+      const receipt = ledger
+        ? await db.select().from(orionPrReceipts).where(eq(orionPrReceipts.runId, ledger.runId)).limit(1).then((rows) => rows[0] ?? null)
+        : null;
+      const workspace = run ? await resolveRunWorkspace(run) : null;
+
+      const projection = {
+        [NOTION_TASK_PROPERTY_NAMES.status]: notionStatusFromTaskStatus(task.status),
+        [NOTION_TASK_PROPERTY_NAMES.prUrl]: task.prUrl ?? receipt?.prUrl ?? null,
+        [NOTION_TASK_PROPERTY_NAMES.prState]: task.prState ?? (receipt ? "open" : null),
+        [NOTION_TASK_PROPERTY_NAMES.reqId]: ledger?.id ?? null,
+        [NOTION_TASK_PROPERTY_NAMES.runId]: run?.id ?? null,
+        [NOTION_TASK_PROPERTY_NAMES.runStatus]: run?.status ?? null,
+        [NOTION_TASK_PROPERTY_NAMES.ledgerId]: ledger?.id ?? null,
+        [NOTION_TASK_PROPERTY_NAMES.ledgerStatus]: ledger?.status ?? null,
+        [NOTION_TASK_PROPERTY_NAMES.ledgerPhase]: ledger?.currentPhase ?? null,
+        [NOTION_TASK_PROPERTY_NAMES.verificationStatus]: ledger?.verificationStatus ?? null,
+        [NOTION_TASK_PROPERTY_NAMES.activeAgent]: agent?.name ?? run?.agentId ?? null,
+        [NOTION_TASK_PROPERTY_NAMES.branch]: workspace?.branchName ?? receipt?.branch ?? null,
+        [NOTION_TASK_PROPERTY_NAMES.lastOrionSync]: now.toISOString(),
+      };
+
+      const page = await notionApi(token, `/pages/${encodeURIComponent(candidate.notionPageId)}`);
+      const pageProperties = readRecord(page.properties);
+      const missing = ORION_NOTION_SYNCBACK_FIELDS.filter((field) => !pageProperties[field]);
+      if (missing.length > 0) {
+        const conflictRow = await recordNotionSyncbackConflict({
+          companyId,
+          taskId: task.id,
+          notionPageId: candidate.notionPageId,
+          reason: "Notion task row is missing required Orion-owned syncback properties.",
+          details: { missingProperties: missing },
+        });
+        results.push({
+          ...candidate,
+          status: "conflict",
+          fields: [],
+          conflictId: conflictRow.id,
+          reason: "missing_required_properties",
+        });
+        continue;
+      }
+
+      const properties: Record<string, unknown> = {};
+      const unsupported: string[] = [];
+      for (const field of ORION_NOTION_SYNCBACK_FIELDS) {
+        const property = notionPropertyPayload(readRecord(pageProperties[field]), projection[field], now);
+        if (!property) {
+          unsupported.push(field);
+        } else {
+          properties[field] = property;
+        }
+      }
+      if (unsupported.length > 0) {
+        const conflictRow = await recordNotionSyncbackConflict({
+          companyId,
+          taskId: task.id,
+          notionPageId: candidate.notionPageId,
+          reason: "Notion task row has unsupported Orion-owned syncback property types.",
+          details: { unsupportedProperties: unsupported },
+        });
+        results.push({
+          ...candidate,
+          status: "conflict",
+          fields: [],
+          conflictId: conflictRow.id,
+          reason: "unsupported_property_types",
+        });
+        continue;
+      }
+
+      if (!input.dryRun) {
+        await notionApi(token, `/pages/${encodeURIComponent(candidate.notionPageId)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ properties }),
+        });
+        const checksum = systemProjectionChecksum(projection);
+        await db
+          .update(notionSyncState)
+          .set({
+            direction: "orion_to_notion",
+            status: "synced",
+            conflictJson: null,
+            orionUpdatedAt: task.updatedAt,
+            updatedAt: now,
+          })
+          .where(and(
+            eq(notionSyncState.companyId, companyId),
+            eq(notionSyncState.objectType, "task"),
+            eq(notionSyncState.objectId, task.id),
+          ));
+        await db
+          .update(externalObjectRefs)
+          .set({
+            syncStatus: "synced",
+            metadata: {
+              kind: "task",
+              systemProjection: projection,
+              systemProjectionChecksum: checksum,
+              systemProjectionSyncedAt: now.toISOString(),
+            },
+            lastOrionEditedAt: now,
+            updatedAt: now,
+          })
+          .where(and(
+            eq(externalObjectRefs.companyId, companyId),
+            eq(externalObjectRefs.provider, "notion"),
+            eq(externalObjectRefs.localObjectType, "task"),
+            eq(externalObjectRefs.localObjectId, task.id),
+          ));
+      }
+
+      results.push({
+        ...candidate,
+        status: input.dryRun ? "dry_run" : "synced",
+        fields: Object.keys(properties),
+      });
+    }
+
+    if (!input.dryRun) {
+      await db
+        .insert(syncCursors)
+        .values({
+          companyId,
+          provider: "notion",
+          scope: "task_status_syncback",
+          cursorJson: { taskCount: results.length, synced: results.filter((row) => row.status === "synced").length },
+          status: "idle",
+          lastSyncedAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [syncCursors.companyId, syncCursors.provider, syncCursors.scope],
+          set: {
+            cursorJson: { taskCount: results.length, synced: results.filter((row) => row.status === "synced").length },
+            status: "idle",
+            lastSyncedAt: now,
+            lastError: null,
+            updatedAt: now,
+          },
+        });
+      await db
+        .update(companyNotionBindings)
+        .set({ lastSyncAt: now, updatedAt: now })
+        .where(eq(companyNotionBindings.companyId, companyId));
+    }
+
+    return { syncedAt: now.toISOString(), dryRun: input.dryRun ?? false, results };
+  }
+
+  async function maybeSyncbackNotionTask(companyId: string, taskId: string, runId: string) {
+    if (!await hasNotionTaskRef(companyId, taskId)) return;
+    try {
+      await syncbackNotion(companyId, { taskId, runId, dryRun: false, idempotencyKey: `pr-publish:${runId}` });
+    } catch (error) {
+      await recordNotionSyncbackConflict({
+        companyId,
+        taskId,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   return {
@@ -302,6 +1225,111 @@ export function orionService(db: Db) {
     getWorkflow: getWorkflowDetail,
 
     createWorkflowFromPreset,
+
+    getTaskPolicy: async (taskId: string) => {
+      const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).then((rows) => rows[0] ?? null);
+      if (!task) throw notFound("Task not found");
+      return await db.select().from(orionTaskPolicies).where(eq(orionTaskPolicies.taskId, task.id)).limit(1).then((rows) => rows[0] ?? null);
+    },
+
+    upsertTaskPolicy: async (taskId: string, input: UpsertOrionTaskPolicy, approvedByUserId?: string | null) => {
+      const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).then((rows) => rows[0] ?? null);
+      if (!task) throw notFound("Task not found");
+      const now = new Date();
+      const [policy] = await db
+        .insert(orionTaskPolicies)
+        .values({
+          companyId: task.companyId,
+          taskId: task.id,
+          mode: input.mode,
+          autonomyEnvelope: input.autonomyEnvelope,
+          approvedByUserId: approvedByUserId ?? null,
+          approvedAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: orionTaskPolicies.taskId,
+          set: {
+            mode: input.mode,
+            autonomyEnvelope: input.autonomyEnvelope,
+            approvedByUserId: approvedByUserId ?? null,
+            approvedAt: now,
+            updatedAt: now,
+          },
+        })
+        .returning();
+      return policy!;
+    },
+
+    getRunReadiness: async (taskId: string): Promise<OrionRunReadiness> => {
+      const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).then((rows) => rows[0] ?? null);
+      if (!task) throw notFound("Task not found");
+      const [agentRows, policy, activeRun] = await Promise.all([
+        db
+          .select({
+            id: agents.id,
+            name: agents.name,
+            role: agents.role,
+            status: agents.status,
+            adapterType: agents.adapterType,
+          })
+          .from(agents)
+          .where(eq(agents.companyId, task.companyId))
+          .orderBy(agents.name),
+        db.select().from(orionTaskPolicies).where(eq(orionTaskPolicies.taskId, task.id)).limit(1).then((rows) => rows[0] ?? null),
+        db
+          .select({ runId: heartbeatRuns.id, status: heartbeatRuns.status })
+          .from(heartbeatRuns)
+          .where(and(
+            eq(heartbeatRuns.companyId, task.companyId),
+            inArray(heartbeatRuns.status, [...ACTIVE_ORION_RUN_STATUSES]),
+            taskContextFilter(task.id),
+          ))
+          .orderBy(desc(heartbeatRuns.createdAt))
+          .limit(1)
+          .then((rows) => rows[0] ?? null),
+      ]);
+
+      const availableAgents = agentRows.filter((agent) => agent.status !== "terminated");
+      const selectedAgent = task.assigneeAgentId
+        ? availableAgents.find((agent) => agent.id === task.assigneeAgentId) ?? null
+        : null;
+      const suggestedAgentId = selectedAgent?.id ?? availableAgents.find((agent) => agent.status !== "paused")?.id ?? availableAgents[0]?.id ?? null;
+      const policyMode = isOrionAutonomyMode(policy?.mode) ? policy.mode : null;
+      const policyEnvelope = policy?.autonomyEnvelope as OrionAutonomyEnvelope | null | undefined;
+      const defaultMode = policyMode ?? "pair";
+
+      const modeReadiness = (mode: "pair" | "auto_to_pr") => {
+        const blockedReasons: string[] = [];
+        if (availableAgents.length === 0) blockedReasons.push("No launchable agents are available.");
+        if (activeRun) blockedReasons.push(`Task already has an active Orion run (${activeRun.runId.slice(0, 8)}).`);
+        if (mode === "auto_to_pr") {
+          if (!policyEnvelope || policyMode !== "auto_to_pr") {
+            blockedReasons.push("Auto-to-PR requires a saved auto_to_pr autonomy envelope.");
+          } else if (policyEnvelope.mode !== "auto_to_pr") {
+            blockedReasons.push("Saved autonomy envelope mode must be auto_to_pr.");
+          }
+        }
+        return { mode, eligible: blockedReasons.length === 0, blockedReasons };
+      };
+
+      return {
+        taskId: task.id,
+        companyId: task.companyId,
+        defaultMode,
+        suggestedAgentId,
+        selectedAgentId: selectedAgent?.id ?? null,
+        availableAgents,
+        savedPolicy: policy
+          ? {
+            mode: policy.mode,
+            hasEnvelope: Boolean(policyEnvelope),
+          }
+          : null,
+        activeRun,
+        modes: [modeReadiness("pair"), modeReadiness("auto_to_pr")],
+      };
+    },
 
     createWorkflowNode: async (workflowId: string, input: CreateOrionWorkflowNode) => {
       const workflow = await db.select().from(orionWorkflows).where(eq(orionWorkflows.id, workflowId)).limit(1).then((rows) => rows[0] ?? null);
@@ -603,6 +1631,8 @@ export function orionService(db: Db) {
                 title: task.title,
                 priority: task.priority,
                 requestedMode: task.requestedMode ?? null,
+                taskKey: task.taskKey ?? null,
+                projectTag: task.projectTag ?? null,
               },
               lastExternalEditedAt: notionLastEditedAt,
               lastOrionEditedAt: existingTask.updatedAt,
@@ -621,6 +1651,8 @@ export function orionService(db: Db) {
                   title: task.title,
                   priority: task.priority,
                   requestedMode: task.requestedMode ?? null,
+                  taskKey: task.taskKey ?? null,
+                  projectTag: task.projectTag ?? null,
                 },
                 lastExternalEditedAt: notionLastEditedAt,
                 lastOrionEditedAt: existingTask.updatedAt,
@@ -643,6 +1675,13 @@ export function orionService(db: Db) {
           description: task.description ?? null,
           priority: task.priority,
           projectId: task.projectId ?? null,
+          taskKey: task.taskKey ?? existingTask?.taskKey ?? null,
+          identifier: task.taskKey ?? existingTask?.identifier ?? null,
+          notionProperties: {
+            ...(existingTask?.notionProperties ?? {}),
+            ...(task.taskKey ? { "Task Key": task.taskKey } : {}),
+            ...(task.projectTag ? { "Project Tag": task.projectTag } : {}),
+          },
           updatedAt: now,
         };
         const taskRow = existingTask
@@ -731,6 +1770,8 @@ export function orionService(db: Db) {
               priority: task.priority,
               requestedMode: task.requestedMode ?? null,
               projectId: task.projectId ?? null,
+              taskKey: task.taskKey ?? null,
+              projectTag: task.projectTag ?? null,
             },
             lastExternalEditedAt: notionLastEditedAt,
             lastOrionEditedAt: taskRow.updatedAt,
@@ -750,6 +1791,8 @@ export function orionService(db: Db) {
                 priority: task.priority,
                 requestedMode: task.requestedMode ?? null,
                 projectId: task.projectId ?? null,
+                taskKey: task.taskKey ?? null,
+                projectTag: task.projectTag ?? null,
               },
               lastExternalEditedAt: notionLastEditedAt,
               lastOrionEditedAt: taskRow.updatedAt,
@@ -798,11 +1841,44 @@ export function orionService(db: Db) {
     },
 
     createRun: async (taskId: string, input: CreateOrionRun) => {
-      requireAutoEnvelope(input);
       const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).then((rows) => rows[0] ?? null);
       if (!task) throw notFound("Task not found");
       const agent = await db.select().from(agents).where(eq(agents.id, input.agentId)).limit(1).then((rows) => rows[0] ?? null);
       if (!agent || agent.companyId !== task.companyId) throw notFound("Agent not found");
+      if (agent.status === "terminated") throw unprocessable("Selected agent is not launchable");
+
+      const activeRunScope = task.executionRunId
+        ? or(eq(heartbeatRuns.id, task.executionRunId), taskContextFilter(task.id))
+        : taskContextFilter(task.id);
+      const existingActiveRun = await db
+        .select({ id: heartbeatRuns.id, status: heartbeatRuns.status })
+        .from(heartbeatRuns)
+        .where(and(
+          eq(heartbeatRuns.companyId, task.companyId),
+          inArray(heartbeatRuns.status, [...ACTIVE_ORION_RUN_STATUSES]),
+          activeRunScope,
+        ))
+        .orderBy(desc(heartbeatRuns.createdAt))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      if (existingActiveRun) {
+        throw conflict("Task already has an active Orion run", {
+          runId: existingActiveRun.id,
+          status: existingActiveRun.status,
+        });
+      }
+
+      const storedPolicy = await db
+        .select()
+        .from(orionTaskPolicies)
+        .where(eq(orionTaskPolicies.taskId, task.id))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      const storedEnvelope = storedPolicy?.autonomyEnvelope as OrionAutonomyEnvelope | null | undefined;
+      const resolvedEnvelope = input.autonomyEnvelope ?? (
+        storedPolicy?.mode === input.mode ? storedEnvelope ?? null : null
+      );
+      requireAutoEnvelope({ mode: input.mode, autonomyEnvelope: resolvedEnvelope });
 
       if (input.autonomyEnvelope) {
         await db
@@ -843,7 +1919,7 @@ export function orionService(db: Db) {
               source: "orion.create_run",
               taskId: task.id,
               mode: input.mode,
-              autonomyEnvelope: input.autonomyEnvelope ?? null,
+              autonomyEnvelope: resolvedEnvelope,
             },
           })
           .returning();
@@ -876,6 +1952,7 @@ export function orionService(db: Db) {
             payload: {
               taskId: task.id,
               mode: input.mode,
+              autonomyEnvelope: resolvedEnvelope,
               planSha256,
               approvedPlanSha256,
             },
@@ -925,6 +2002,678 @@ export function orionService(db: Db) {
       });
     },
 
+    saveLedgerPlan: async (runId: string, input: SaveOrionLedgerPlan) => {
+      const ledger = await getLedgerByRunId(runId);
+      if (input.expectedPreviousPlanSha256 && ledger.planSha256 !== input.expectedPreviousPlanSha256) {
+        throw conflict("Expected previous plan hash does not match the current ledger plan hash");
+      }
+      const planSha256 = sha256(input.planMarkdown);
+      const approvalStillValid = ledger.approvedPlanSha256 === planSha256 ? ledger.approvedPlanSha256 : null;
+      const approvalInvalidated = Boolean(ledger.approvedPlanSha256 && ledger.approvedPlanSha256 !== planSha256);
+
+      return await db.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(orionReqLedgers)
+          .set({
+            status: approvalStillValid ? ledger.status : "planning",
+            currentPhase: "planning",
+            planSha256,
+            approvedPlanSha256: approvalStillValid,
+            verificationStatus: approvalStillValid ? ledger.verificationStatus : null,
+            summary: input.summary ?? ledger.summary,
+            updatedAt: new Date(),
+          })
+          .where(eq(orionReqLedgers.id, ledger.id))
+          .returning();
+
+        await appendLedgerEvent({
+          client: tx,
+          ledgerId: ledger.id,
+          companyId: ledger.companyId,
+          runId,
+          eventType: approvalInvalidated ? "orion.plan.updated.approval_invalidated" : "orion.plan.saved",
+          phase: "planning",
+          message: approvalInvalidated
+            ? "Orion saved a changed plan and invalidated the previous approval."
+            : "Orion saved the run plan.",
+          payload: {
+            planSha256,
+            previousPlanSha256: ledger.planSha256,
+            invalidatedApprovedPlanSha256: approvalInvalidated ? ledger.approvedPlanSha256 : null,
+          },
+          idempotencyKey: input.idempotencyKey,
+        });
+
+        return updated!;
+      });
+    },
+
+    approveLedgerPlan: async (runId: string, input: ApproveOrionLedgerPlan) => {
+      const ledger = await getLedgerByRunId(runId);
+      if (!ledger.planSha256) throw unprocessable("Cannot approve a ledger before a plan is saved");
+      if (input.planSha256 !== ledger.planSha256) {
+        throw conflict("Approval plan hash must match the current ledger plan hash");
+      }
+
+      return await db.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(orionReqLedgers)
+          .set({
+            status: "approved",
+            currentPhase: "planning",
+            approvedPlanSha256: input.planSha256,
+            updatedAt: new Date(),
+          })
+          .where(eq(orionReqLedgers.id, ledger.id))
+          .returning();
+
+        await appendLedgerEvent({
+          client: tx,
+          ledgerId: ledger.id,
+          companyId: ledger.companyId,
+          runId,
+          eventType: "orion.plan.approved",
+          phase: "planning",
+          message: input.note ?? "Operator approved the current run plan.",
+          payload: { approvedPlanSha256: input.planSha256 },
+          idempotencyKey: input.idempotencyKey,
+        });
+
+        return updated!;
+      });
+    },
+
+    startLedgerExecution: async (runId: string, input: StartOrionLedgerExecution) => {
+      const ledger = await getLedgerByRunId(runId);
+      const planSha256 = assertPlanMatchesLedger(
+        ledger,
+        input.planSha256,
+        "Execution plan hash does not match the approved/current ledger plan hash",
+      );
+
+      return await db.transaction(async (tx) => {
+        await tx
+          .update(heartbeatRuns)
+          .set({ status: "running", startedAt: new Date(), updatedAt: new Date() })
+          .where(eq(heartbeatRuns.id, runId));
+        const [updated] = await tx
+          .update(orionReqLedgers)
+          .set({ status: "executing", currentPhase: "execution", updatedAt: new Date() })
+          .where(eq(orionReqLedgers.id, ledger.id))
+          .returning();
+
+        await appendLedgerEvent({
+          client: tx,
+          ledgerId: ledger.id,
+          companyId: ledger.companyId,
+          runId,
+          eventType: "orion.execution.started",
+          phase: "execution",
+          message: input.note ?? "Orion marked execution as started.",
+          payload: { planSha256 },
+          idempotencyKey: input.idempotencyKey,
+        });
+
+        return updated!;
+      });
+    },
+
+    startCodexRun: async (runId: string, input: StartOrionCodexRun) => {
+      const [joined] = await db
+        .select({
+          run: heartbeatRuns,
+          ledger: orionReqLedgers,
+          task: tasks,
+          agent: agents,
+        })
+        .from(heartbeatRuns)
+        .innerJoin(orionReqLedgers, eq(orionReqLedgers.runId, heartbeatRuns.id))
+        .innerJoin(tasks, eq(tasks.id, orionReqLedgers.taskId))
+        .innerJoin(agents, eq(agents.id, heartbeatRuns.agentId))
+        .where(eq(heartbeatRuns.id, runId))
+        .limit(1);
+      if (!joined) throw notFound("Orion run not found");
+      const { run, ledger, task, agent } = joined;
+      if (run.companyId !== ledger.companyId || task.companyId !== run.companyId || agent.companyId !== run.companyId) {
+        throw conflict("Orion run ownership is inconsistent");
+      }
+      if (ORION_TERMINAL_RUN_STATUSES.has(run.status)) {
+        throw conflict("Terminal Orion runs cannot be started");
+      }
+      if (run.status !== "queued") {
+        throw conflict("Codex execution can only start from a queued Orion run", {
+          status: run.status,
+        });
+      }
+      if (agent.adapterType !== "codex_local") {
+        throw unprocessable("Orion Codex execution requires a codex_local agent", {
+          adapterType: agent.adapterType,
+        });
+      }
+      if (!ledger.planSha256) {
+        throw unprocessable("Cannot start Codex before a plan is saved");
+      }
+      if (!ledger.approvedPlanSha256) {
+        throw unprocessable("Cannot start Codex before the current plan is approved");
+      }
+      if (ledger.approvedPlanSha256 !== ledger.planSha256) {
+        throw conflict("Approved plan hash must match the current ledger plan hash");
+      }
+      if (input.planSha256 && input.planSha256 !== ledger.approvedPlanSha256) {
+        throw conflict("Codex execution plan hash does not match the approved ledger plan hash");
+      }
+
+      const policy = await db
+        .select()
+        .from(orionTaskPolicies)
+        .where(eq(orionTaskPolicies.taskId, ledger.taskId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      const envelope = policy?.autonomyEnvelope as OrionAutonomyEnvelope | null | undefined;
+      if (!envelope) {
+        throw unprocessable("Codex execution requires a saved autonomy envelope");
+      }
+      if (policy?.mode !== ledger.mode || envelope.mode !== ledger.mode) {
+        throw unprocessable("Saved autonomy envelope mode must match the Orion run mode");
+      }
+
+      const runContext = readRecord(run.contextSnapshot);
+      const existingOrionContext = readRecord(runContext.paperclipOrion);
+      if (existingOrionContext.executionRequested === true) {
+        if (input.idempotencyKey) {
+          const existingEvent = await db
+            .select()
+            .from(orionReqLedgerEvents)
+            .where(eq(orionReqLedgerEvents.ledgerId, ledger.id))
+            .then((rows) => rows.find((event) => (event.payload as Record<string, unknown> | null)?.idempotencyKey === input.idempotencyKey) ?? null);
+          if (existingEvent) {
+            return { run, ledger, alreadyStarted: true };
+          }
+        }
+        throw conflict("Codex execution has already been requested for this Orion run");
+      }
+
+      return await db.transaction(async (tx) => {
+        const nextContext = {
+          ...runContext,
+          paperclipOrion: {
+            ...existingOrionContext,
+            executionRequested: true,
+            worker: "codex_local",
+            ledgerId: ledger.id,
+            mode: ledger.mode,
+            taskId: task.id,
+            taskIdentifier: task.identifier ?? null,
+            taskTitle: task.title,
+            approvedPlanSha256: ledger.approvedPlanSha256,
+            planSha256: ledger.planSha256,
+            planSummary: ledger.summary ?? null,
+            autonomyEnvelope: envelope,
+            constraints: {
+              noPrCreation: true,
+              noAutoMerge: true,
+              noSecretReads: true,
+              orionOwnsLedgerAndAuthorityState: true,
+            },
+            verification: input.verification
+              ? {
+                  autoRun: input.verification.autoRun ?? false,
+                  commands: input.verification.commands,
+                }
+              : null,
+          },
+          workspaceStrategy: {
+            type: "git_worktree",
+            branchTemplate: "orion/{{task.identifier}}-{{slug}}",
+          },
+        };
+        const [updatedRun] = await tx
+          .update(heartbeatRuns)
+          .set({
+            contextSnapshot: nextContext,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(heartbeatRuns.id, runId), eq(heartbeatRuns.status, "queued")))
+          .returning();
+        if (!updatedRun) throw conflict("Codex execution can only start from a queued Orion run");
+
+        const [updatedLedger] = await tx
+          .update(orionReqLedgers)
+          .set({ status: "executing", currentPhase: "execution", updatedAt: new Date() })
+          .where(eq(orionReqLedgers.id, ledger.id))
+          .returning();
+
+        await appendLedgerEvent({
+          client: tx,
+          ledgerId: ledger.id,
+          companyId: ledger.companyId,
+          runId,
+          eventType: "orion.execution.started",
+          phase: "execution",
+          message: input.note ?? "Orion started bounded Codex worktree execution.",
+          payload: {
+            planSha256: ledger.approvedPlanSha256,
+            worker: "codex_local",
+            taskId: task.id,
+          },
+          idempotencyKey: input.idempotencyKey,
+        });
+
+        return { run: updatedRun!, ledger: updatedLedger!, alreadyStarted: false };
+      });
+    },
+
+    recordLedgerEvidence: async (runId: string, input: RecordOrionLedgerEvidence) => {
+      const ledger = await getLedgerByRunId(runId);
+      const planSha256 = assertPlanMatchesLedger(
+        ledger,
+        input.planSha256,
+        "Evidence plan hash does not match the approved/current ledger plan hash",
+      );
+      const artifactSha256 = input.sha256 ?? (input.body ? sha256(input.body) : null);
+      const existingEvents = input.idempotencyKey
+        ? await db
+          .select()
+          .from(orionReqLedgerEvents)
+          .where(eq(orionReqLedgerEvents.ledgerId, ledger.id))
+          .then((rows) => rows.filter((event) => (event.payload as Record<string, unknown> | null)?.idempotencyKey === input.idempotencyKey))
+        : [];
+      if (existingEvents.length > 0) {
+        return await db
+          .select()
+          .from(orionReqLedgerArtifacts)
+          .where(eq(orionReqLedgerArtifacts.ledgerId, ledger.id))
+          .orderBy(desc(orionReqLedgerArtifacts.createdAt))
+          .limit(1)
+          .then((rows) => rows[0] ?? null);
+      }
+
+      return await db.transaction(async (tx) => {
+        const [artifact] = await tx
+          .insert(orionReqLedgerArtifacts)
+          .values({
+            ledgerId: ledger.id,
+            companyId: ledger.companyId,
+            phase: input.phase,
+            kind: input.kind,
+            title: input.title,
+            body: input.body ?? null,
+            sha256: artifactSha256,
+            metadata: {
+              ...input.metadata,
+              planSha256: planSha256 ?? null,
+            },
+          })
+          .returning();
+
+        await tx
+          .update(orionReqLedgers)
+          .set({ currentPhase: input.phase, updatedAt: new Date() })
+          .where(eq(orionReqLedgers.id, ledger.id));
+
+        await appendLedgerEvent({
+          client: tx,
+          ledgerId: ledger.id,
+          companyId: ledger.companyId,
+          runId,
+          eventType: "orion.evidence.recorded",
+          phase: input.phase,
+          message: `Orion recorded ${input.kind} evidence: ${input.title}.`,
+          payload: {
+            artifactId: artifact!.id,
+            kind: artifact!.kind,
+            title: artifact!.title,
+            sha256: artifactSha256,
+            planSha256: planSha256 ?? null,
+          },
+          idempotencyKey: input.idempotencyKey,
+        });
+
+        return artifact!;
+      });
+    },
+
+    runVerification: async (runId: string, input: RunOrionVerification) => {
+      const [joined] = await db
+        .select({
+          run: heartbeatRuns,
+          ledger: orionReqLedgers,
+          task: tasks,
+        })
+        .from(orionReqLedgers)
+        .innerJoin(heartbeatRuns, eq(heartbeatRuns.id, orionReqLedgers.runId))
+        .innerJoin(tasks, eq(tasks.id, orionReqLedgers.taskId))
+        .where(eq(orionReqLedgers.runId, runId))
+        .limit(1);
+      if (!joined) throw notFound("Orion run not found");
+      const { run, ledger, task } = joined;
+      if (run.companyId !== ledger.companyId || task.companyId !== run.companyId) {
+        throw conflict("Orion run ownership is inconsistent");
+      }
+      const planSha256 = assertPlanMatchesLedger(
+        ledger,
+        input.planSha256,
+        "Verification plan hash does not match the approved/current ledger plan hash",
+      );
+      const existingIdempotentEvent = input.idempotencyKey
+        ? await db
+          .select()
+          .from(orionReqLedgerEvents)
+          .where(eq(orionReqLedgerEvents.ledgerId, ledger.id))
+          .then((rows) => rows.find((event) => (event.payload as Record<string, unknown> | null)?.idempotencyKey === input.idempotencyKey) ?? null)
+        : null;
+      if (existingIdempotentEvent) {
+        return await getLedgerByRunId(runId);
+      }
+      if (!ledger.approvedPlanSha256 || ledger.approvedPlanSha256 !== ledger.planSha256) {
+        throw unprocessable("Verification requires an approved current plan hash");
+      }
+      if (!["awaiting_verification", "verification_failed", "verification_blocked"].includes(ledger.status)) {
+        throw conflict("Orion verification can only run after Codex execution is awaiting verification", {
+          status: ledger.status,
+        });
+      }
+
+      const policy = await db
+        .select()
+        .from(orionTaskPolicies)
+        .where(eq(orionTaskPolicies.taskId, ledger.taskId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      const envelope = policy?.autonomyEnvelope as OrionAutonomyEnvelope | null | undefined;
+      if (!envelope) {
+        throw unprocessable("Verification requires a saved autonomy envelope");
+      }
+      if (policy?.mode !== ledger.mode || envelope.mode !== ledger.mode) {
+        throw unprocessable("Saved autonomy envelope mode must match the Orion run mode");
+      }
+      if (envelope.requiresTests && input.commands.length === 0) {
+        throw unprocessable("Verification commands are required by the saved autonomy envelope");
+      }
+
+      const runContext = readRecord(run.contextSnapshot);
+      const workspaceContext = readRecord(runContext.paperclipWorkspace);
+      const contextCwd = typeof workspaceContext.cwd === "string" && workspaceContext.cwd.trim().length > 0
+        ? workspaceContext.cwd.trim()
+        : null;
+      const executionWorkspaceId = typeof runContext.executionWorkspaceId === "string"
+        ? runContext.executionWorkspaceId
+        : typeof workspaceContext.executionWorkspaceId === "string"
+          ? workspaceContext.executionWorkspaceId
+          : null;
+      const persistedCwd = executionWorkspaceId
+        ? await db
+          .select({ cwd: executionWorkspaces.cwd })
+          .from(executionWorkspaces)
+          .where(eq(executionWorkspaces.id, executionWorkspaceId))
+          .limit(1)
+          .then((rows) => rows[0]?.cwd ?? null)
+        : null;
+      const worktreeCwd = contextCwd ?? persistedCwd;
+
+      if (!worktreeCwd) {
+        return await db.transaction(async (tx) => {
+          await tx.insert(orionReqLedgerArtifacts).values({
+            ledgerId: ledger.id,
+            companyId: ledger.companyId,
+            phase: "verification",
+            kind: "verification_blocked",
+            title: "Verification blocked: missing worktree",
+            body: "Orion could not find the isolated execution worktree for this run.",
+            metadata: { reason: "missing_worktree", planSha256: planSha256 ?? null },
+          });
+          const [updated] = await tx
+            .update(orionReqLedgers)
+            .set({
+              status: "verification_blocked",
+              currentPhase: "verification",
+              verificationStatus: "blocked",
+              updatedAt: new Date(),
+            })
+            .where(eq(orionReqLedgers.id, ledger.id))
+            .returning();
+          await appendLedgerEvent({
+            client: tx,
+            ledgerId: ledger.id,
+            companyId: ledger.companyId,
+            runId,
+            eventType: "orion.verification.blocked",
+            phase: "verification",
+            message: "Verification blocked because the execution worktree is missing.",
+            payload: { reason: "missing_worktree", planSha256: planSha256 ?? null },
+            idempotencyKey: input.idempotencyKey,
+          });
+          return updated!;
+        });
+      }
+
+      let changedPaths: string[] = [];
+      try {
+        changedPaths = await listChangedPaths(worktreeCwd);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return await db.transaction(async (tx) => {
+          await tx.insert(orionReqLedgerArtifacts).values({
+            ledgerId: ledger.id,
+            companyId: ledger.companyId,
+            phase: "verification",
+            kind: "verification_blocked",
+            title: "Verification blocked: changed paths unavailable",
+            body: message,
+            metadata: { reason: "changed_paths_unavailable", cwd: worktreeCwd, planSha256: planSha256 ?? null },
+          });
+          const [updated] = await tx
+            .update(orionReqLedgers)
+            .set({
+              status: "verification_blocked",
+              currentPhase: "verification",
+              verificationStatus: "blocked",
+              updatedAt: new Date(),
+            })
+            .where(eq(orionReqLedgers.id, ledger.id))
+            .returning();
+          await appendLedgerEvent({
+            client: tx,
+            ledgerId: ledger.id,
+            companyId: ledger.companyId,
+            runId,
+            eventType: "orion.verification.blocked",
+            phase: "verification",
+            message: "Verification blocked because changed paths could not be read.",
+            payload: { reason: "changed_paths_unavailable", cwd: worktreeCwd, planSha256: planSha256 ?? null },
+            idempotencyKey: input.idempotencyKey,
+          });
+          return updated!;
+        });
+      }
+
+      const pathViolations = findChangedPathViolations(changedPaths, envelope);
+      if (pathViolations.length > 0) {
+        return await db.transaction(async (tx) => {
+          await tx.insert(orionReqLedgerArtifacts).values({
+            ledgerId: ledger.id,
+            companyId: ledger.companyId,
+            phase: "verification",
+            kind: "path_guard",
+            title: "Changed paths violate the autonomy envelope",
+            body: JSON.stringify(pathViolations, null, 2),
+            metadata: {
+              status: "failed",
+              changedPaths,
+              violations: pathViolations,
+              planSha256: planSha256 ?? null,
+            },
+          });
+          const [updated] = await tx
+            .update(orionReqLedgers)
+            .set({
+              status: "verification_failed",
+              currentPhase: "verification",
+              verificationStatus: "failed",
+              updatedAt: new Date(),
+            })
+            .where(eq(orionReqLedgers.id, ledger.id))
+            .returning();
+          await appendLedgerEvent({
+            client: tx,
+            ledgerId: ledger.id,
+            companyId: ledger.companyId,
+            runId,
+            eventType: "orion.verification.failed",
+            phase: "verification",
+            message: "Verification failed because changed paths violate the autonomy envelope.",
+            payload: {
+              reason: "path_guard",
+              changedPaths,
+              violations: pathViolations,
+              planSha256: planSha256 ?? null,
+            },
+            idempotencyKey: input.idempotencyKey,
+          });
+          return updated!;
+        });
+      }
+
+      const commandResults: Array<{
+        name: string;
+        command: string;
+        cwd: string;
+        required: boolean;
+        status: "passed" | "failed" | "timed_out";
+        exitCode: number | null;
+        signal: string | null;
+        stdout: string;
+        stderr: string;
+        durationMs: number;
+      }> = [];
+      for (const [index, command] of input.commands.entries()) {
+        const name = command.name?.trim() || `Verification command ${index + 1}`;
+        const cwd = resolveVerificationCwd(worktreeCwd, command.cwd);
+        const result = await runVerificationShellCommand({
+          command: command.command,
+          cwd,
+          timeoutSeconds: command.timeoutSeconds ?? Math.min(envelope.maxRuntimeMinutes * 60, 60 * 60),
+        });
+        commandResults.push({
+          name,
+          command: command.command,
+          cwd,
+          required: command.required ?? true,
+          ...result,
+        });
+      }
+
+      const failedRequired = commandResults.find((result) => result.required && result.status !== "passed") ?? null;
+      const finalStatus = failedRequired ? "failed" : "passed";
+      const ledgerStatus = finalStatus === "passed" ? "verified" : "verification_failed";
+      const eventType = finalStatus === "passed" ? "orion.verification.passed" : "orion.verification.failed";
+      const message = finalStatus === "passed"
+        ? "Verification passed."
+        : `Verification failed: ${failedRequired?.name ?? "required command failed"}.`;
+
+      return await db.transaction(async (tx) => {
+        await tx.insert(orionReqLedgerArtifacts).values({
+          ledgerId: ledger.id,
+          companyId: ledger.companyId,
+          phase: "verification",
+          kind: "verification_result",
+          title: finalStatus === "passed" ? "Verification passed" : "Verification failed",
+          body: JSON.stringify({
+            status: finalStatus,
+            changedPaths,
+            commands: commandResults.map((result) => ({
+              name: result.name,
+              command: result.command,
+              cwd: result.cwd,
+              required: result.required,
+              status: result.status,
+              exitCode: result.exitCode,
+              signal: result.signal ?? null,
+              durationMs: result.durationMs,
+              stdout: result.stdout,
+              stderr: result.stderr,
+            })),
+          }, null, 2),
+          metadata: {
+            status: finalStatus,
+            changedPaths,
+            commandCount: commandResults.length,
+            failedCommand: failedRequired?.name ?? null,
+            planSha256: planSha256 ?? null,
+          },
+        });
+        const [updated] = await tx
+          .update(orionReqLedgers)
+          .set({
+            status: ledgerStatus,
+            currentPhase: "verification",
+            verificationStatus: finalStatus,
+            updatedAt: new Date(),
+          })
+          .where(eq(orionReqLedgers.id, ledger.id))
+          .returning();
+        await appendLedgerEvent({
+          client: tx,
+          ledgerId: ledger.id,
+          companyId: ledger.companyId,
+          runId,
+          eventType,
+          phase: "verification",
+          message,
+          payload: {
+            status: finalStatus,
+            changedPaths,
+            commandCount: commandResults.length,
+            failedCommand: failedRequired?.name ?? null,
+            planSha256: planSha256 ?? null,
+          },
+          idempotencyKey: input.idempotencyKey,
+        });
+        return updated!;
+      });
+    },
+
+    recordLedgerVerification: async (runId: string, input: RecordOrionLedgerVerification) => {
+      const ledger = await getLedgerByRunId(runId);
+      const planSha256 = assertPlanMatchesLedger(
+        ledger,
+        input.planSha256,
+        "Verification plan hash does not match the approved/current ledger plan hash",
+      );
+      const ledgerStatus = input.status === "passed" ? "verified" : input.status === "failed" ? "verification_failed" : "verification_blocked";
+
+      return await db.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(orionReqLedgers)
+          .set({
+            status: ledgerStatus,
+            currentPhase: "verification",
+            verificationStatus: input.status,
+            updatedAt: new Date(),
+          })
+          .where(eq(orionReqLedgers.id, ledger.id))
+          .returning();
+
+        await appendLedgerEvent({
+          client: tx,
+          ledgerId: ledger.id,
+          companyId: ledger.companyId,
+          runId,
+          eventType: "orion.verification.recorded",
+          phase: "verification",
+          message: input.summary ?? `Verification ${input.status}.`,
+          payload: {
+            status: input.status,
+            planSha256: planSha256 ?? null,
+            metadata: input.metadata,
+          },
+          idempotencyKey: input.idempotencyKey,
+        });
+
+        return updated!;
+      });
+    },
+
     cancelRun: async (runId: string, reason?: string | null) => {
       const [run] = await db
         .update(heartbeatRuns)
@@ -938,6 +2687,10 @@ export function orionService(db: Db) {
           .update(orionReqLedgers)
           .set({ status: "cancelled", currentPhase: "cancelled", updatedAt: new Date() })
           .where(eq(orionReqLedgers.id, ledger.id));
+        await db
+          .update(tasks)
+          .set({ executionRunId: null, updatedAt: new Date() })
+          .where(and(eq(tasks.id, ledger.taskId), eq(tasks.executionRunId, runId)));
         await appendLedgerEvent({
           ledgerId: ledger.id,
           companyId: ledger.companyId,
@@ -951,119 +2704,211 @@ export function orionService(db: Db) {
     },
 
     getLedger: async (runId: string) => {
-      const ledger = await db.select().from(orionReqLedgers).where(eq(orionReqLedgers.runId, runId)).limit(1).then((rows) => rows[0] ?? null);
-      if (!ledger) throw notFound("Ledger not found");
-      const events = await db
-        .select()
-        .from(orionReqLedgerEvents)
-        .where(eq(orionReqLedgerEvents.ledgerId, ledger.id))
-        .orderBy(orionReqLedgerEvents.seq);
-      return { ...ledger, events };
+      const ledger = await getLedgerByRunId(runId);
+      const [events, artifacts, prReceiptRecord] = await Promise.all([
+        db
+          .select()
+          .from(orionReqLedgerEvents)
+          .where(eq(orionReqLedgerEvents.ledgerId, ledger.id))
+          .orderBy(orionReqLedgerEvents.seq),
+        db
+          .select()
+          .from(orionReqLedgerArtifacts)
+          .where(eq(orionReqLedgerArtifacts.ledgerId, ledger.id))
+          .orderBy(orionReqLedgerArtifacts.createdAt),
+        db
+          .select()
+          .from(orionPrReceipts)
+          .where(eq(orionPrReceipts.runId, runId))
+          .limit(1)
+          .then((rows) => rows[0] ?? null),
+      ]);
+      return { ...ledger, events, artifacts, prReceiptRecord };
     },
 
-    recordPr: async (runId: string, input: RecordOrionPr) => {
-      const ledger = await db.select().from(orionReqLedgers).where(eq(orionReqLedgers.runId, runId)).limit(1).then((rows) => rows[0] ?? null);
-      if (!ledger) throw notFound("Ledger not found");
-      const policy = await db.select().from(orionTaskPolicies).where(eq(orionTaskPolicies.taskId, ledger.taskId)).limit(1).then((rows) => rows[0] ?? null);
+    recordPr: recordPrReceipt,
+    syncbackNotion,
+
+    openPr: async (runId: string, input: OpenOrionPr) => {
+      const existingReceipt = await db
+        .select()
+        .from(orionPrReceipts)
+        .where(eq(orionPrReceipts.runId, runId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      if (existingReceipt) return existingReceipt;
+
+      const [joined] = await db
+        .select({
+          run: heartbeatRuns,
+          ledger: orionReqLedgers,
+          task: tasks,
+        })
+        .from(orionReqLedgers)
+        .innerJoin(heartbeatRuns, eq(heartbeatRuns.id, orionReqLedgers.runId))
+        .innerJoin(tasks, eq(tasks.id, orionReqLedgers.taskId))
+        .where(eq(orionReqLedgers.runId, runId))
+        .limit(1);
+      if (!joined) throw notFound("Orion run not found");
+      const { run, ledger, task } = joined;
+
+      if (ledger.status !== "verified" || ledger.verificationStatus !== "passed") {
+        throw conflict("Orion PR creation requires passed verification", {
+          status: ledger.status,
+          verificationStatus: ledger.verificationStatus,
+        });
+      }
+      if (!ledger.approvedPlanSha256 || ledger.approvedPlanSha256 !== ledger.planSha256) {
+        throw conflict("Orion PR creation requires an approved current plan hash");
+      }
+      if (input.planSha256 && input.planSha256 !== ledger.approvedPlanSha256) {
+        throw conflict("PR creation plan hash does not match the approved ledger plan hash");
+      }
+
+      const policy = await db
+        .select()
+        .from(orionTaskPolicies)
+        .where(eq(orionTaskPolicies.taskId, ledger.taskId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
       const envelope = policy?.autonomyEnvelope as OrionAutonomyEnvelope | null | undefined;
-      if (envelope) {
-        if (!envelope.allowedRepos.includes(input.repository)) {
-          throw unprocessable("PR repository is outside the autonomy envelope", {
-            repository: input.repository,
-            allowedRepos: envelope.allowedRepos,
-          });
-        }
-        validateChangedPathsAgainstEnvelope(input.changedPaths, envelope);
+      if (!envelope) throw unprocessable("Orion PR creation requires a saved autonomy envelope");
+      if (policy?.mode !== ledger.mode || envelope.mode !== ledger.mode) {
+        throw unprocessable("Saved autonomy envelope mode must match the Orion run mode");
       }
-      const expectedPlanSha = ledger.approvedPlanSha256 ?? ledger.planSha256;
-      if (expectedPlanSha && input.planSha256 && input.planSha256 !== expectedPlanSha) {
-        throw conflict("PR receipt plan hash does not match the approved ledger plan hash");
+      if (!envelope.opensPr) {
+        throw unprocessable("Saved autonomy envelope does not allow PR creation");
       }
 
-      return await db.transaction(async (tx) => {
-        const [receipt] = await tx
-          .insert(orionPrReceipts)
-          .values({
-            companyId: ledger.companyId,
-            taskId: ledger.taskId,
-            runId,
-            ledgerId: ledger.id,
-            repository: input.repository,
-            branch: input.branch,
-            baseBranch: input.baseBranch ?? null,
-            prNumber: input.prNumber ?? null,
-            prUrl: input.prUrl,
-            title: input.title,
-            draft: input.draft,
-            planSha256: input.planSha256 ?? expectedPlanSha ?? null,
-            changedPaths: input.changedPaths,
-          })
-          .onConflictDoUpdate({
-            target: orionPrReceipts.runId,
-            set: {
-              repository: input.repository,
-              branch: input.branch,
-              baseBranch: input.baseBranch ?? null,
-              prNumber: input.prNumber ?? null,
-              prUrl: input.prUrl,
-              title: input.title,
-              draft: input.draft,
-              planSha256: input.planSha256 ?? expectedPlanSha ?? null,
-              changedPaths: input.changedPaths,
-              updatedAt: new Date(),
-            },
-          })
-          .returning();
-
-        await tx
-          .insert(taskWorkProducts)
-          .values({
-            companyId: ledger.companyId,
-            taskId: ledger.taskId,
-            type: "pull_request",
-            provider: "github",
-            externalId: receipt!.prNumber == null ? receipt!.prUrl : String(receipt!.prNumber),
-            title: receipt!.title,
-            url: receipt!.prUrl,
-            status: receipt!.draft ? "draft" : "ready_for_review",
-            reviewState: "needs_board_review",
-            isPrimary: true,
-            healthStatus: "unknown",
-            metadata: {
-              repository: receipt!.repository,
-              branch: receipt!.branch,
-              baseBranch: receipt!.baseBranch,
-              changedPaths: receipt!.changedPaths,
-            },
-            createdByRunId: runId,
-          });
-
-        await tx
-          .update(orionReqLedgers)
-          .set({
-            status: "pr_opened",
-            currentPhase: "publishing",
-            prReceipt: receipt!,
-            updatedAt: new Date(),
-          })
-          .where(eq(orionReqLedgers.id, ledger.id));
-
-        await tx
-          .insert(orionReqLedgerEvents)
-          .values({
-            ledgerId: ledger.id,
-            companyId: ledger.companyId,
-            runId,
-            seq: 999_999,
-            eventType: "orion.pr.recorded",
-            phase: "publishing",
-            message: "Orion recorded the PR receipt.",
-            payload: { prUrl: receipt!.prUrl, repository: receipt!.repository, branch: receipt!.branch },
-          })
-          .onConflictDoNothing();
-
-        return receipt!;
+      const workspace = await resolveRunWorkspace(run);
+      if (!workspace.cwd) throw unprocessable("Orion PR creation requires an isolated execution worktree");
+      if (!workspace.repoUrl) throw unprocessable("Orion PR creation requires a repository URL");
+      const auth = await resolveGitAuth({ db, companyId: ledger.companyId, provider: "github" });
+      const parsed = assertProviderHost({
+        repoUrl: workspace.repoUrl,
+        provider: "github",
+        configuredHost: auth.host,
       });
+      const repository = normalizeRepositoryKey({ host: parsed.host, owner: parsed.owner, repo: parsed.repoName });
+      if (!envelope.allowedRepos.includes(repository)) {
+        throw unprocessable("PR repository is outside the autonomy envelope", {
+          repository,
+          allowedRepos: envelope.allowedRepos,
+        });
+      }
+
+      const branch = workspace.branchName ?? await currentGitBranch(workspace.cwd);
+      if (!branch || branch === "HEAD") throw unprocessable("Orion PR creation requires a named execution branch");
+      const baseBranch = input.baseBranch ?? workspace.baseRef;
+      if (!baseBranch) throw unprocessable("Orion PR creation requires a base branch");
+      const changedPaths = await listChangedPaths(workspace.cwd);
+      if (changedPaths.length === 0) {
+        throw unprocessable("Orion PR creation requires verified worktree changes to commit");
+      }
+      validateChangedPathsAgainstEnvelope(changedPaths, envelope);
+
+      await appendLedgerEvent({
+        ledgerId: ledger.id,
+        companyId: ledger.companyId,
+        runId,
+        eventType: "orion.pr.publish_started",
+        phase: "publishing",
+        message: "Orion started PR publishing.",
+        payload: { repository, branch, baseBranch, changedPaths, planSha256: ledger.approvedPlanSha256 },
+        idempotencyKey: input.idempotencyKey ? `${input.idempotencyKey}:publish-started` : null,
+      });
+
+      const headSha = await createOrionCommit({
+        cwd: workspace.cwd,
+        task,
+        runId,
+        ledgerId: ledger.id,
+        planSha256: ledger.approvedPlanSha256,
+        changedPaths,
+      });
+      try {
+        await runGitWithAuth({
+          args: ["push", "origin", `${branch}:${branch}`],
+          cwd: workspace.cwd,
+          username: auth.username,
+          password: auth.password,
+          timeout: 2 * 60 * 1000,
+        });
+      } catch (error) {
+        throw unprocessable("Orion could not push the verified branch to GitHub", {
+          reason: cleanGitError(error),
+        });
+      }
+
+      const template = await readPullRequestTemplate(workspace.cwd);
+      const title = input.title ?? prTemplateTitle(task);
+      const body = [
+        input.body ?? null,
+        template ? `## Repository PR Template\n\n${template}` : null,
+        "## Orion Evidence",
+        `- Task: ${task.identifier ?? task.taskKey ?? task.id}`,
+        `- Run: ${runId}`,
+        `- Ledger: ${ledger.id}`,
+        `- Approved plan: ${ledger.approvedPlanSha256}`,
+        `- Verification: ${ledger.verificationStatus}`,
+        `- Head SHA: ${headSha}`,
+        `- Changed paths: ${changedPaths.join(", ")}`,
+        "",
+        "Codex produced the worktree changes. Orion committed, pushed, opened this PR, and recorded the receipt.",
+      ].filter((value): value is string => Boolean(value)).join("\n\n");
+
+      const pr = await openGitHubPullRequest({
+        host: parsed.host,
+        owner: parsed.owner,
+        repo: parsed.repoName,
+        token: auth.password,
+        branch,
+        baseBranch,
+        title,
+        body,
+        draft: input.draft,
+      });
+
+      await db.insert(orionReqLedgerArtifacts).values({
+        ledgerId: ledger.id,
+        companyId: ledger.companyId,
+        phase: "publishing",
+        kind: "github_pr_publish",
+        title: "Orion opened a GitHub PR",
+        body: JSON.stringify({
+          repository,
+          branch,
+          baseBranch,
+          headSha,
+          changedPaths,
+          prUrl: githubPrUrl(pr),
+        }, null, 2),
+        metadata: {
+          repository,
+          branch,
+          baseBranch,
+          headSha,
+          changedPaths,
+          prNumber: githubPrNumber(pr),
+          prUrl: githubPrUrl(pr),
+          planSha256: ledger.approvedPlanSha256,
+        },
+      });
+
+      const receipt = await recordPrReceipt(runId, {
+        repository,
+        branch,
+        baseBranch,
+        prNumber: githubPrNumber(pr),
+        prUrl: githubPrUrl(pr),
+        title,
+        draft: input.draft,
+        planSha256: ledger.approvedPlanSha256,
+        changedPaths,
+        idempotencyKey: input.idempotencyKey,
+      });
+      await maybeSyncbackNotionTask(ledger.companyId, ledger.taskId, runId);
+      return receipt;
     },
   };
 }

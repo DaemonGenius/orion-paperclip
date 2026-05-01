@@ -576,12 +576,21 @@ function taskProjectNameFromProperties(properties: unknown) {
 
 function taskProjectTagFromProperties(properties: unknown) {
   return normalizeProjectTaskPrefix(propertyTextByNames(properties, [
-    "project tag",
+    NOTION_TASK_PROPERTY_NAMES.projectTag,
     "project tag name",
     "project key",
     "project prefix",
     "task prefix",
   ]));
+}
+
+function projectRootMetadataFromProperties(properties: unknown) {
+  return {
+    projectTag: taskProjectTagFromProperties(properties),
+    category: canonicalTaskPropertyText(properties, NOTION_TASK_PROPERTY_NAMES.projectCategory),
+    purpose: canonicalTaskPropertyText(properties, NOTION_TASK_PROPERTY_NAMES.projectPurpose),
+    repoPath: canonicalTaskPropertyText(properties, NOTION_TASK_PROPERTY_NAMES.repoPath),
+  };
 }
 
 function isTasksClassification(classification: NotionClassification) {
@@ -828,6 +837,15 @@ export function knowledgeService(db: Db) {
     };
   }
 
+  async function fetchNotionPageMetadata(token: string, pageId: string, fallbackTitle: string) {
+    const page = await notionFetch(token, `/pages/${encodeURIComponent(pageId)}`);
+    return {
+      title: titleFromProperties(page.properties) ?? fallbackTitle,
+      lastEditedAt: notionLastEdited(page),
+      properties: asRecord(page.properties),
+    };
+  }
+
   async function queryNotionDatabaseRows(token: string, databaseId: string, maxRows: number) {
     const rows: Record<string, unknown>[] = [];
     let cursor: string | null = null;
@@ -903,6 +921,8 @@ export function knowledgeService(db: Db) {
   function notionMirrorMarkdown(input: {
     title: string;
     objectId: string;
+    ownerClass: SyncOwnerClass;
+    mirrorPath: string;
     syncedAt: Date;
     lastEditedAt: Date | null;
     markdown: string;
@@ -915,6 +935,8 @@ export function knowledgeService(db: Db) {
         source: "notion",
         notion_id: input.objectId,
         notion_url: notionPageUrl(input.objectId),
+        owner_class: input.ownerClass,
+        mirror_path: input.mirrorPath,
         synced_at: input.syncedAt.toISOString(),
         last_edited_at: input.lastEditedAt?.toISOString() ?? null,
       }),
@@ -982,6 +1004,7 @@ export function knowledgeService(db: Db) {
         path: relativePath,
         sourceProvider: "notion",
         sourceNotionObjectId: input.objectId,
+        ownerClass: input.ownerClass,
         ...input.metadata,
       },
       lastExternalEditedAt: input.syncedAt,
@@ -993,6 +1016,7 @@ export function knowledgeService(db: Db) {
 
   async function resolveProjectIdForNotionTask(input: {
     companyId: string;
+    rowId: string;
     properties: Record<string, unknown>;
     fallbackProjectId: string | null;
     projectsByName: Map<string, string>;
@@ -1011,50 +1035,35 @@ export function knowledgeService(db: Db) {
         }
         return existingByTag;
       }
+      await upsertSyncConflict({
+        companyId: input.companyId,
+        localObjectType: "notion_database_row",
+        localObjectId: `notion:${input.rowId}`,
+        externalObjectId: input.rowId,
+        kind: "unknown_notion_project_tag",
+        field: NOTION_TASK_PROPERTY_NAMES.projectTag,
+        value: notionProjectTag,
+        message: "Notion task row has a Project Tag that does not match an imported Orion project.",
+      });
+      return null;
     }
+
+    if (input.fallbackProjectId) return input.fallbackProjectId;
 
     const notionProjectName = taskProjectNameFromProperties(input.properties);
-    if (!notionProjectName) return input.fallbackProjectId;
-
-    const normalized = normalizeTitle(notionProjectName);
-    const existing = Array.from(input.projectsByName.entries())
-      .find(([name]) => normalizeTitle(name) === normalized);
-    if (existing) {
-      const existingId = existing[1];
-      const patch: Partial<typeof projects.$inferInsert> = {};
-      if (input.projectArchivedAtById?.get(existingId)) {
-        patch.archivedAt = null;
-      }
-      if (notionProjectTag && !input.projectPrefixesById.get(existingId)) {
-        patch.taskPrefix = notionProjectTag;
-      }
-      if (Object.keys(patch).length > 0) {
-        const updated = await projectsSvc.update(existingId, patch);
-        if (updated) {
-          input.projectsByName.set(updated.name, updated.id);
-          input.projectNamesById.set(updated.id, updated.name);
-          input.projectArchivedAtById?.set(updated.id, updated.archivedAt);
-          const normalizedPrefix = normalizeProjectTaskPrefix(updated.taskPrefix);
-          input.projectPrefixesById.set(updated.id, normalizedPrefix);
-          if (normalizedPrefix) input.projectsByPrefix.set(normalizedPrefix, updated.id);
-        }
-      }
-      return existingId;
-    }
-
-    const taskPrefix = notionProjectTag ?? deriveProjectTaskPrefix(notionProjectName);
-    const project = await projectsSvc.create(input.companyId, {
-      name: notionProjectName,
-      description: "Created from Notion task sync.",
-      status: "in_progress",
-      taskPrefix,
+    await upsertSyncConflict({
+      companyId: input.companyId,
+      localObjectType: "notion_database_row",
+      localObjectId: `notion:${input.rowId}`,
+      externalObjectId: input.rowId,
+      kind: "unresolved_notion_task_project",
+      field: notionProjectName ? NOTION_TASK_PROPERTY_NAMES.projectName : NOTION_TASK_PROPERTY_NAMES.projectTag,
+      value: notionProjectName ?? "",
+      message: notionProjectName
+        ? "Notion task row has only project-name metadata; Orion requires Project Tag or containing project context for import."
+        : "Notion task row is not inside a project context and has no Project Tag.",
     });
-    input.projectsByName.set(project.name, project.id);
-    input.projectNamesById.set(project.id, project.name);
-    input.projectPrefixesById.set(project.id, normalizeProjectTaskPrefix(project.taskPrefix));
-    input.projectArchivedAtById?.set(project.id, project.archivedAt);
-    if (project.taskPrefix) input.projectsByPrefix.set(project.taskPrefix, project.id);
-    return project.id;
+    return null;
   }
 
   async function upsertTaskFromNotionTask(input: {
@@ -1178,19 +1187,22 @@ export function knowledgeService(db: Db) {
 
   async function upsertSyncConflict(input: {
     companyId: string;
+    localObjectType?: string;
     localObjectId: string;
     externalObjectId: string;
+    kind?: string;
     field: string;
     value: string;
     message: string;
   }) {
+    const localObjectType = input.localObjectType ?? "task";
     const existing = await db
       .select({ id: syncConflicts.id })
       .from(syncConflicts)
       .where(and(
         eq(syncConflicts.companyId, input.companyId),
         eq(syncConflicts.provider, "notion"),
-        eq(syncConflicts.localObjectType, "task"),
+        eq(syncConflicts.localObjectType, localObjectType),
         eq(syncConflicts.localObjectId, input.localObjectId),
         eq(syncConflicts.externalObjectId, input.externalObjectId),
         eq(syncConflicts.status, "open"),
@@ -1198,7 +1210,7 @@ export function knowledgeService(db: Db) {
       .limit(1)
       .then((rows) => rows[0] ?? null);
     const conflictJson = {
-      kind: "unknown_notion_task_option",
+      kind: input.kind ?? "unknown_notion_task_option",
       field: input.field,
       value: input.value,
       message: input.message,
@@ -1210,7 +1222,7 @@ export function knowledgeService(db: Db) {
     await db.insert(syncConflicts).values({
       companyId: input.companyId,
       provider: "notion",
-      localObjectType: "task",
+      localObjectType,
       localObjectId: input.localObjectId,
       externalObjectId: input.externalObjectId,
       status: "open",
@@ -2033,13 +2045,62 @@ export function knowledgeService(db: Db) {
         if (normalizedPrefix) projectsByPrefix.set(normalizedPrefix, updated.id);
       }
 
-      async function ensureProjectFromNotionRoot(title: string) {
-        const projectName = normalizeProjectName(title);
+      async function ensureProjectFromNotionRoot(input: {
+        pageId: string;
+        fallbackTitle: string;
+      }) {
+        const page = await fetchNotionPageMetadata(token, input.pageId, input.fallbackTitle);
+        const projectName = normalizeProjectName(page.title);
+        const rootMetadata = projectRootMetadataFromProperties(page.properties);
+        const taskPrefix = rootMetadata.projectTag;
+        if (!taskPrefix) {
+          await upsertSyncConflict({
+            companyId,
+            localObjectType: "project_workspace",
+            localObjectId: `notion:${input.pageId}`,
+            externalObjectId: input.pageId,
+            kind: "missing_notion_project_tag",
+            field: NOTION_TASK_PROPERTY_NAMES.projectTag,
+            value: "",
+            message: "Notion project roots require a stable Project Tag before Orion can import the project workspace.",
+          });
+          return null;
+        }
+
+        const existingByTag = projectsByPrefix.get(taskPrefix);
+        if (existingByTag) {
+          await reviveNotionProjectIfNeeded(existingByTag, taskPrefix);
+          return {
+            id: existingByTag,
+            name: projectNamesById.get(existingByTag) ?? projectName,
+            created: false,
+            ...rootMetadata,
+          };
+        }
+
         const existingId = findProjectIdByName(projectName);
-        const taskPrefix = deriveProjectTaskPrefix(projectName);
         if (existingId) {
+          const existingPrefix = projectPrefixesById.get(existingId);
+          if (existingPrefix && existingPrefix !== taskPrefix) {
+            await upsertSyncConflict({
+              companyId,
+              localObjectType: "project_workspace",
+              localObjectId: `notion:${input.pageId}`,
+              externalObjectId: input.pageId,
+              kind: "conflicting_notion_project_tag",
+              field: NOTION_TASK_PROPERTY_NAMES.projectTag,
+              value: taskPrefix,
+              message: `Notion project root tag ${taskPrefix} conflicts with existing Orion project prefix ${existingPrefix}.`,
+            });
+            return null;
+          }
           await reviveNotionProjectIfNeeded(existingId, taskPrefix);
-          return { id: existingId, name: projectNamesById.get(existingId) ?? projectName, created: false };
+          return {
+            id: existingId,
+            name: projectNamesById.get(existingId) ?? projectName,
+            created: false,
+            ...rootMetadata,
+          };
         }
 
         const project = await projectsSvc.create(companyId, {
@@ -2054,7 +2115,12 @@ export function knowledgeService(db: Db) {
         projectArchivedAtById.set(project.id, project.archivedAt);
         if (project.taskPrefix) projectsByPrefix.set(project.taskPrefix, project.id);
         importedProjects += 1;
-        return { id: project.id, name: project.name, created: true };
+        return {
+          id: project.id,
+          name: project.name,
+          created: true,
+          ...rootMetadata,
+        };
       }
 
       type NotionDiscoveredObject = {
@@ -2063,8 +2129,21 @@ export function knowledgeService(db: Db) {
         fallbackTitle: string;
         projectId: string | null;
         projectName: string | null;
+        projectTag: string | null;
+        projectCategory: string | null;
+        projectPurpose: string | null;
+        projectRepoPath: string | null;
         source: string;
         isProjectRoot: boolean;
+      };
+
+      type NotionProjectContext = {
+        id: string;
+        name: string;
+        projectTag: string | null;
+        category: string | null;
+        purpose: string | null;
+        repoPath: string | null;
       };
 
       async function discoverNotionObjects(rootBlockId: string) {
@@ -2074,7 +2153,7 @@ export function knowledgeService(db: Db) {
         async function walk(
           blockId: string,
           ancestors: string[],
-          projectContext: { id: string; name: string } | null,
+          projectContext: NotionProjectContext | null,
           depth: number,
         ) {
           if (discovered.length >= input.maxObjects || depth > maxDepth) return;
@@ -2095,6 +2174,10 @@ export function knowledgeService(db: Db) {
                 fallbackTitle,
                 projectId: projectContext?.id ?? null,
                 projectName: projectContext?.name ?? null,
+                projectTag: projectContext?.projectTag ?? null,
+                projectCategory: projectContext?.category ?? null,
+                projectPurpose: projectContext?.purpose ?? null,
+                projectRepoPath: projectContext?.repoPath ?? null,
                 source: projectContext ? "notion_project_child_database" : "notion_root_child_database",
                 isProjectRoot: false,
               });
@@ -2104,8 +2187,12 @@ export function knowledgeService(db: Db) {
             const isContainer = isNotionProjectContainerTitle(fallbackTitle) || isSharedCompanyKnowledgeTitle(fallbackTitle);
             const isProjectRoot = !projectContext && isLikelyNotionProjectRoot(fallbackTitle, ancestors);
             const nextProject = isProjectRoot
-              ? await ensureProjectFromNotionRoot(fallbackTitle)
+              ? await ensureProjectFromNotionRoot({ pageId: objectId, fallbackTitle })
               : projectContext;
+
+            if (isProjectRoot && !nextProject) {
+              continue;
+            }
 
             if (!isContainer) {
               discovered.push({
@@ -2114,6 +2201,10 @@ export function knowledgeService(db: Db) {
                 fallbackTitle,
                 projectId: nextProject?.id ?? null,
                 projectName: nextProject?.name ?? null,
+                projectTag: nextProject?.projectTag ?? null,
+                projectCategory: nextProject?.category ?? null,
+                projectPurpose: nextProject?.purpose ?? null,
+                projectRepoPath: nextProject?.repoPath ?? null,
                 source: isProjectRoot
                   ? "notion_project_root"
                   : nextProject
@@ -2214,7 +2305,10 @@ export function knowledgeService(db: Db) {
             source: notionObject.source,
             projectId,
             projectName,
-            projectTaskPrefix: projectId ? projectPrefixesById.get(projectId) ?? null : null,
+            projectTaskPrefix: notionObject.projectTag ?? (projectId ? projectPrefixesById.get(projectId) ?? null : null),
+            projectCategory: notionObject.projectCategory,
+            projectPurpose: notionObject.projectPurpose,
+            projectRepoPath: notionObject.projectRepoPath,
             path: relativePath,
           };
           const checksum = sha256(JSON.stringify({
@@ -2241,19 +2335,21 @@ export function knowledgeService(db: Db) {
             updatedAt: syncedAt,
           }));
 
-          if (obsidianVaultPath && relativePath) {
-            if ("rows" in exported && input.exportDatabaseRows) {
-              const usedPaths = new Set<string>();
-              const rowLinks = exported.rows.map((row) => ({
-                id: row.id,
-                title: row.title,
-                relativePath: notionDatabaseRowRelativePath(relativePath, row.title, row.id, usedPaths),
-                row,
-              }));
-              const pageMetadataById = new Map(rowLinks.map((row) => [
-                row.row.id,
-                { title: row.row.title, url: row.row.notionUrl },
-              ]));
+          if ("rows" in exported && input.exportDatabaseRows) {
+            const databaseIndexPath = relativePath ?? normalizeRelativePath(path.join("Notion", `${safeFilename(exported.title)}.md`));
+            const usedPaths = new Set<string>();
+            const rowLinks = exported.rows.map((row) => ({
+              id: row.id,
+              title: row.title,
+              relativePath: notionDatabaseRowRelativePath(databaseIndexPath, row.title, row.id, usedPaths),
+              row,
+            }));
+            const pageMetadataById = new Map(rowLinks.map((row) => [
+              row.row.id,
+              { title: row.row.title, url: row.row.notionUrl },
+            ]));
+
+            if (obsidianVaultPath && relativePath) {
               const indexMarkdownBody = exported.markdownForIndex(rowLinks.map((row) => ({
                 title: row.title,
                 relativePath: normalizeRelativePath(path.relative(path.dirname(relativePath), row.relativePath)),
@@ -2261,6 +2357,8 @@ export function knowledgeService(db: Db) {
               const indexMarkdown = notionMirrorMarkdown({
                 title: exported.title,
                 objectId,
+                ownerClass: classification.ownerClass,
+                mirrorPath: relativePath,
                 syncedAt,
                 lastEditedAt: exported.lastEditedAt,
                 markdown: indexMarkdownBody,
@@ -2285,79 +2383,85 @@ export function knowledgeService(db: Db) {
                   sourceDatabaseTitle: exported.title,
                 },
               }));
+            }
 
-              for (const rowLink of rowLinks) {
-                const rowProjectId = isTasksClassification(classification)
-                  ? await resolveProjectIdForNotionTask({
-                    companyId,
-                    properties: rowLink.row.properties,
-                    fallbackProjectId: projectId,
-                    projectsByName,
-                    projectNamesById,
-                    projectPrefixesById,
-                    projectsByPrefix,
-                    projectArchivedAtById,
-                  })
-                  : projectId;
-                const rowProjectName = rowProjectId ? projectNamesById.get(rowProjectId) ?? null : null;
-                const rowTask = isTasksClassification(classification)
-                  ? await upsertTaskFromNotionTask({
-                    companyId,
-                    row: rowLink.row,
-                    databaseId: objectId,
-                    databaseTitle: exported.title,
-                    projectId: rowProjectId,
-                    syncedAt,
-                    pageMetadataById,
-                  })
-                  : null;
-                if (rowTask) importedTasks += 1;
-                const rowMarkdown = notionMirrorMarkdown({
-                  title: rowLink.row.title,
-                  objectId: rowLink.row.id,
-                  syncedAt,
-                  lastEditedAt: rowLink.row.lastEditedAt,
-                  markdown: rowLink.row.markdown,
-                  extraFrontmatter: {
-                    source_database_id: objectId,
-                    source_database_title: exported.title,
-                    ...rowLink.row.propertyFrontmatter,
-                  },
-                });
-                refs.push(await upsertExternalRef({
+            for (const rowLink of rowLinks) {
+              const rowProjectId = isTasksClassification(classification)
+                ? await resolveProjectIdForNotionTask({
                   companyId,
-                  provider: "notion",
-                  localObjectType: "notion_database_row",
-                  localObjectId: `notion:${rowLink.row.id}`,
-                  externalObjectId: rowLink.row.id,
-                  externalUrl: rowLink.row.notionUrl,
-                  ownerClass: classification.ownerClass,
-                  checksum: sha256(JSON.stringify({
-                    objectId: rowLink.row.id,
-                    databaseId: objectId,
-                    title: rowLink.row.title,
-                    lastEditedAt: rowLink.row.lastEditedAt?.toISOString() ?? null,
-                    markdown: rowLink.row.markdown,
-                    properties: rowLink.row.propertyFrontmatter,
-                  })),
-                  metadata: {
-                    kind: "notion_database_row",
-                    title: rowLink.row.title,
-                    path: rowLink.relativePath,
-                    sourceDatabaseId: objectId,
-                    sourceDatabaseTitle: exported.title,
-                    source: "notion_database_row",
-                    projectId: rowProjectId,
-                    projectName: rowProjectName,
-                    projectTaskPrefix: rowProjectId ? projectPrefixesById.get(rowProjectId) ?? null : null,
-                    taskId: rowTask?.id ?? null,
-                    taskIdentifier: rowTask?.identifier ?? null,
-                  },
-                  lastExternalEditedAt: rowLink.row.lastEditedAt,
-                  lastOrionEditedAt: syncedAt,
-                  syncStatus: "synced",
-                  updatedAt: syncedAt,
-                }));
+                  rowId: rowLink.row.id,
+                  properties: rowLink.row.properties,
+                  fallbackProjectId: projectId,
+                  projectsByName,
+                  projectNamesById,
+                  projectPrefixesById,
+                  projectsByPrefix,
+                  projectArchivedAtById,
+                })
+                : projectId;
+              const rowProjectName = rowProjectId ? projectNamesById.get(rowProjectId) ?? null : null;
+              const rowTask = isTasksClassification(classification) && rowProjectId
+                ? await upsertTaskFromNotionTask({
+                  companyId,
+                  row: rowLink.row,
+                  databaseId: objectId,
+                  databaseTitle: exported.title,
+                  projectId: rowProjectId,
+                  syncedAt,
+                  pageMetadataById,
+                })
+                : null;
+              if (rowTask) importedTasks += 1;
+              const rowMarkdown = notionMirrorMarkdown({
+                title: rowLink.row.title,
+                objectId: rowLink.row.id,
+                ownerClass: classification.ownerClass,
+                mirrorPath: rowLink.relativePath,
+                syncedAt,
+                lastEditedAt: rowLink.row.lastEditedAt,
+                markdown: rowLink.row.markdown,
+                extraFrontmatter: {
+                  source_database_id: objectId,
+                  source_database_title: exported.title,
+                  ...rowLink.row.propertyFrontmatter,
+                },
+              });
+              refs.push(await upsertExternalRef({
+                companyId,
+                provider: "notion",
+                localObjectType: "notion_database_row",
+                localObjectId: `notion:${rowLink.row.id}`,
+                externalObjectId: rowLink.row.id,
+                externalUrl: rowLink.row.notionUrl,
+                ownerClass: classification.ownerClass,
+                checksum: sha256(JSON.stringify({
+                  objectId: rowLink.row.id,
+                  databaseId: objectId,
+                  title: rowLink.row.title,
+                  lastEditedAt: rowLink.row.lastEditedAt?.toISOString() ?? null,
+                  markdown: rowLink.row.markdown,
+                  properties: rowLink.row.propertyFrontmatter,
+                })),
+                metadata: {
+                  kind: "notion_database_row",
+                  title: rowLink.row.title,
+                  path: rowLink.relativePath,
+                  sourceDatabaseId: objectId,
+                  sourceDatabaseTitle: exported.title,
+                  source: "notion_database_row",
+                  projectId: rowProjectId,
+                  projectName: rowProjectName,
+                  projectTaskPrefix: rowProjectId ? projectPrefixesById.get(rowProjectId) ?? null : null,
+                  taskId: rowTask?.id ?? null,
+                  taskIdentifier: rowTask?.identifier ?? null,
+                },
+                lastExternalEditedAt: rowLink.row.lastEditedAt,
+                lastOrionEditedAt: syncedAt,
+                syncStatus: "synced",
+                updatedAt: syncedAt,
+              }));
+
+              if (obsidianVaultPath) {
                 obsidianRefs.push(await writeObsidianMirror({
                   companyId,
                   vaultPath: obsidianVaultPath,
@@ -2374,31 +2478,33 @@ export function knowledgeService(db: Db) {
                     sourceDatabaseTitle: exported.title,
                   },
                 }));
-                exportedDatabaseRows += 1;
               }
-            } else {
-              const markdown = notionMirrorMarkdown({
-                title: exported.title,
-                objectId,
-                syncedAt,
-                lastEditedAt: exported.lastEditedAt,
-                markdown: exported.markdown,
-              });
-              obsidianRefs.push(await writeObsidianMirror({
-                companyId,
-                vaultPath: obsidianVaultPath,
-                relativePath,
-                title: exported.title,
-                objectId,
-                ownerClass: classification.ownerClass,
-                markdown,
-                syncedAt,
-                lastEditedAt: exported.lastEditedAt,
-                metadata: {
-                  kind: "notion_mirror",
-                },
-              }));
+              exportedDatabaseRows += 1;
             }
+          } else if (obsidianVaultPath && relativePath) {
+            const markdown = notionMirrorMarkdown({
+              title: exported.title,
+              objectId,
+              ownerClass: classification.ownerClass,
+              mirrorPath: relativePath,
+              syncedAt,
+              lastEditedAt: exported.lastEditedAt,
+              markdown: exported.markdown,
+            });
+            obsidianRefs.push(await writeObsidianMirror({
+              companyId,
+              vaultPath: obsidianVaultPath,
+              relativePath,
+              title: exported.title,
+              objectId,
+              ownerClass: classification.ownerClass,
+              markdown,
+              syncedAt,
+              lastEditedAt: exported.lastEditedAt,
+              metadata: {
+                kind: "notion_mirror",
+              },
+            }));
           }
         }
 

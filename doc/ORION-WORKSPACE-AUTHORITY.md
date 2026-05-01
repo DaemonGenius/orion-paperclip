@@ -45,8 +45,14 @@ Notion task importer. Every Notion root page and synced Notion task is also mirr
 This lets Orion keep using the working task importer while shifting new sync behavior toward the provider-neutral
 registry.
 
+ORN-V1-012 adds task status syncback from Orion to Notion. This is a system-owned projection only: Orion may update run, ledger, verification, PR, branch, agent, and sync timestamp fields on imported Notion task rows, but it must not update operator-owned task text, priority, route mode, acceptance criteria, project metadata, relation links, or human notes. Missing schema support creates `sync_conflicts` instead of writing into unrelated properties.
+
+GitHub PR creation remains authoritative in GitHub and Orion DB/REQ ledger. Notion receives PR URL/state and review status as cockpit projection after Orion has recorded the PR receipt.
+
 ## Obsidian MVP
 
 Obsidian is connected by local vault path. Indexing the vault reads Markdown files and records metadata in
 `external_object_refs`; it does not rewrite files. Notion-originated edits to Obsidian-owned pages must create
 `knowledge_proposals` and require a later accept/reject flow before Markdown changes.
+
+The generated mirror contract is defined in `doc/orion-obsidian-sync-contract-v0.md`. In V1, Notion knowledge sync may write generated mirror files only under the configured vault path, and reset may delete only those generated mirror files.

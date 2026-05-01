@@ -29,6 +29,50 @@ export interface OrionAutonomyEnvelope {
   stopIf: string[];
 }
 
+export interface OrionTaskPolicy {
+  id: string;
+  companyId: string;
+  taskId: string;
+  mode: OrionAutonomyMode;
+  autonomyEnvelope: OrionAutonomyEnvelope | null;
+  approvedByUserId: string | null;
+  approvedAt: Date | string | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+export interface OrionRunReadinessAgent {
+  id: string;
+  name: string;
+  role: string;
+  status: string;
+  adapterType: string;
+}
+
+export interface OrionRunReadinessMode {
+  mode: OrionAutonomyMode;
+  eligible: boolean;
+  blockedReasons: string[];
+}
+
+export interface OrionRunReadiness {
+  taskId: string;
+  companyId: string;
+  defaultMode: OrionAutonomyMode;
+  suggestedAgentId: string | null;
+  selectedAgentId: string | null;
+  availableAgents: OrionRunReadinessAgent[];
+  savedPolicy: {
+    mode: OrionAutonomyMode | string;
+    hasEnvelope: boolean;
+  } | null;
+  activeRun: {
+    runId: string;
+    status: string;
+  } | null;
+  modes: OrionRunReadinessMode[];
+}
+
 export interface OrionWorkflowNode {
   id?: string;
   companyId?: string;
@@ -119,6 +163,19 @@ export interface OrionNotionSyncState {
   updatedAt: Date | string;
 }
 
+export interface OrionNotionSyncbackResult {
+  syncedAt: string;
+  dryRun: boolean;
+  results: Array<{
+    taskId: string;
+    notionPageId: string;
+    status: "synced" | "dry_run" | "skipped" | "conflict";
+    fields: string[];
+    conflictId?: string | null;
+    reason?: string | null;
+  }>;
+}
+
 export interface OrionReqLedgerEvent {
   id: number;
   ledgerId: string;
@@ -129,6 +186,20 @@ export interface OrionReqLedgerEvent {
   phase: string | null;
   message: string | null;
   payload: Record<string, unknown> | null;
+  createdAt: Date | string;
+}
+
+export interface OrionReqLedgerArtifact {
+  id: string;
+  ledgerId: string;
+  companyId: string;
+  phase: string;
+  kind: string;
+  title: string;
+  assetId: string | null;
+  body: string | null;
+  sha256: string | null;
+  metadata: Record<string, unknown> | null;
   createdAt: Date | string;
 }
 
@@ -148,6 +219,23 @@ export interface OrionReqLedger {
   createdAt: Date | string;
   updatedAt: Date | string;
   events?: OrionReqLedgerEvent[];
+  artifacts?: OrionReqLedgerArtifact[];
+  prReceiptRecord?: OrionPrReceipt | null;
+}
+
+export interface OrionVerificationCommand {
+  name?: string | null;
+  command: string;
+  cwd?: string | null;
+  timeoutSeconds?: number | null;
+  required?: boolean;
+}
+
+export interface RunOrionVerification {
+  planSha256?: string | null;
+  commands: OrionVerificationCommand[];
+  mode?: "manual" | "auto";
+  idempotencyKey?: string | null;
 }
 
 export interface OrionPrReceipt {

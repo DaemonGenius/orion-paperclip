@@ -26,6 +26,18 @@ export interface RunForTask {
   lastUsefulActionAt?: string | null;
   nextAction?: string | null;
   contextSnapshot?: Record<string, unknown> | null;
+  orionLedger?: {
+    id: string | null;
+    mode: string | null;
+    status: string | null;
+    currentPhase: string | null;
+    planSha256: string | null;
+    approvedPlanSha256: string | null;
+    verificationStatus?: string | null;
+    prReceipt?: Record<string, unknown> | null;
+    events?: Array<{ eventType: string }> | null;
+    artifacts?: Array<{ id: string }> | null;
+  } | null;
   environment?: {
     id: string;
     name: string;

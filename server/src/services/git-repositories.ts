@@ -50,11 +50,11 @@ function sanitizeGitEnv(baseEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return env;
 }
 
-function normalizeHost(value: string) {
+export function normalizeGitHost(value: string) {
   return value.trim().replace(/^https?:\/\//i, "").replace(/\/+$/g, "").toLowerCase();
 }
 
-function parseRepoUrl(repoUrl: string) {
+export function parseRepoUrl(repoUrl: string) {
   let parsed: URL;
   try {
     parsed = new URL(repoUrl);
@@ -68,9 +68,11 @@ function parseRepoUrl(repoUrl: string) {
   if (segments.length < 2) {
     throw unprocessable("Repository URL must include an owner/workspace and repository name");
   }
+  const owner = segments[segments.length - 2]!;
   return {
     url: parsed,
-    host: normalizeHost(parsed.hostname),
+    host: normalizeGitHost(parsed.hostname),
+    owner,
     repoName: segments[segments.length - 1]?.replace(/\.git$/i, "") || "repo",
   };
 }
@@ -126,7 +128,7 @@ async function writeAskPassScript(input: {
   return { dir, scriptPath };
 }
 
-async function runGitWithAuth(input: {
+export async function runGitWithAuth(input: {
   args: string[];
   cwd?: string | null;
   username: string;
@@ -165,7 +167,7 @@ function gitErrorMessage(error: unknown) {
   return String(error);
 }
 
-function cleanGitError(error: unknown) {
+export function cleanGitError(error: unknown) {
   return gitErrorMessage(error).replace(/https:\/\/[^@\s]+@/g, "https://");
 }
 
@@ -183,7 +185,7 @@ async function getProviderBinding(db: Db, companyId: string, provider: GitReposi
   return binding;
 }
 
-async function resolveGitAuth(input: {
+export async function resolveGitAuth(input: {
   db: Db;
   companyId: string;
   provider: GitRepositoryProvider;
@@ -195,7 +197,7 @@ async function resolveGitAuth(input: {
     const config = githubExternalAppConfigSchema.parse(binding.configJson ?? {});
     return {
       binding,
-      host: normalizeHost(config.host),
+      host: normalizeGitHost(config.host),
       username: "x-access-token",
       password: token,
     };
@@ -203,13 +205,13 @@ async function resolveGitAuth(input: {
   const config = bitbucketExternalAppConfigSchema.parse(binding.configJson ?? {});
   return {
     binding,
-    host: normalizeHost(config.host),
+    host: normalizeGitHost(config.host),
     username: config.username,
     password: token,
   };
 }
 
-function assertProviderHost(input: {
+export function assertProviderHost(input: {
   repoUrl: string;
   provider: GitRepositoryProvider;
   configuredHost: string;
