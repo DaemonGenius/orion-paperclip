@@ -53,7 +53,12 @@ import type {
   UpsertOrionTaskPolicy,
   SyncbackOrionNotion,
 } from "@paperclipai/shared";
-import { NOTION_TASK_PROPERTY_NAMES } from "@paperclipai/shared";
+import {
+  NOTION_TASK_PROPERTY_NAMES,
+  ORION_LEAN_SEVEN_ROLE_PROFILES,
+  ORION_WORKFLOW_PRESETS,
+  resolveOrionRoleProfile,
+} from "@paperclipai/shared";
 import { conflict, notFound, unprocessable } from "../errors.js";
 import { resolveShell, sanitizeRuntimeServiceBaseEnv } from "./workspace-runtime.js";
 import { assertProviderHost, cleanGitError, parseRepoUrl, resolveGitAuth, runGitWithAuth } from "./git-repositories.js";
@@ -81,47 +86,6 @@ const ACTIVE_ORION_RUN_STATUSES = ["queued", "running"] as const;
 const ORION_TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed", "cancelled", "timed_out"]);
 const execFile = promisify(execFileCallback);
 const VERIFICATION_OUTPUT_MAX_CHARS = 12_000;
-
-export const ORION_WORKFLOW_PRESETS: Record<OrionWorkflowPresetId, OrionWorkflowDefinition> = {
-  paperclip_company: {
-    presetId: "paperclip_company",
-    name: "Paperclip Company",
-    defaultStartNodeKey: "board",
-    nodes: [
-      { nodeKey: "board", type: "human_gate", label: "Board", config: {}, position: 0 },
-      { nodeKey: "ceo", type: "agent", label: "CEO", config: { role: "ceo" }, position: 1 },
-      { nodeKey: "cto", type: "agent", label: "CTO", config: { role: "cto" }, position: 2 },
-      { nodeKey: "engineer", type: "agent", label: "Engineer", config: { role: "engineer" }, position: 3 },
-    ],
-    edges: [
-      { edgeKey: "board-to-ceo", fromNodeKey: "board", toNodeKey: "ceo", type: "assigns_to", label: "sets direction", config: {}, position: 0 },
-      { edgeKey: "ceo-to-cto", fromNodeKey: "ceo", toNodeKey: "cto", type: "reports_to", label: "technical delegation", config: {}, position: 1 },
-      { edgeKey: "cto-to-engineer", fromNodeKey: "cto", toNodeKey: "engineer", type: "assigns_to", label: "implementation", config: {}, position: 2 },
-      { edgeKey: "engineer-to-cto-fallback", fromNodeKey: "engineer", toNodeKey: "cto", type: "fallback_to", label: "technical escalation", config: {}, position: 3 },
-    ],
-  },
-  orion_operator_auto_to_pr: {
-    presetId: "orion_operator_auto_to_pr",
-    name: "Orion Operator-led Auto-to-PR",
-    defaultStartNodeKey: "notion_task",
-    nodes: [
-      { nodeKey: "notion_task", type: "task_intake", label: "Notion Task", config: { source: "notion" }, position: 0 },
-      { nodeKey: "codex_worker", type: "agent", label: "Codex Worker", config: { role: "implementation_worker" }, position: 1 },
-      { nodeKey: "verification", type: "verification", label: "Verification", config: { requiresTests: true }, position: 2 },
-      { nodeKey: "github_pr", type: "github_pr", label: "PR Creation", config: { provider: "github" }, position: 3 },
-      { nodeKey: "human_review", type: "human_gate", label: "Human Review", config: { owner: "operator" }, position: 4 },
-      { nodeKey: "operator_fallback", type: "fallback", label: "Operator Fallback", config: { owner: "operator" }, position: 5 },
-    ],
-    edges: [
-      { edgeKey: "intake-to-codex", fromNodeKey: "notion_task", toNodeKey: "codex_worker", type: "assigns_to", label: "execute", config: {}, position: 0 },
-      { edgeKey: "codex-to-verification", fromNodeKey: "codex_worker", toNodeKey: "verification", type: "hands_off_to", label: "verify", config: {}, position: 1 },
-      { edgeKey: "verification-to-pr", fromNodeKey: "verification", toNodeKey: "github_pr", type: "hands_off_to", label: "open PR", config: {}, position: 2 },
-      { edgeKey: "pr-to-review", fromNodeKey: "github_pr", toNodeKey: "human_review", type: "requires_approval", label: "review", config: {}, position: 3 },
-      { edgeKey: "codex-to-fallback", fromNodeKey: "codex_worker", toNodeKey: "operator_fallback", type: "fallback_to", label: "operator recovery", config: {}, position: 4 },
-      { edgeKey: "verification-to-fallback", fromNodeKey: "verification", toNodeKey: "operator_fallback", type: "fallback_to", label: "operator recovery", config: {}, position: 5 },
-    ],
-  },
-};
 
 function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
@@ -1205,6 +1169,14 @@ export function orionService(db: Db) {
   return {
     validateChangedPathsAgainstEnvelope,
     workflowPresets: () => Object.values(ORION_WORKFLOW_PRESETS),
+    roleProfiles: () => ORION_LEAN_SEVEN_ROLE_PROFILES,
+    getRoleProfile: (roleId: string) => {
+      const profile = resolveOrionRoleProfile(roleId);
+      if (!profile) {
+        throw notFound("Role profile not found");
+      }
+      return profile;
+    },
 
     listSyncConflicts: (companyId: string) =>
       db

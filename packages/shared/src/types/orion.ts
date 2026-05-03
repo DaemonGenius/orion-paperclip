@@ -1,5 +1,44 @@
 export type OrionAutonomyMode = "pair" | "auto_to_pr";
-export type OrionWorkflowPresetId = "paperclip_company" | "orion_operator_auto_to_pr";
+export type OrionWorkflowPresetId = "paperclip_company" | "orion_operator_auto_to_pr" | "orion_round_table";
+export type OrionRoleProfileId =
+  | "operator"
+  | "planner"
+  | "architect"
+  | "implementer"
+  | "verifier"
+  | "knowledge_steward"
+  | "recovery_router";
+export type OrionRoleProfileAction =
+  | "approve_policy"
+  | "configure_integrations"
+  | "create_agents"
+  | "draft_tasks"
+  | "plan_work"
+  | "review_architecture"
+  | "edit_code"
+  | "run_commands"
+  | "run_verification"
+  | "update_knowledge"
+  | "route_recovery"
+  | "open_pr"
+  | "merge_pr"
+  | "read_secrets"
+  | "delete_source_content"
+  | "change_public_exposure"
+  | "change_schema";
+export type OrionRoleProfilePermission =
+  | "policy.approve"
+  | "integrations.configure"
+  | "agents.create"
+  | "tasks.plan"
+  | "architecture.review"
+  | "code.edit"
+  | "commands.run"
+  | "verification.run"
+  | "knowledge.update"
+  | "recovery.route"
+  | "github.pr.open";
+export type OrionRoleProfileAutonomyLevel = "human_only" | "doc_only" | "pair" | "auto_to_pr_candidate";
 export type OrionWorkflowNodeType =
   | "agent"
   | "human_gate"
@@ -15,6 +54,24 @@ export type OrionWorkflowEdgeType =
   | "fallback_to"
   | "reports_to"
   | "blocks_until";
+
+export interface OrionRoleProfile {
+  roleId: OrionRoleProfileId;
+  displayName: string;
+  purpose: string;
+  traits: string[];
+  skills: string[];
+  inputs: string[];
+  outputs: string[];
+  allowedActions: OrionRoleProfileAction[];
+  deniedActions: OrionRoleProfileAction[];
+  permissions: OrionRoleProfilePermission[];
+  evidenceDuty: string[];
+  defaultAutonomyLevel: OrionRoleProfileAutonomyLevel;
+  compatibleNodeTypes: OrionWorkflowNodeType[];
+  escalationRules: string[];
+  healthSignals: string[];
+}
 
 export interface OrionAutonomyEnvelope {
   mode: OrionAutonomyMode;

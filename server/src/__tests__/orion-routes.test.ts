@@ -1149,6 +1149,7 @@ describeEmbeddedPostgres("Orion routes", () => {
     const presets = await request(app).get("/api/orion/workflow-presets");
     expect(presets.status, JSON.stringify(presets.body)).toBe(200);
     expect(presets.body.map((preset: { presetId: string }) => preset.presetId)).toContain("orion_operator_auto_to_pr");
+    expect(presets.body.map((preset: { presetId: string }) => preset.presetId)).toContain("orion_round_table");
 
     const workflow = await request(app)
       .post(`/api/orion/companies/${companyId}/workflows/presets`)
@@ -1187,6 +1188,97 @@ describeEmbeddedPostgres("Orion routes", () => {
         type: "hands_off_to",
       });
     expect(edge.status, JSON.stringify(edge.body)).toBe(201);
+  });
+
+  it("creates the Round Table workflow preset with role-profile nodes and fallback routing", async () => {
+    await seedCompanyAndAgent();
+
+    const workflow = await request(app)
+      .post(`/api/orion/companies/${companyId}/workflows/presets`)
+      .send({
+        presetId: "orion_round_table",
+        makeDefault: true,
+        agentBindings: { implementer: agentId },
+      });
+    expect(workflow.status, JSON.stringify(workflow.body)).toBe(201);
+    expect(workflow.body.presetId).toBe("orion_round_table");
+    expect(workflow.body.definitionJson.defaultStartNodeKey).toBe("task_intake");
+
+    const nodes = workflow.body.nodes as Array<{ nodeKey: string; type: string; agentId: string | null; config: Record<string, unknown> }>;
+    const edges = workflow.body.edges as Array<{ edgeKey: string; fromNodeKey: string; toNodeKey: string; type: string }>;
+    expect(nodes.map((node) => node.nodeKey)).toEqual([
+      "task_intake",
+      "operator",
+      "planner",
+      "architect",
+      "implementer",
+      "verifier",
+      "github_pr",
+      "human_review",
+      "knowledge_steward",
+      "recovery_router",
+    ]);
+    expect(nodes.find((node) => node.nodeKey === "implementer")).toMatchObject({
+      agentId,
+      config: expect.objectContaining({ roleProfileId: "implementer", role: "implementation_worker" }),
+    });
+    expect(nodes.find((node) => node.nodeKey === "operator")?.config).toMatchObject({
+      roleProfileId: "operator",
+    });
+    expect(edges.find((edge) => edge.edgeKey === "architect-to-implementer")).toMatchObject({
+      fromNodeKey: "architect",
+      toNodeKey: "implementer",
+      type: "assigns_to",
+    });
+    expect(edges.find((edge) => edge.edgeKey === "implementer-to-recovery")).toMatchObject({
+      fromNodeKey: "implementer",
+      toNodeKey: "recovery_router",
+      type: "fallback_to",
+    });
+    expect(edges.find((edge) => edge.edgeKey === "recovery-to-operator")).toMatchObject({
+      fromNodeKey: "recovery_router",
+      toNodeKey: "operator",
+      type: "requires_approval",
+    });
+
+    const sync = await request(app)
+      .post(`/api/orion/companies/${companyId}/notion/sync`)
+      .send({
+        tasks: [{ notionPageId: "notion-task-round-table", title: "Ship a Round Table task" }],
+      });
+    const taskId = sync.body.results[0].taskId;
+
+    const binding = await request(app)
+      .post(`/api/orion/tasks/${taskId}/workflow-binding`)
+      .send({ workflowId: workflow.body.id, currentNodeKey: "task_intake" });
+    expect(binding.status, JSON.stringify(binding.body)).toBe(201);
+    expect(binding.body.currentNodeKey).toBe("task_intake");
+  });
+
+  it("exposes Lean Seven role profile metadata", async () => {
+    await seedCompanyAndAgent();
+
+    const list = await request(app).get("/api/orion/role-profiles");
+    expect(list.status, JSON.stringify(list.body)).toBe(200);
+    expect(list.body).toHaveLength(7);
+    expect(list.body.map((profile: { roleId: string }) => profile.roleId)).toEqual([
+      "operator",
+      "planner",
+      "architect",
+      "implementer",
+      "verifier",
+      "knowledge_steward",
+      "recovery_router",
+    ]);
+
+    const detail = await request(app).get("/api/orion/role-profiles/implementer");
+    expect(detail.status, JSON.stringify(detail.body)).toBe(200);
+    expect(detail.body.roleId).toBe("implementer");
+    expect(detail.body.permissions).toContain("code.edit");
+    expect(detail.body.evidenceDuty.length).toBeGreaterThan(0);
+
+    const missing = await request(app).get("/api/orion/role-profiles/cto");
+    expect(missing.status, JSON.stringify(missing.body)).toBe(404);
   });
 
   it("records Notion task conflicts in the shared sync registry", async () => {

@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   createOrionRunSchema,
+  ORION_LEAN_SEVEN_ROLE_PROFILES,
+  ORION_WORKFLOW_PRESETS,
   approveOrionLedgerPlanSchema,
   orionAutonomyEnvelopeSchema,
+  orionRoleProfileSchema,
+  orionWorkflowDefinitionSchema,
   openOrionPrSchema,
   recordOrionLedgerEvidenceSchema,
   recordOrionLedgerVerificationSchema,
   recordOrionPrSchema,
+  resolveOrionRoleProfileForAgentRole,
   runOrionVerificationSchema,
   saveOrionLedgerPlanSchema,
   startOrionCodexRunSchema,
@@ -93,6 +98,99 @@ describe("Orion validators", () => {
         autonomyEnvelope: validEnvelope,
       }),
     ).toThrow("policy mode must match autonomy envelope mode");
+  });
+
+  it("validates all Lean Seven default role profiles", () => {
+    const parsed = ORION_LEAN_SEVEN_ROLE_PROFILES.map((profile) => orionRoleProfileSchema.parse(profile));
+
+    expect(parsed).toHaveLength(7);
+    expect(parsed.map((profile) => profile.roleId)).toEqual([
+      "operator",
+      "planner",
+      "architect",
+      "implementer",
+      "verifier",
+      "knowledge_steward",
+      "recovery_router",
+    ]);
+  });
+
+  it("rejects unknown role profile ids", () => {
+    expect(() =>
+      orionRoleProfileSchema.parse({
+        ...ORION_LEAN_SEVEN_ROLE_PROFILES[0],
+        roleId: "cto",
+      }),
+    ).toThrow();
+  });
+
+  it("rejects unsupported role profile permissions and actions", () => {
+    expect(() =>
+      orionRoleProfileSchema.parse({
+        ...ORION_LEAN_SEVEN_ROLE_PROFILES[0],
+        permissions: ["secrets.read"],
+      }),
+    ).toThrow();
+    expect(() =>
+      orionRoleProfileSchema.parse({
+        ...ORION_LEAN_SEVEN_ROLE_PROFILES[0],
+        allowedActions: ["publish_to_production"],
+      }),
+    ).toThrow();
+  });
+
+  it("requires evidence duties for mutating role profiles", () => {
+    expect(() =>
+      orionRoleProfileSchema.parse({
+        ...ORION_LEAN_SEVEN_ROLE_PROFILES.find((profile) => profile.roleId === "implementer")!,
+        evidenceDuty: [],
+      }),
+    ).toThrow("mutating role profiles must define evidence duties");
+  });
+
+  it("rejects unsafe autonomy defaults for non-implementer profiles", () => {
+    expect(() =>
+      orionRoleProfileSchema.parse({
+        ...ORION_LEAN_SEVEN_ROLE_PROFILES.find((profile) => profile.roleId === "planner")!,
+        defaultAutonomyLevel: "auto_to_pr_candidate",
+      }),
+    ).toThrow("only implementer profiles can default to auto_to_pr_candidate");
+  });
+
+  it("maps legacy implementation_worker agents to the Implementer profile", () => {
+    expect(resolveOrionRoleProfileForAgentRole("implementation_worker")?.roleId).toBe("implementer");
+  });
+
+  it("validates the built-in workflow presets including Round Table", () => {
+    const presets = Object.values(ORION_WORKFLOW_PRESETS).map((preset) => orionWorkflowDefinitionSchema.parse(preset));
+    const roundTable = ORION_WORKFLOW_PRESETS.orion_round_table;
+
+    expect(presets.map((preset) => preset.presetId)).toEqual([
+      "paperclip_company",
+      "orion_operator_auto_to_pr",
+      "orion_round_table",
+    ]);
+    expect(roundTable.nodes.map((node) => node.nodeKey)).toEqual([
+      "task_intake",
+      "operator",
+      "planner",
+      "architect",
+      "implementer",
+      "verifier",
+      "github_pr",
+      "human_review",
+      "knowledge_steward",
+      "recovery_router",
+    ]);
+    expect(roundTable.nodes.find((node) => node.nodeKey === "implementer")?.config).toMatchObject({
+      roleProfileId: "implementer",
+      role: "implementation_worker",
+    });
+    expect(roundTable.edges.find((edge) => edge.edgeKey === "implementer-to-recovery")).toMatchObject({
+      fromNodeKey: "implementer",
+      toNodeKey: "recovery_router",
+      type: "fallback_to",
+    });
   });
 
   it("requires an agent, mode, and valid envelope shape for run creation", () => {

@@ -102,7 +102,9 @@ const PAPERCLIP_DEFAULT_TASK_DESCRIPTION = `You are the CEO. You set the directi
 - break the roadmap into concrete tasks and start delegating work`;
 
 function defaultAgentNameForPreset(presetId: OrionWorkflowPresetId) {
-  return presetId === "paperclip_company" ? "CEO" : "Codex Engineer 01";
+  if (presetId === "paperclip_company") return "CEO";
+  if (presetId === "orion_round_table") return "Codex Implementer 01";
+  return "Codex Engineer 01";
 }
 
 function defaultTaskTitleForPreset(presetId: OrionWorkflowPresetId) {
@@ -111,6 +113,26 @@ function defaultTaskTitleForPreset(presetId: OrionWorkflowPresetId) {
 
 function defaultTaskDescriptionForPreset(presetId: OrionWorkflowPresetId) {
   return presetId === "paperclip_company" ? PAPERCLIP_DEFAULT_TASK_DESCRIPTION : ORION_DEFAULT_TASK_DESCRIPTION;
+}
+
+function agentRoleForPreset(presetId: OrionWorkflowPresetId) {
+  return presetId === "paperclip_company" ? "ceo" : "implementation_worker";
+}
+
+function agentTitleForPreset(presetId: OrionWorkflowPresetId) {
+  if (presetId === "paperclip_company") return "CEO";
+  if (presetId === "orion_round_table") return "Implementer";
+  return "Implementation Worker";
+}
+
+function agentBindingKeyForPreset(presetId: OrionWorkflowPresetId) {
+  if (presetId === "paperclip_company") return "ceo";
+  if (presetId === "orion_round_table") return "implementer";
+  return "codex_worker";
+}
+
+function startNodeForPreset(presetId: OrionWorkflowPresetId) {
+  return presetId === "paperclip_company" ? "board" : presetId === "orion_round_table" ? "task_intake" : "notion_task";
 }
 
 function slugCompanyVaultName(value: string) {
@@ -217,6 +239,7 @@ export function OnboardingWizard() {
       if (
         current === defaultAgentNameForPreset("paperclip_company") ||
         current === defaultAgentNameForPreset("orion_operator_auto_to_pr") ||
+        current === defaultAgentNameForPreset("orion_round_table") ||
         !current.trim()
       ) {
         return defaultAgentNameForPreset(workflowPresetId);
@@ -639,8 +662,8 @@ export function OnboardingWizard() {
 
       const hire = await agentsApi.hire(createdCompanyId, {
         name: agentName.trim(),
-        role: workflowPresetId === "paperclip_company" ? "ceo" : "implementation_worker",
-        title: workflowPresetId === "paperclip_company" ? "CEO" : "Implementation Worker",
+        role: agentRoleForPreset(workflowPresetId),
+        title: agentTitleForPreset(workflowPresetId),
         permissions: {
           canCreateAgents: workflowPresetId === "paperclip_company"
         },
@@ -663,7 +686,7 @@ export function OnboardingWizard() {
         presetId: workflowPresetId,
         makeDefault: true,
         agentBindings: {
-          [workflowPresetId === "paperclip_company" ? "ceo" : "codex_worker"]: agent.id
+          [agentBindingKeyForPreset(workflowPresetId)]: agent.id
         }
       });
       setCreatedWorkflowId(workflow.id);
@@ -788,7 +811,7 @@ export function OnboardingWizard() {
         if (createdWorkflowId) {
           await orionApi.bindTaskWorkflow(task.id, {
             workflowId: createdWorkflowId,
-            currentNodeKey: workflowPresetId === "paperclip_company" ? "board" : "notion_task"
+            currentNodeKey: startNodeForPreset(workflowPresetId)
           });
         }
         queryClient.invalidateQueries({
@@ -942,6 +965,11 @@ export function OnboardingWizard() {
                     </label>
                     <div className="grid gap-2">
                       {[
+                        {
+                          id: "orion_round_table" as OrionWorkflowPresetId,
+                          title: "Orion Round Table",
+                          description: "Lean Seven roles with explicit implementation, verification, PR, review, and recovery routing."
+                        },
                         {
                           id: "orion_operator_auto_to_pr" as OrionWorkflowPresetId,
                           title: "Orion operator-led",

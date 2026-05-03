@@ -44,6 +44,14 @@ export function orionRoutes(db: Db) {
     res.json(svc.workflowPresets());
   });
 
+  router.get("/orion/role-profiles", async (_req, res) => {
+    res.json(svc.roleProfiles());
+  });
+
+  router.get("/orion/role-profiles/:roleId", async (req, res) => {
+    res.json(svc.getRoleProfile(req.params.roleId as string));
+  });
+
   router.get("/orion/companies/:companyId/workflows", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
