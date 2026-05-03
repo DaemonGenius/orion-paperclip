@@ -2018,6 +2018,7 @@ export function knowledgeService(db: Db) {
       let exportedDatabaseRows = 0;
       let importedTasks = 0;
       let importedProjects = 0;
+      let skippedTaskRows = 0;
 
       function findProjectIdByName(name: string) {
         const normalized = normalizeTitle(name);
@@ -2222,6 +2223,54 @@ export function knowledgeService(db: Db) {
         return discovered;
       }
 
+      function isRealNotionObjectId(value: string) {
+        return value.trim().length > 0 && !value.startsWith("pending:notion:");
+      }
+
+      function metadataString(metadata: Record<string, unknown>, key: string) {
+        const value = metadata[key];
+        return typeof value === "string" && value.trim() ? value.trim() : null;
+      }
+
+      async function registeredNotionTaskObjects(discovered: NotionDiscoveredObject[]) {
+        const discoveredDatabaseIds = new Set(
+          discovered.filter((object) => object.blockType === "child_database").map((object) => object.objectId),
+        );
+        const registeredRefs = await db
+          .select()
+          .from(externalObjectRefs)
+          .where(and(eq(externalObjectRefs.companyId, companyId), eq(externalObjectRefs.provider, "notion")));
+
+        const registered: NotionDiscoveredObject[] = [];
+        for (const ref of registeredRefs) {
+          if (!isRealNotionObjectId(ref.externalObjectId) || discoveredDatabaseIds.has(ref.externalObjectId)) continue;
+          const metadata = asRecord(ref.metadata);
+          const kind = metadataString(metadata, "kind");
+          const sectionKey = metadataString(metadata, "sectionKey");
+          const isProjectTasksRef = kind === "project_workspace_section"
+            && sectionKey === "tasks"
+            && (ref.localObjectType === "project_tasks" || ref.localObjectType.includes("tasks"));
+          if (!isProjectTasksRef) continue;
+
+          const projectId = metadataString(metadata, "projectId") ?? ref.localObjectId.split(":")[0] ?? null;
+          const projectName = projectId ? projectNamesById.get(projectId) ?? metadataString(metadata, "projectName") : null;
+          registered.push({
+            blockType: "child_database",
+            objectId: ref.externalObjectId,
+            fallbackTitle: metadataString(metadata, "title") ?? `${projectName ?? "Project"} Tasks`,
+            projectId,
+            projectName,
+            projectTag: projectId ? projectPrefixesById.get(projectId) ?? null : null,
+            projectCategory: metadataString(metadata, "projectCategory"),
+            projectPurpose: metadataString(metadata, "projectPurpose"),
+            projectRepoPath: metadataString(metadata, "projectRepoPath"),
+            source: "registered_notion_project_tasks_ref",
+            isProjectRoot: false,
+          });
+        }
+        return registered;
+      }
+
       try {
         await progress?.onProgress({
           stage: "reading_root",
@@ -2257,10 +2306,12 @@ export function knowledgeService(db: Db) {
           current: 0,
           total: null,
         });
-        const notionObjects = await discoverNotionObjects(rootPageId);
+        const discoveredNotionObjects = await discoverNotionObjects(rootPageId);
+        const registeredNotionObjects = await registeredNotionTaskObjects(discoveredNotionObjects);
+        const notionObjects = [...discoveredNotionObjects, ...registeredNotionObjects];
         await progress?.onProgress({
           stage: "processing",
-          message: `Processing ${notionObjects.length} discovered Notion object${notionObjects.length === 1 ? "" : "s"}.`,
+          message: `Processing ${notionObjects.length} Notion object${notionObjects.length === 1 ? "" : "s"}.`,
           current: 0,
           total: notionObjects.length,
         });
@@ -2399,6 +2450,9 @@ export function knowledgeService(db: Db) {
                   projectArchivedAtById,
                 })
                 : projectId;
+              if (isTasksClassification(classification) && !rowProjectId) {
+                skippedTaskRows += 1;
+              }
               const rowProjectName = rowProjectId ? projectNamesById.get(rowProjectId) ?? null : null;
               const rowTask = isTasksClassification(classification) && rowProjectId
                 ? await upsertTaskFromNotionTask({
@@ -2519,11 +2573,13 @@ export function knowledgeService(db: Db) {
           provider: "notion" as const,
           syncedAt: syncedAt.toISOString(),
           rootPageId,
-          discoveredObjects: notionObjects.length,
+          discoveredObjects: discoveredNotionObjects.length,
+          registeredObjectsProcessed: registeredNotionObjects.length,
           syncedRefs: refs.length,
           mirroredFiles: obsidianRefs.length,
           exportedDatabaseRows,
           importedTasks,
+          skippedTaskRows,
           importedProjects,
         };
 
@@ -2540,11 +2596,13 @@ export function knowledgeService(db: Db) {
               message: "Notion sync completed.",
               progress: { current: notionObjects.length, total: notionObjects.length },
               rootPageId,
-              discoveredObjects: notionObjects.length,
+              discoveredObjects: discoveredNotionObjects.length,
+              registeredObjectsProcessed: registeredNotionObjects.length,
               syncedRefs: refs.length,
               mirroredFiles: obsidianRefs.length,
               exportedDatabaseRows,
               importedTasks,
+              skippedTaskRows,
               importedProjects,
               result: resultSummary,
             },
@@ -2562,11 +2620,13 @@ export function knowledgeService(db: Db) {
                 message: "Notion sync completed.",
                 progress: { current: notionObjects.length, total: notionObjects.length },
                 rootPageId,
-                discoveredObjects: notionObjects.length,
+                discoveredObjects: discoveredNotionObjects.length,
+                registeredObjectsProcessed: registeredNotionObjects.length,
                 syncedRefs: refs.length,
                 mirroredFiles: obsidianRefs.length,
                 exportedDatabaseRows,
                 importedTasks,
+                skippedTaskRows,
                 importedProjects,
                 result: resultSummary,
               },

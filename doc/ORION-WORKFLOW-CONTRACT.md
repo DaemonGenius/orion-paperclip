@@ -25,7 +25,7 @@ Orion treats the original Paperclip CEO hierarchy as one workflow preset, not as
 Board -> CEO -> CTO -> Engineer
 ```
 
-`orion_operator_auto_to_pr` is the Orion default:
+`orion_operator_auto_to_pr` is the lighter Orion operator-led preset:
 
 ```text
 Notion Task -> Codex Worker -> Verification -> PR Creation -> Human Review
@@ -66,12 +66,51 @@ Compatibility rules:
 - Unsafe defaults are denied: default profiles cannot allow secret reads, schema changes, source deletion, public exposure changes, or merge actions.
 - Any profile with mutating actions or permissions must declare evidence duties.
 
+## Legacy Hierarchy Compatibility
+
+Existing companies are not silently migrated by V2 workflow presets. The `/org` page chooses its default view from the company default workflow while preserving the hierarchy canvas as the legacy compatibility view.
+
+| Company workflow state | Default `/org` view | Compatibility rule |
+| --- | --- | --- |
+| `paperclip_company` | Hierarchy | `agents.reportsTo` remains the source of truth. CEO/CTO hierarchy semantics and Paperclip onboarding copy remain valid for this preset. |
+| `orion_round_table` | Round Table | Role-profile council cards are shown first. Hierarchy remains available through the view toggle as a legacy view. |
+| `orion_operator_auto_to_pr` | Round Table | Operator-led Orion companies use the council-style view first. Hierarchy remains available through the view toggle. |
+| No default workflow | Hierarchy | The UI shows a no-workflow notice and does not imply that the company has been migrated. |
+
+CEO/CTO text in Orion views must come from actual bound agents carrying those roles, not from Round Table defaults. Orion presets start from implementation-worker and role-profile metadata; Paperclip-specific CEO onboarding behavior stays isolated to `paperclip_company`.
+
+## Executable Node Resolution
+
+ORN-V2-008 makes task workflow bindings executable for V2 routing. When a task has an `orion_task_workflow_bindings` row, Orion resolves the next owner/action from the bound workflow graph before considering any legacy hierarchy behavior.
+
+- `currentNodeKey` identifies the active workflow node for the task.
+- Edges are selected from the current node by requested edge type and lowest `position`.
+- `node.agentId` is the only executable agent binding. Orion must not infer an assignee by matching `roleProfileId` to `agents.role`.
+- `node.config.roleProfileId` supplies role metadata, evidence duties, and UI/routing context.
+- Bound `agent` nodes can receive work.
+- Unbound `agent` nodes block with a missing-binding operator action.
+- Unbound `human_gate`, `fallback`, `decision`, `verification`, and `github_pr` nodes resolve to operator-required state rather than hidden CEO/CTO fallback.
+- If a task has no workflow binding, existing Paperclip/legacy behavior remains unchanged.
+- Recovery routing follows the same graph-first rule for workflow-bound tasks. Orion reads the task's `currentNodeKey`, selects the first `fallback_to` edge by `position`, and uses the fallback target's explicit `agentId` only when that agent is invokable and not budget-blocked.
+- Missing `fallback_to` edges, missing target nodes, unbound agent targets, and unavailable fallback agents surface operator-visible recovery details. They must not fall through to `reportsTo`, root-agent, CEO, CTO, or ordered invokable-agent lookup.
+- `reportsTo` and CEO/CTO recovery lookup are compatibility behavior for tasks with no workflow binding.
+
+The V2 resolver APIs are:
+
+```text
+GET /api/orion/tasks/:taskId/workflow-resolution?edgeType=assigns_to
+POST /api/orion/tasks/:taskId/workflow/advance
+```
+
+Advancing a task updates the task binding and active workflow run node. Bound agent targets assign the task to that agent and keep it active; operator-required targets clear the agent assignee and move the task to review/operator attention.
+
 ## MVP Rules
 
-- New Orion onboarding defaults to `orion_operator_auto_to_pr`.
+- New Orion onboarding defaults to `orion_round_table`.
+- `orion_operator_auto_to_pr` remains available as a lighter Orion preset for operator-led Auto-to-PR companies.
 - Original Paperclip remains available through the `paperclip_company` preset.
 - V2 Round Table routing is available through the `orion_round_table` preset.
 - The first Orion worker is an implementation worker, not a CEO.
 - CEO instructions are only materialized for agents explicitly created with `role=ceo`.
 - Agent hiring authority is explicit through permissions, not implied by `role=ceo`.
-- If a workflow binding exists, recovery should prefer workflow `fallback_to` edges before legacy reporting-chain behavior.
+- If a workflow binding exists, recovery must use workflow `fallback_to` edges and explicit node bindings. Legacy reporting-chain behavior is allowed only when no task workflow binding exists.

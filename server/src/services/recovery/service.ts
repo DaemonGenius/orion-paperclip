@@ -76,6 +76,20 @@ type WatchdogDecisionActor =
   | { type: "agent"; agentId?: string | null; runId?: string | null }
   | { type: "none" };
 
+type WorkflowRecoveryResolution =
+  | { kind: "no_workflow_binding"; agentId: null; details: Record<string, unknown> }
+  | { kind: "workflow_fallback"; agentId: string; details: Record<string, unknown> }
+  | { kind: "operator_required"; agentId: null; details: Record<string, unknown> }
+  | { kind: "missing_fallback_edge"; agentId: null; details: Record<string, unknown> }
+  | { kind: "missing_role_binding"; agentId: null; details: Record<string, unknown> }
+  | { kind: "workflow_fallback_unavailable"; agentId: null; details: Record<string, unknown> };
+
+type RecoveryOwnerSelection = {
+  agentId: string | null;
+  routing: WorkflowRecoveryResolution["kind"] | "legacy_hierarchy";
+  details: Record<string, unknown>;
+};
+
 export type RunOutputSilenceSummary = {
   lastOutputAt: Date | null;
   lastOutputSeq: number;
@@ -286,14 +300,21 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
     return db.select().from(agents).where(eq(agents.id, agentId)).then((rows) => rows[0] ?? null);
   }
 
-  async function resolveWorkflowFallbackAgentId(taskId: string) {
+  async function resolveWorkflowFallbackOwner(task: Pick<typeof tasks.$inferSelect, "id" | "companyId" | "projectId">): Promise<WorkflowRecoveryResolution> {
     const binding = await db
       .select()
       .from(orionTaskWorkflowBindings)
-      .where(eq(orionTaskWorkflowBindings.taskId, taskId))
+      .where(eq(orionTaskWorkflowBindings.taskId, task.id))
       .limit(1)
       .then((rows) => rows[0] ?? null);
-    if (!binding?.currentNodeKey) return null;
+    if (!binding?.currentNodeKey) {
+      return {
+        kind: "no_workflow_binding",
+        agentId: null,
+        details: { taskId: task.id, workflowId: binding?.workflowId ?? null, currentNodeKey: binding?.currentNodeKey ?? null },
+      };
+    }
+
     const fallbackEdge = await db
       .select()
       .from(orionWorkflowEdges)
@@ -305,7 +326,14 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
       .orderBy(orionWorkflowEdges.position)
       .limit(1)
       .then((rows) => rows[0] ?? null);
-    if (!fallbackEdge) return null;
+    if (!fallbackEdge) {
+      return {
+        kind: "missing_fallback_edge",
+        agentId: null,
+        details: { taskId: task.id, workflowId: binding.workflowId, currentNodeKey: binding.currentNodeKey },
+      };
+    }
+
     const fallbackNode = await db
       .select()
       .from(orionWorkflowNodes)
@@ -315,7 +343,57 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
       ))
       .limit(1)
       .then((rows) => rows[0] ?? null);
-    return fallbackNode?.agentId ?? null;
+    if (!fallbackNode) {
+      return {
+        kind: "missing_fallback_edge",
+        agentId: null,
+        details: {
+          taskId: task.id,
+          workflowId: binding.workflowId,
+          currentNodeKey: binding.currentNodeKey,
+          edgeKey: fallbackEdge.edgeKey,
+          targetNodeKey: fallbackEdge.toNodeKey,
+        },
+      };
+    }
+
+    const details = {
+      taskId: task.id,
+      workflowId: binding.workflowId,
+      currentNodeKey: binding.currentNodeKey,
+      edgeKey: fallbackEdge.edgeKey,
+      targetNodeKey: fallbackNode.nodeKey,
+      targetNodeType: fallbackNode.type,
+      targetAgentId: fallbackNode.agentId ?? null,
+    };
+
+    if (!fallbackNode.agentId) {
+      if (fallbackNode.type === "agent") {
+        return { kind: "missing_role_binding", agentId: null, details };
+      }
+      return { kind: "operator_required", agentId: null, details };
+    }
+
+    const fallbackAgent = await getAgent(fallbackNode.agentId);
+    const budgetBlock = fallbackAgent
+      ? await budgets.getInvocationBlock(task.companyId, fallbackAgent.id, {
+        taskId: task.id,
+        projectId: task.projectId,
+      })
+      : null;
+    if (!fallbackAgent || fallbackAgent.companyId !== task.companyId || !isAgentInvokable(fallbackAgent) || budgetBlock) {
+      return {
+        kind: "workflow_fallback_unavailable",
+        agentId: null,
+        details: {
+          ...details,
+          targetAgentStatus: fallbackAgent?.status ?? null,
+          budgetBlocked: Boolean(budgetBlock),
+        },
+      };
+    }
+
+    return { kind: "workflow_fallback", agentId: fallbackAgent.id, details };
   }
 
   async function getLatestTaskRun(companyId: string, taskId: string): Promise<LatestTaskRun> {
@@ -666,16 +744,23 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
     return task ?? null;
   }
 
-  async function resolveStaleRunOwnerAgentId(input: {
+  async function resolveStaleRunOwner(input: {
     run: typeof heartbeatRuns.$inferSelect;
     runningAgent: typeof agents.$inferSelect;
     sourceTask: typeof tasks.$inferSelect | null;
-  }) {
-    const candidateIds: string[] = [];
+  }): Promise<RecoveryOwnerSelection> {
     if (input.sourceTask?.id) {
-      const workflowFallbackAgentId = await resolveWorkflowFallbackAgentId(input.sourceTask.id);
-      if (workflowFallbackAgentId) candidateIds.push(workflowFallbackAgentId);
+      const workflowOwner = await resolveWorkflowFallbackOwner(input.sourceTask);
+      if (workflowOwner.kind !== "no_workflow_binding") {
+        return {
+          agentId: workflowOwner.agentId,
+          routing: workflowOwner.kind,
+          details: workflowOwner.details,
+        };
+      }
     }
+
+    const candidateIds: string[] = [];
     if (input.sourceTask?.assigneeAgentId) {
       const sourceAssignee = await getAgent(input.sourceTask.assigneeAgentId);
       if (sourceAssignee?.reportsTo) candidateIds.push(sourceAssignee.reportsTo);
@@ -698,10 +783,26 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
         taskId: input.sourceTask?.id ?? null,
         projectId: input.sourceTask?.projectId ?? null,
       });
-      if (isAgentInvokable(candidate) && !budgetBlock) return candidate.id;
+      if (isAgentInvokable(candidate) && !budgetBlock) {
+        return {
+          agentId: candidate.id,
+          routing: "legacy_hierarchy",
+          details: {
+            candidateAgentIds: [...new Set(candidateIds)],
+            selectedAgentId: candidate.id,
+          },
+        };
+      }
     }
 
-    return null;
+    return {
+      agentId: null,
+      routing: "legacy_hierarchy",
+      details: {
+        candidateAgentIds: [...new Set(candidateIds)],
+        selectedAgentId: null,
+      },
+    };
   }
 
   async function collectStaleRunEvidence(input: {
@@ -929,7 +1030,7 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
       return { kind: "existing" as const, evaluationTaskId: existing.id };
     }
 
-    const ownerAgentId = await resolveStaleRunOwnerAgentId({ run: input.run, runningAgent, sourceTask });
+    const ownerSelection = await resolveStaleRunOwner({ run: input.run, runningAgent, sourceTask });
     const description = buildStaleRunEvaluationDescription({
       run: input.run,
       runningAgent,
@@ -950,7 +1051,7 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
         projectId: sourceTask?.projectId ?? null,
         goalId: sourceTask?.goalId ?? null,
         billingCode: sourceTask?.billingCode ?? null,
-        assigneeAgentId: ownerAgentId,
+        assigneeAgentId: ownerSelection.agentId,
         originKind: STALE_ACTIVE_RUN_EVALUATION_ORIGIN_KIND,
         originId: input.run.id,
         originRunId: input.run.id,
@@ -967,7 +1068,7 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
       companyId: input.run.companyId,
       actorType: "system",
       actorId: "system",
-      agentId: ownerAgentId,
+      agentId: ownerSelection.agentId,
       runId: input.run.id,
       action: "heartbeat.output_stale_detected",
       entityType: "task",
@@ -978,6 +1079,8 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
         sourceTaskId: sourceTask?.id ?? null,
         silenceAgeMs: evidence.silenceAgeMs,
         lastOutputAt: input.run.lastOutputAt?.toISOString() ?? null,
+        recoveryRouting: ownerSelection.routing,
+        recoveryRoutingDetails: ownerSelection.details,
       },
     });
     if (level === "critical") {
@@ -987,8 +1090,8 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
         run: input.run,
       });
     }
-    if (ownerAgentId) {
-      await deps.enqueueWakeup(ownerAgentId, {
+    if (ownerSelection.agentId) {
+      await deps.enqueueWakeup(ownerSelection.agentId, {
         source: "assignment",
         triggerDetail: "system",
         reason: "task_assigned",
@@ -1208,10 +1311,17 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
       .then((rows) => rows[0] ?? null);
   }
 
-  async function resolveStrandedTaskRecoveryOwnerAgentId(task: typeof tasks.$inferSelect) {
+  async function resolveStrandedTaskRecoveryOwner(task: typeof tasks.$inferSelect): Promise<RecoveryOwnerSelection> {
+    const workflowOwner = await resolveWorkflowFallbackOwner(task);
+    if (workflowOwner.kind !== "no_workflow_binding") {
+      return {
+        agentId: workflowOwner.agentId,
+        routing: workflowOwner.kind,
+        details: workflowOwner.details,
+      };
+    }
+
     const candidateIds: string[] = [];
-    const workflowFallbackAgentId = await resolveWorkflowFallbackAgentId(task.id);
-    if (workflowFallbackAgentId) candidateIds.push(workflowFallbackAgentId);
     if (task.assigneeAgentId) {
       const assignee = await getAgent(task.assigneeAgentId);
       if (assignee?.reportsTo) candidateIds.push(assignee.reportsTo);
@@ -1240,10 +1350,26 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
         taskId: task.id,
         projectId: task.projectId,
       });
-      if (isAgentInvokable(candidate) && !budgetBlock) return candidate.id;
+      if (isAgentInvokable(candidate) && !budgetBlock) {
+        return {
+          agentId: candidate.id,
+          routing: "legacy_hierarchy",
+          details: {
+            candidateAgentIds: [...new Set(candidateIds)],
+            selectedAgentId: candidate.id,
+          },
+        };
+      }
     }
 
-    return null;
+    return {
+      agentId: null,
+      routing: "legacy_hierarchy",
+      details: {
+        candidateAgentIds: [...new Set(candidateIds)],
+        selectedAgentId: null,
+      },
+    };
   }
 
   function buildStrandedTaskRecoveryDescription(input: {
@@ -1292,8 +1418,8 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
     const existing = await findOpenStrandedTaskRecoveryTask(input.task.companyId, input.task.id);
     if (existing) return existing;
 
-    const ownerAgentId = await resolveStrandedTaskRecoveryOwnerAgentId(input.task);
-    if (!ownerAgentId) return null;
+    const ownerSelection = await resolveStrandedTaskRecoveryOwner(input.task);
+    if (!ownerSelection.agentId) return null;
 
     const prefix = await getCompanyTaskPrefix(input.task.companyId);
     const recovery = await tasksSvc.create(input.task.companyId, {
@@ -1309,7 +1435,7 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
       parentId: input.task.id,
       projectId: input.task.projectId,
       goalId: input.task.goalId,
-      assigneeAgentId: ownerAgentId,
+      assigneeAgentId: ownerSelection.agentId,
       originKind: STRANDED_TASK_RECOVERY_ORIGIN_KIND,
       originId: input.task.id,
       originRunId: input.latestRun?.id ?? null,
@@ -1323,7 +1449,24 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
       inheritExecutionWorkspaceFromTaskId: input.task.id,
     });
 
-    await deps.enqueueWakeup(ownerAgentId, {
+    await logActivity(db, {
+      companyId: input.task.companyId,
+      actorType: "system",
+      actorId: "system",
+      agentId: ownerSelection.agentId,
+      runId: input.latestRun?.id ?? null,
+      action: "task.stranded_recovery_owner_selected",
+      entityType: "task",
+      entityId: recovery.id,
+      details: {
+        source: "recovery.ensure_stranded_task_recovery",
+        sourceTaskId: input.task.id,
+        recoveryRouting: ownerSelection.routing,
+        recoveryRoutingDetails: ownerSelection.details,
+      },
+    });
+
+    await deps.enqueueWakeup(ownerSelection.agentId, {
       source: "assignment",
       triggerDetail: "system",
       reason: "task_assigned",
@@ -1912,6 +2055,54 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
     finding: TaskLivenessFinding,
     task: typeof tasks.$inferSelect,
   ) {
+    const recoveryWorkflowOwner = await resolveWorkflowFallbackOwner(task);
+    if (recoveryWorkflowOwner.kind !== "no_workflow_binding") {
+      if (!recoveryWorkflowOwner.agentId) return null;
+      return {
+        agentId: recoveryWorkflowOwner.agentId,
+        reason: recoveryWorkflowOwner.kind,
+        sourceTaskId: task.id,
+        candidateAgentIds: [recoveryWorkflowOwner.agentId],
+        candidateReasons: [{
+          agentId: recoveryWorkflowOwner.agentId,
+          reason: recoveryWorkflowOwner.kind,
+          sourceTaskId: task.id,
+        }],
+        budgetBlockedCandidateAgentIds: [],
+        recoveryRouting: recoveryWorkflowOwner.kind,
+        recoveryRoutingDetails: recoveryWorkflowOwner.details,
+      };
+    }
+
+    const sourceTask = finding.taskId === task.id
+      ? task
+      : await db
+        .select()
+        .from(tasks)
+        .where(and(eq(tasks.companyId, task.companyId), eq(tasks.id, finding.taskId)))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+    if (sourceTask && sourceTask.id !== task.id) {
+      const sourceWorkflowOwner = await resolveWorkflowFallbackOwner(sourceTask);
+      if (sourceWorkflowOwner.kind !== "no_workflow_binding") {
+        if (!sourceWorkflowOwner.agentId) return null;
+        return {
+          agentId: sourceWorkflowOwner.agentId,
+          reason: sourceWorkflowOwner.kind,
+          sourceTaskId: sourceTask.id,
+          candidateAgentIds: [sourceWorkflowOwner.agentId],
+          candidateReasons: [{
+            agentId: sourceWorkflowOwner.agentId,
+            reason: sourceWorkflowOwner.kind,
+            sourceTaskId: sourceTask.id,
+          }],
+          budgetBlockedCandidateAgentIds: [],
+          recoveryRouting: sourceWorkflowOwner.kind,
+          recoveryRoutingDetails: sourceWorkflowOwner.details,
+        };
+      }
+    }
+
     const detailedCandidates = finding.recommendedOwnerCandidates.length > 0
       ? finding.recommendedOwnerCandidates
       : finding.recommendedOwnerCandidateAgentIds.map((agentId) => ({
@@ -1944,6 +2135,11 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
             sourceTaskId: entry.sourceTaskId,
           })),
           budgetBlockedCandidateAgentIds,
+          recoveryRouting: "legacy_hierarchy",
+          recoveryRoutingDetails: {
+            candidateAgentIds: candidates.map((entry) => entry.agentId),
+            selectedAgentId: candidate.agentId,
+          },
         };
       }
       budgetBlockedCandidateAgentIds.push(candidate.agentId);
@@ -2122,6 +2318,8 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
           candidateAgentIds: ownerSelection.candidateAgentIds,
           candidateReasons: ownerSelection.candidateReasons,
           budgetBlockedCandidateAgentIds: ownerSelection.budgetBlockedCandidateAgentIds,
+          recoveryRouting: ownerSelection.recoveryRouting,
+          recoveryRoutingDetails: ownerSelection.recoveryRoutingDetails,
         },
         workspaceSelection: {
           reuseRecoveryExecutionWorkspace,

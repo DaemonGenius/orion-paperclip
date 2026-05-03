@@ -8,9 +8,12 @@ import {
   orionRoleProfileSchema,
   orionWorkflowDefinitionSchema,
   openOrionPrSchema,
+  orionTaskWorkflowAdvanceResultSchema,
+  orionTaskWorkflowResolutionSchema,
   recordOrionLedgerEvidenceSchema,
   recordOrionLedgerVerificationSchema,
   recordOrionPrSchema,
+  resolveOrionTaskWorkflowSchema,
   resolveOrionRoleProfileForAgentRole,
   runOrionVerificationSchema,
   saveOrionLedgerPlanSchema,
@@ -191,6 +194,90 @@ describe("Orion validators", () => {
       toNodeKey: "recovery_router",
       type: "fallback_to",
     });
+  });
+
+  it("validates task workflow resolution payloads and responses", () => {
+    expect(resolveOrionTaskWorkflowSchema.parse({})).toEqual({ edgeType: "assigns_to" });
+    expect(resolveOrionTaskWorkflowSchema.parse({ edgeType: "fallback_to" }).edgeType).toBe("fallback_to");
+    expect(() => resolveOrionTaskWorkflowSchema.parse({ edgeType: "reports_to" })).toThrow();
+    expect(() => resolveOrionTaskWorkflowSchema.parse({ edgeType: "teleport" })).toThrow();
+
+    const now = new Date("2026-05-03T00:00:00.000Z");
+    const binding = {
+      id: "00000000-0000-4000-8000-000000000010",
+      companyId: "00000000-0000-4000-8000-000000000011",
+      taskId: "00000000-0000-4000-8000-000000000012",
+      workflowId: "00000000-0000-4000-8000-000000000013",
+      currentNodeKey: "task_intake",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    };
+    const currentNode = {
+      id: "00000000-0000-4000-8000-000000000014",
+      companyId: binding.companyId,
+      workflowId: binding.workflowId,
+      nodeKey: "task_intake",
+      type: "task_intake",
+      label: "Task Intake",
+      agentId: null,
+      config: { roleProfileId: "operator" },
+      position: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const targetNode = {
+      ...currentNode,
+      id: "00000000-0000-4000-8000-000000000015",
+      nodeKey: "implementer",
+      type: "agent",
+      label: "Implementer",
+      agentId: "00000000-0000-4000-8000-000000000016",
+      config: { roleProfileId: "implementer" },
+      position: 1,
+    };
+    const edge = {
+      id: "00000000-0000-4000-8000-000000000017",
+      companyId: binding.companyId,
+      workflowId: binding.workflowId,
+      edgeKey: "task-to-implementer",
+      fromNodeKey: "task_intake",
+      toNodeKey: "implementer",
+      type: "assigns_to",
+      label: "implement",
+      config: {},
+      position: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const resolution = {
+      taskId: binding.taskId,
+      companyId: binding.companyId,
+      workflowId: binding.workflowId,
+      binding,
+      currentNode,
+      edge,
+      targetNode,
+      targetRoleProfile: ORION_LEAN_SEVEN_ROLE_PROFILES.find((profile) => profile.roleId === "implementer")!,
+      targetAgent: {
+        id: "00000000-0000-4000-8000-000000000016",
+        name: "Codex Implementer",
+        role: "implementation_worker",
+        status: "active",
+        adapterType: "codex_local",
+      },
+      actionKind: "assignable_agent",
+      blockedReason: null,
+    };
+
+    expect(orionTaskWorkflowResolutionSchema.parse(resolution).targetRoleProfile?.roleId).toBe("implementer");
+    expect(orionTaskWorkflowAdvanceResultSchema.parse({ resolution, binding }).binding.currentNodeKey).toBe("task_intake");
+    expect(orionTaskWorkflowResolutionSchema.parse({
+      ...resolution,
+      targetAgent: null,
+      actionKind: "blocked_missing_binding",
+      blockedReason: "Workflow node planner requires an explicit agent binding before work can be assigned.",
+    }).actionKind).toBe("blocked_missing_binding");
   });
 
   it("requires an agent, mode, and valid envelope shape for run creation", () => {

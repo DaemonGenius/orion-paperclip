@@ -19,6 +19,7 @@ import {
   recordOrionPrSchema,
   recordOrionLedgerEvidenceSchema,
   recordOrionLedgerVerificationSchema,
+  resolveOrionTaskWorkflowSchema,
   runOrionVerificationSchema,
   saveOrionLedgerPlanSchema,
   startOrionCodexRunSchema,
@@ -33,6 +34,7 @@ import { heartbeatService } from "../services/heartbeat.js";
 import { orionService } from "../services/orion.js";
 import { logActivity } from "../services/activity-log.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { unprocessable } from "../errors.js";
 
 export function orionRoutes(db: Db) {
   const router = Router();
@@ -104,6 +106,60 @@ export function orionRoutes(db: Db) {
     if (task) assertCompanyAccess(req, task.companyId);
     const binding = await svc.bindTaskWorkflow(req.params.taskId as string, req.body);
     res.status(201).json(binding);
+  });
+
+  router.get("/orion/tasks/:taskId/workflow-resolution", async (req, res) => {
+    const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
+    if (task) assertCompanyAccess(req, task.companyId);
+    const input = resolveOrionTaskWorkflowSchema.parse({ edgeType: req.query.edgeType });
+    res.json(await svc.resolveTaskWorkflow(req.params.taskId as string, input));
+  });
+
+  router.post("/orion/tasks/:taskId/workflow/advance", validate(resolveOrionTaskWorkflowSchema), async (req, res) => {
+    assertBoard(req);
+    const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
+    if (task) assertCompanyAccess(req, task.companyId);
+    const resolution = await svc.resolveTaskWorkflow(req.params.taskId as string, req.body);
+    if (resolution.actionKind === "blocked_missing_binding" || resolution.actionKind === "blocked_missing_edge" || resolution.actionKind === "legacy_compatibility") {
+      if (task) {
+        const actor = getActorInfo(req);
+        await logActivity(db, {
+          companyId: task.companyId,
+          actorType: actor.actorType,
+          actorId: actor.actorId,
+          action: "orion.workflow_advance_blocked",
+          entityType: "task",
+          entityId: req.params.taskId as string,
+          details: {
+            edgeType: req.body.edgeType,
+            actionKind: resolution.actionKind,
+            blockedReason: resolution.blockedReason,
+            currentNodeKey: resolution.currentNode?.nodeKey ?? null,
+            targetNodeKey: resolution.targetNode?.nodeKey ?? null,
+          },
+        });
+      }
+      throw unprocessable(resolution.blockedReason ?? "Workflow cannot advance", resolution);
+    }
+    const result = await svc.advanceTaskWorkflow(req.params.taskId as string, req.body);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: result.resolution.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      action: "orion.workflow_advanced",
+      entityType: "task",
+      entityId: req.params.taskId as string,
+      agentId: result.resolution.targetAgent?.id ?? null,
+      details: {
+        edgeType: req.body.edgeType,
+        actionKind: result.resolution.actionKind,
+        fromNodeKey: result.resolution.currentNode?.nodeKey ?? null,
+        toNodeKey: result.resolution.targetNode?.nodeKey ?? null,
+        roleProfileId: result.resolution.targetRoleProfile?.roleId ?? null,
+      },
+    });
+    res.json(result);
   });
 
   router.get("/orion/tasks/:taskId/policy", async (req, res) => {

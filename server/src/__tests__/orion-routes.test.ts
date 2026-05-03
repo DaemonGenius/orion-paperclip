@@ -118,6 +118,23 @@ describeEmbeddedPostgres("Orion routes", () => {
     });
   }
 
+  async function seedAgent(input: { name: string; role: string; reportsTo?: string | null }) {
+    const id = randomUUID();
+    await db.insert(agents).values({
+      id,
+      companyId,
+      name: input.name,
+      role: input.role,
+      status: "active",
+      reportsTo: input.reportsTo ?? null,
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+    return id;
+  }
+
   async function createVerificationWorktree(changedPath = "src/app.ts") {
     const cwd = await mkdtemp(path.join(os.tmpdir(), "orion-verification-"));
     execFileSync("git", ["init"], { cwd, stdio: "ignore" });
@@ -1253,6 +1270,169 @@ describeEmbeddedPostgres("Orion routes", () => {
       .send({ workflowId: workflow.body.id, currentNodeKey: "task_intake" });
     expect(binding.status, JSON.stringify(binding.body)).toBe(201);
     expect(binding.body.currentNodeKey).toBe("task_intake");
+  });
+
+  it("resolves and advances Round Table assignments through explicitly bound role nodes", async () => {
+    await seedCompanyAndAgent();
+    const plannerAgentId = await seedAgent({ name: "Bound Planner", role: "engineer" });
+
+    const workflow = await request(app)
+      .post(`/api/orion/companies/${companyId}/workflows/presets`)
+      .send({
+        presetId: "orion_round_table",
+        makeDefault: true,
+        agentBindings: { planner: plannerAgentId, implementer: agentId },
+      });
+    const sync = await request(app)
+      .post(`/api/orion/companies/${companyId}/notion/sync`)
+      .send({
+        tasks: [{ notionPageId: "notion-task-role-resolution", title: "Resolve role task" }],
+      });
+    const taskId = sync.body.results[0].taskId;
+    await request(app)
+      .post(`/api/orion/tasks/${taskId}/workflow-binding`)
+      .send({ workflowId: workflow.body.id, currentNodeKey: "task_intake" });
+
+    const resolution = await request(app).get(`/api/orion/tasks/${taskId}/workflow-resolution`);
+    expect(resolution.status, JSON.stringify(resolution.body)).toBe(200);
+    expect(resolution.body.actionKind).toBe("assignable_agent");
+    expect(resolution.body.targetNode.nodeKey).toBe("planner");
+    expect(resolution.body.targetRoleProfile.roleId).toBe("planner");
+    expect(resolution.body.targetAgent.id).toBe(plannerAgentId);
+    expect(resolution.body.targetAgent.role).toBe("engineer");
+
+    const advance = await request(app).post(`/api/orion/tasks/${taskId}/workflow/advance`).send({});
+    expect(advance.status, JSON.stringify(advance.body)).toBe(200);
+    expect(advance.body.binding.currentNodeKey).toBe("planner");
+
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+    expect(task.assigneeAgentId).toBe(plannerAgentId);
+    expect(task.status).toBe("in_progress");
+  });
+
+  it("blocks unbound agent role nodes without falling back to CEO hierarchy", async () => {
+    await seedCompanyAndAgent();
+    const ceoId = await seedAgent({ name: "Legacy CEO", role: "ceo" });
+    await db.update(agents).set({ reportsTo: ceoId }).where(eq(agents.id, agentId));
+
+    const workflow = await request(app)
+      .post(`/api/orion/companies/${companyId}/workflows/presets`)
+      .send({
+        presetId: "orion_round_table",
+        makeDefault: true,
+        agentBindings: { implementer: agentId },
+      });
+    const sync = await request(app)
+      .post(`/api/orion/companies/${companyId}/notion/sync`)
+      .send({
+        tasks: [{ notionPageId: "notion-task-unbound-role", title: "Unbound planner task" }],
+      });
+    const taskId = sync.body.results[0].taskId;
+    await request(app)
+      .post(`/api/orion/tasks/${taskId}/workflow-binding`)
+      .send({ workflowId: workflow.body.id, currentNodeKey: "task_intake" });
+
+    const resolution = await request(app).get(`/api/orion/tasks/${taskId}/workflow-resolution`);
+    expect(resolution.status, JSON.stringify(resolution.body)).toBe(200);
+    expect(resolution.body.actionKind).toBe("blocked_missing_binding");
+    expect(resolution.body.targetNode.nodeKey).toBe("planner");
+    expect(resolution.body.targetAgent).toBeNull();
+
+    const advance = await request(app).post(`/api/orion/tasks/${taskId}/workflow/advance`).send({});
+    expect(advance.status, JSON.stringify(advance.body)).toBe(422);
+    expect(advance.body.details.actionKind).toBe("blocked_missing_binding");
+
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+    expect(task.assigneeAgentId).not.toBe(ceoId);
+
+    const blockedActions = await db.select().from(activityLog).where(eq(activityLog.action, "orion.workflow_advance_blocked"));
+    expect(blockedActions).toHaveLength(1);
+  });
+
+  it("routes fallback edges through workflow bindings instead of reportsTo", async () => {
+    await seedCompanyAndAgent();
+    const ceoId = await seedAgent({ name: "Legacy CEO", role: "ceo" });
+    const recoveryAgentId = await seedAgent({ name: "Recovery Router", role: "engineer" });
+    await db.update(agents).set({ reportsTo: ceoId }).where(eq(agents.id, agentId));
+
+    const workflow = await request(app)
+      .post(`/api/orion/companies/${companyId}/workflows/presets`)
+      .send({
+        presetId: "orion_round_table",
+        makeDefault: true,
+        agentBindings: { implementer: agentId, recovery_router: recoveryAgentId },
+      });
+    const sync = await request(app)
+      .post(`/api/orion/companies/${companyId}/notion/sync`)
+      .send({
+        tasks: [{ notionPageId: "notion-task-fallback-route", title: "Fallback route task" }],
+      });
+    const taskId = sync.body.results[0].taskId;
+    await request(app)
+      .post(`/api/orion/tasks/${taskId}/workflow-binding`)
+      .send({ workflowId: workflow.body.id, currentNodeKey: "implementer" });
+
+    const resolution = await request(app).get(`/api/orion/tasks/${taskId}/workflow-resolution?edgeType=fallback_to`);
+    expect(resolution.status, JSON.stringify(resolution.body)).toBe(200);
+    expect(resolution.body.actionKind).toBe("assignable_agent");
+    expect(resolution.body.targetNode.nodeKey).toBe("recovery_router");
+    expect(resolution.body.targetAgent.id).toBe(recoveryAgentId);
+    expect(resolution.body.targetAgent.id).not.toBe(ceoId);
+
+    const advance = await request(app)
+      .post(`/api/orion/tasks/${taskId}/workflow/advance`)
+      .send({ edgeType: "fallback_to" });
+    expect(advance.status, JSON.stringify(advance.body)).toBe(200);
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+    expect(task.assigneeAgentId).toBe(recoveryAgentId);
+  });
+
+  it("keeps operator and no-binding workflow cases explicit", async () => {
+    await seedCompanyAndAgent();
+
+    const workflow = await request(app)
+      .post(`/api/orion/companies/${companyId}/workflows/presets`)
+      .send({
+        presetId: "orion_round_table",
+        makeDefault: true,
+        agentBindings: { implementer: agentId },
+      });
+    const sync = await request(app)
+      .post(`/api/orion/companies/${companyId}/notion/sync`)
+      .send({
+        tasks: [
+          { notionPageId: "notion-task-operator-node", title: "Operator node task" },
+          { notionPageId: "notion-task-no-binding", title: "No binding task" },
+        ],
+      });
+    const operatorTaskId = sync.body.results[0].taskId;
+    const noBindingTaskId = sync.body.results[1].taskId;
+    await request(app)
+      .post(`/api/orion/tasks/${operatorTaskId}/workflow-binding`)
+      .send({ workflowId: workflow.body.id, currentNodeKey: "recovery_router" });
+
+    const operatorResolution = await request(app).get(`/api/orion/tasks/${operatorTaskId}/workflow-resolution?edgeType=requires_approval`);
+    expect(operatorResolution.status, JSON.stringify(operatorResolution.body)).toBe(200);
+    expect(operatorResolution.body.actionKind).toBe("operator_required");
+    expect(operatorResolution.body.targetNode.nodeKey).toBe("operator");
+    expect(operatorResolution.body.targetAgent).toBeNull();
+
+    const advance = await request(app)
+      .post(`/api/orion/tasks/${operatorTaskId}/workflow/advance`)
+      .send({ edgeType: "requires_approval" });
+    expect(advance.status, JSON.stringify(advance.body)).toBe(200);
+    const [operatorTask] = await db.select().from(tasks).where(eq(tasks.id, operatorTaskId)).limit(1);
+    expect(operatorTask.assigneeAgentId).toBeNull();
+    expect(operatorTask.status).toBe("in_review");
+
+    const legacyResolution = await request(app).get(`/api/orion/tasks/${noBindingTaskId}/workflow-resolution`);
+    expect(legacyResolution.status, JSON.stringify(legacyResolution.body)).toBe(200);
+    expect(legacyResolution.body.actionKind).toBe("legacy_compatibility");
+
+    const legacyAdvance = await request(app).post(`/api/orion/tasks/${noBindingTaskId}/workflow/advance`).send({});
+    expect(legacyAdvance.status, JSON.stringify(legacyAdvance.body)).toBe(422);
+    const [legacyTask] = await db.select().from(tasks).where(eq(tasks.id, noBindingTaskId)).limit(1);
+    expect(legacyTask.assigneeAgentId).toBeNull();
   });
 
   it("exposes Lean Seven role profile metadata", async () => {

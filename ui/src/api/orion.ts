@@ -6,6 +6,7 @@ import type {
   OrionAutonomyEnvelope,
   OrionAutonomyMode,
   OrionReqLedger,
+  OrionRoleProfile,
   OrionRunReadiness,
   OrionTaskPolicy,
   OrionTaskWorkflowBinding,
@@ -28,6 +29,7 @@ import { api } from "./client";
 
 export const orionApi = {
   workflowPresets: () => api.get<OrionWorkflowDefinition[]>("/orion/workflow-presets"),
+  roleProfiles: () => api.get<OrionRoleProfile[]>("/orion/role-profiles"),
   workflows: (companyId: string) => api.get<OrionWorkflow[]>(`/orion/companies/${companyId}/workflows`),
   createWorkflowFromPreset: (companyId: string, data: CreateOrionWorkflowFromPreset) =>
     api.post<OrionWorkflow>(`/orion/companies/${companyId}/workflows/presets`, data),

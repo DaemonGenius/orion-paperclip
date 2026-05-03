@@ -38,9 +38,12 @@ import type {
   OrionAutonomyEnvelope,
   OrionBootstrapNotion,
   OpenOrionPr,
+  OrionTaskWorkflowAdvanceResult,
+  OrionTaskWorkflowResolution,
   OrionRunReadiness,
   OrionWorkflowDefinition,
   OrionWorkflowPresetId,
+  ResolveOrionTaskWorkflow,
   OrionSyncNotion,
   ApproveOrionLedgerPlan,
   RecordOrionLedgerEvidence,
@@ -89,6 +92,12 @@ const VERIFICATION_OUTPUT_MAX_CHARS = 12_000;
 
 function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function readConfigString(config: unknown, key: string): string | null {
+  if (!config || typeof config !== "object" || Array.isArray(config)) return null;
+  const value = (config as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
 function stableJson(value: unknown): string {
@@ -1401,6 +1410,208 @@ export function orionService(db: Db) {
         })
         .returning();
       return binding!;
+    },
+
+    resolveTaskWorkflow: async (
+      taskId: string,
+      input: ResolveOrionTaskWorkflow = { edgeType: "assigns_to" },
+    ): Promise<OrionTaskWorkflowResolution> => {
+      const task = await db
+        .select({
+          id: tasks.id,
+          companyId: tasks.companyId,
+        })
+        .from(tasks)
+        .where(eq(tasks.id, taskId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      if (!task) throw notFound("Task not found");
+
+      const binding = await db
+        .select()
+        .from(orionTaskWorkflowBindings)
+        .where(eq(orionTaskWorkflowBindings.taskId, taskId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      if (!binding?.currentNodeKey) {
+        return {
+          taskId: task.id,
+          companyId: task.companyId,
+          workflowId: binding?.workflowId ?? null,
+          binding: binding ?? null,
+          currentNode: null,
+          edge: null,
+          targetNode: null,
+          targetRoleProfile: null,
+          targetAgent: null,
+          actionKind: "legacy_compatibility",
+          blockedReason: "No workflow binding is active for this task; legacy routing remains unchanged.",
+        };
+      }
+
+      const currentNode = await db
+        .select()
+        .from(orionWorkflowNodes)
+        .where(and(
+          eq(orionWorkflowNodes.workflowId, binding.workflowId),
+          eq(orionWorkflowNodes.nodeKey, binding.currentNodeKey),
+        ))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+
+      const edge = await db
+        .select()
+        .from(orionWorkflowEdges)
+        .where(and(
+          eq(orionWorkflowEdges.workflowId, binding.workflowId),
+          eq(orionWorkflowEdges.fromNodeKey, binding.currentNodeKey),
+          eq(orionWorkflowEdges.type, input.edgeType),
+        ))
+        .orderBy(orionWorkflowEdges.position)
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      if (!edge) {
+        return {
+          taskId: task.id,
+          companyId: task.companyId,
+          workflowId: binding.workflowId,
+          binding,
+          currentNode,
+          edge: null,
+          targetNode: null,
+          targetRoleProfile: null,
+          targetAgent: null,
+          actionKind: "blocked_missing_edge",
+          blockedReason: `No ${input.edgeType} edge is configured from workflow node ${binding.currentNodeKey}.`,
+        };
+      }
+
+      const targetNode = await db
+        .select()
+        .from(orionWorkflowNodes)
+        .where(and(eq(orionWorkflowNodes.workflowId, binding.workflowId), eq(orionWorkflowNodes.nodeKey, edge.toNodeKey)))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      if (!targetNode) {
+        return {
+          taskId: task.id,
+          companyId: task.companyId,
+          workflowId: binding.workflowId,
+          binding,
+          currentNode,
+          edge,
+          targetNode: null,
+          targetRoleProfile: null,
+          targetAgent: null,
+          actionKind: "blocked_missing_edge",
+          blockedReason: `Workflow edge ${edge.edgeKey} points to missing node ${edge.toNodeKey}.`,
+        };
+      }
+
+      const targetRoleProfile = resolveOrionRoleProfile(readConfigString(targetNode.config, "roleProfileId"));
+      const targetAgent = targetNode.agentId
+        ? await db
+            .select({
+              id: agents.id,
+              name: agents.name,
+              role: agents.role,
+              status: agents.status,
+              adapterType: agents.adapterType,
+            })
+            .from(agents)
+            .where(and(eq(agents.companyId, task.companyId), eq(agents.id, targetNode.agentId)))
+            .limit(1)
+            .then((rows) => rows[0] ?? null)
+        : null;
+
+      if (targetNode.type === "agent" && !targetAgent) {
+        return {
+          taskId: task.id,
+          companyId: task.companyId,
+          workflowId: binding.workflowId,
+          binding,
+          currentNode,
+          edge,
+          targetNode,
+          targetRoleProfile,
+          targetAgent: null,
+          actionKind: "blocked_missing_binding",
+          blockedReason: `Workflow node ${targetNode.nodeKey} requires an explicit agent binding before work can be assigned.`,
+        };
+      }
+
+      const operatorRequiredNodeTypes = new Set(["human_gate", "fallback", "decision", "verification", "github_pr"]);
+      return {
+        taskId: task.id,
+        companyId: task.companyId,
+        workflowId: binding.workflowId,
+        binding,
+        currentNode,
+        edge,
+        targetNode,
+        targetRoleProfile,
+        targetAgent,
+        actionKind: targetAgent ? "assignable_agent" : operatorRequiredNodeTypes.has(targetNode.type) ? "operator_required" : "blocked_missing_binding",
+        blockedReason: targetAgent || operatorRequiredNodeTypes.has(targetNode.type)
+          ? null
+          : `Workflow node ${targetNode.nodeKey} cannot be resolved to an executable owner.`,
+      };
+    },
+
+    advanceTaskWorkflow: async (
+      taskId: string,
+      input: ResolveOrionTaskWorkflow = { edgeType: "assigns_to" },
+    ): Promise<OrionTaskWorkflowAdvanceResult> => {
+      const resolution = await orionService(db).resolveTaskWorkflow(taskId, input);
+      if (!resolution.binding || !resolution.targetNode || !resolution.edge) {
+        throw unprocessable(resolution.blockedReason ?? "Workflow cannot advance", resolution);
+      }
+      if (resolution.actionKind === "blocked_missing_binding" || resolution.actionKind === "blocked_missing_edge" || resolution.actionKind === "legacy_compatibility") {
+        throw unprocessable(resolution.blockedReason ?? "Workflow cannot advance", resolution);
+      }
+
+      const updated = await db.transaction(async (tx) => {
+        const [binding] = await tx
+          .update(orionTaskWorkflowBindings)
+          .set({
+            currentNodeKey: resolution.targetNode!.nodeKey,
+            updatedAt: new Date(),
+          })
+          .where(eq(orionTaskWorkflowBindings.id, resolution.binding!.id))
+          .returning();
+
+        await tx
+          .update(orionWorkflowRuns)
+          .set({
+            currentNodeKey: resolution.targetNode!.nodeKey,
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(orionWorkflowRuns.taskId, taskId),
+            eq(orionWorkflowRuns.workflowId, resolution.binding!.workflowId),
+            eq(orionWorkflowRuns.status, "active"),
+          ));
+
+        await tx
+          .update(tasks)
+          .set({
+            assigneeAgentId: resolution.targetAgent?.id ?? null,
+            assigneeUserId: null,
+            status: resolution.actionKind === "assignable_agent" ? "in_progress" : "in_review",
+            updatedAt: new Date(),
+          })
+          .where(eq(tasks.id, taskId));
+
+        return binding!;
+      });
+
+      return {
+        resolution: {
+          ...resolution,
+          binding: updated,
+        },
+        binding: updated,
+      };
     },
 
     resolveNextWorkflowAction: async (taskId: string, edgeType: string = "assigns_to") => {

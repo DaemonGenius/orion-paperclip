@@ -403,6 +403,75 @@ export const bindOrionTaskWorkflowSchema = z.object({
   currentNodeKey: z.string().trim().min(1).max(120).optional().nullable(),
 });
 
+export const resolveOrionTaskWorkflowSchema = z.object({
+  edgeType: orionWorkflowEdgeTypeSchema
+    .exclude(["reports_to"])
+    .optional()
+    .default("assigns_to"),
+});
+
+const persistedOrionTaskWorkflowBindingSchema = z.object({
+  id: z.string().uuid(),
+  companyId: z.string().uuid(),
+  taskId: z.string().uuid(),
+  workflowId: z.string().uuid(),
+  currentNodeKey: z.string().trim().min(1).max(120).nullable(),
+  status: z.string(),
+  createdAt: z.union([z.date(), z.string()]),
+  updatedAt: z.union([z.date(), z.string()]),
+});
+
+const persistedOrionWorkflowNodeSchema = orionWorkflowNodeSchema.extend({
+  id: z.string().uuid().optional(),
+  companyId: z.string().uuid().optional(),
+  workflowId: z.string().uuid().optional(),
+  createdAt: z.union([z.date(), z.string()]).optional(),
+  updatedAt: z.union([z.date(), z.string()]).optional(),
+});
+
+const persistedOrionWorkflowEdgeSchema = orionWorkflowEdgeSchema.extend({
+  id: z.string().uuid().optional(),
+  companyId: z.string().uuid().optional(),
+  workflowId: z.string().uuid().optional(),
+  createdAt: z.union([z.date(), z.string()]).optional(),
+  updatedAt: z.union([z.date(), z.string()]).optional(),
+});
+
+export const orionWorkflowResolutionActionKindSchema = z.enum([
+  "assignable_agent",
+  "operator_required",
+  "blocked_missing_binding",
+  "blocked_missing_edge",
+  "legacy_compatibility",
+]);
+
+export const orionTaskWorkflowResolutionSchema = z.object({
+  taskId: z.string().uuid(),
+  companyId: z.string().uuid(),
+  workflowId: z.string().uuid().nullable(),
+  binding: persistedOrionTaskWorkflowBindingSchema.nullable(),
+  currentNode: persistedOrionWorkflowNodeSchema.nullable(),
+  edge: persistedOrionWorkflowEdgeSchema.nullable(),
+  targetNode: persistedOrionWorkflowNodeSchema.nullable(),
+  targetRoleProfile: orionRoleProfileSchema.nullable(),
+  targetAgent: z
+    .object({
+      id: z.string().uuid(),
+      name: z.string(),
+      role: z.string(),
+      status: z.string(),
+      adapterType: z.string(),
+    })
+    .nullable(),
+  actionKind: orionWorkflowResolutionActionKindSchema,
+  blockedReason: z.string().nullable(),
+});
+
+export const orionTaskWorkflowAdvanceResultSchema = z.object({
+  resolution: orionTaskWorkflowResolutionSchema,
+  binding: persistedOrionTaskWorkflowBindingSchema,
+});
+
 export const createOrionWorkflowNodeSchema = orionWorkflowNodeSchema;
 export const createOrionWorkflowEdgeSchema = orionWorkflowEdgeSchema;
 
@@ -599,6 +668,9 @@ export type OrionWorkflowEdgeInput = z.infer<typeof orionWorkflowEdgeSchema>;
 export type OrionWorkflowDefinition = z.infer<typeof orionWorkflowDefinitionSchema>;
 export type CreateOrionWorkflowFromPreset = z.infer<typeof createOrionWorkflowFromPresetSchema>;
 export type BindOrionTaskWorkflow = z.infer<typeof bindOrionTaskWorkflowSchema>;
+export type ResolveOrionTaskWorkflow = z.infer<typeof resolveOrionTaskWorkflowSchema>;
+export type OrionTaskWorkflowResolution = z.infer<typeof orionTaskWorkflowResolutionSchema>;
+export type OrionTaskWorkflowAdvanceResult = z.infer<typeof orionTaskWorkflowAdvanceResultSchema>;
 export type CreateOrionWorkflowNode = z.infer<typeof createOrionWorkflowNodeSchema>;
 export type CreateOrionWorkflowEdge = z.infer<typeof createOrionWorkflowEdgeSchema>;
 export type OrionBootstrapNotion = z.infer<typeof orionBootstrapNotionSchema>;

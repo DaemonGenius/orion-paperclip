@@ -37,6 +37,16 @@ import {
   buildOnboardingProjectPayload,
   selectDefaultCompanyGoalId
 } from "../lib/onboarding-launch";
+import {
+  DEFAULT_ONBOARDING_WORKFLOW_PRESET_ID,
+  agentBindingKeyForPreset,
+  agentRoleForPreset,
+  agentTitleForPreset,
+  defaultAgentNameForPreset,
+  defaultTaskDescriptionForPreset,
+  defaultTaskTitleForPreset,
+  startNodeForPreset,
+} from "../lib/onboarding-preset";
 import { buildNewAgentRuntimeConfig } from "../lib/new-agent-runtime-config";
 import {
   DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX,
@@ -63,77 +73,6 @@ import {
 
 type Step = 1 | 2 | 3 | 4 | 5;
 type AdapterType = string;
-
-const ORION_DEFAULT_TASK_TITLE = "Review the Orion onboarding setup";
-const ORION_DEFAULT_TASK_DESCRIPTION = `Review the company setup that the operator completed during onboarding.
-
-Expected preflight already done by Orion:
-
-- Notion integration token saved and tested
-- Notion parent/root page access tested
-- Obsidian company vault path saved and tested
-- Shared Company Knowledge refs registered:
-  - Wiki
-  - Decisions
-  - Standards
-  - Operating Context
-- initial Onboarding project workspace refs registered:
-  - Goals & Roadmap
-  - Tasks
-  - Wiki
-  - Implementation Plans
-  - Decision Log
-  - Review Checklist
-
-Your task:
-
-- read the task/project context
-- verify the Orion knowledge refs endpoint shows the expected structures
-- write a short readiness report
-- propose the next concrete implementation task
-
-If the expected refs are missing, report exactly which refs are missing and stop.`;
-
-const PAPERCLIP_DEFAULT_TASK_TITLE = "Hire your first engineer and create a hiring plan";
-const PAPERCLIP_DEFAULT_TASK_DESCRIPTION = `You are the CEO. You set the direction for the company.
-
-- hire a founding engineer
-- write a hiring plan
-- break the roadmap into concrete tasks and start delegating work`;
-
-function defaultAgentNameForPreset(presetId: OrionWorkflowPresetId) {
-  if (presetId === "paperclip_company") return "CEO";
-  if (presetId === "orion_round_table") return "Codex Implementer 01";
-  return "Codex Engineer 01";
-}
-
-function defaultTaskTitleForPreset(presetId: OrionWorkflowPresetId) {
-  return presetId === "paperclip_company" ? PAPERCLIP_DEFAULT_TASK_TITLE : ORION_DEFAULT_TASK_TITLE;
-}
-
-function defaultTaskDescriptionForPreset(presetId: OrionWorkflowPresetId) {
-  return presetId === "paperclip_company" ? PAPERCLIP_DEFAULT_TASK_DESCRIPTION : ORION_DEFAULT_TASK_DESCRIPTION;
-}
-
-function agentRoleForPreset(presetId: OrionWorkflowPresetId) {
-  return presetId === "paperclip_company" ? "ceo" : "implementation_worker";
-}
-
-function agentTitleForPreset(presetId: OrionWorkflowPresetId) {
-  if (presetId === "paperclip_company") return "CEO";
-  if (presetId === "orion_round_table") return "Implementer";
-  return "Implementation Worker";
-}
-
-function agentBindingKeyForPreset(presetId: OrionWorkflowPresetId) {
-  if (presetId === "paperclip_company") return "ceo";
-  if (presetId === "orion_round_table") return "implementer";
-  return "codex_worker";
-}
-
-function startNodeForPreset(presetId: OrionWorkflowPresetId) {
-  return presetId === "paperclip_company" ? "board" : presetId === "orion_round_table" ? "task_intake" : "notion_task";
-}
 
 function slugCompanyVaultName(value: string) {
   const cleaned = value
@@ -189,7 +128,7 @@ export function OnboardingWizard() {
   const [companyName, setCompanyName] = useState("");
   const [companyGoal, setCompanyGoal] = useState("");
   const [workflowPresetId, setWorkflowPresetId] =
-    useState<OrionWorkflowPresetId>("orion_operator_auto_to_pr");
+    useState<OrionWorkflowPresetId>(DEFAULT_ONBOARDING_WORKFLOW_PRESET_ID);
 
   // Step 2
   const [notionToken, setNotionToken] = useState("");
@@ -202,7 +141,7 @@ export function OnboardingWizard() {
   }>({});
 
   // Step 3
-  const [agentName, setAgentName] = useState(defaultAgentNameForPreset("orion_operator_auto_to_pr"));
+  const [agentName, setAgentName] = useState(defaultAgentNameForPreset(DEFAULT_ONBOARDING_WORKFLOW_PRESET_ID));
   const [adapterType, setAdapterType] = useState<AdapterType>("claude_local");
   const [model, setModel] = useState("");
   const [command, setCommand] = useState("");
@@ -219,10 +158,10 @@ export function OnboardingWizard() {
 
   // Step 4
   const [taskTitle, setTaskTitle] = useState(
-    defaultTaskTitleForPreset("orion_operator_auto_to_pr")
+    defaultTaskTitleForPreset(DEFAULT_ONBOARDING_WORKFLOW_PRESET_ID)
   );
   const [taskDescription, setTaskDescription] = useState(
-    defaultTaskDescriptionForPreset("orion_operator_auto_to_pr")
+    defaultTaskDescriptionForPreset(DEFAULT_ONBOARDING_WORKFLOW_PRESET_ID)
   );
 
   // Auto-grow textarea for task description
@@ -403,13 +342,13 @@ export function OnboardingWizard() {
     setError(null);
     setCompanyName("");
     setCompanyGoal("");
-    setWorkflowPresetId("orion_operator_auto_to_pr");
+    setWorkflowPresetId(DEFAULT_ONBOARDING_WORKFLOW_PRESET_ID);
     setNotionToken("");
     setNotionRootPageId("");
     setNotionWorkspaceName("");
     setObsidianVaultPath("/vaults/local-dev");
     setThirdPartyStatus({});
-    setAgentName(defaultAgentNameForPreset("orion_operator_auto_to_pr"));
+    setAgentName(defaultAgentNameForPreset(DEFAULT_ONBOARDING_WORKFLOW_PRESET_ID));
     setAdapterType("claude_local");
     setModel("");
     setCommand("");
@@ -420,8 +359,8 @@ export function OnboardingWizard() {
     setAdapterEnvLoading(false);
     setForceUnsetAnthropicApiKey(false);
     setUnsetAnthropicLoading(false);
-    setTaskTitle(defaultTaskTitleForPreset("orion_operator_auto_to_pr"));
-    setTaskDescription(defaultTaskDescriptionForPreset("orion_operator_auto_to_pr"));
+    setTaskTitle(defaultTaskTitleForPreset(DEFAULT_ONBOARDING_WORKFLOW_PRESET_ID));
+    setTaskDescription(defaultTaskDescriptionForPreset(DEFAULT_ONBOARDING_WORKFLOW_PRESET_ID));
     setCreatedCompanyId(null);
     setCreatedCompanyPrefix(null);
     setCreatedCompanyGoalId(null);

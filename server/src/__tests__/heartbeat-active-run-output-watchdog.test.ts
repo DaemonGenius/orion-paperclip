@@ -7,6 +7,10 @@ import {
   createDb,
   heartbeatRunWatchdogDecisions,
   heartbeatRuns,
+  orionTaskWorkflowBindings,
+  orionWorkflowEdges,
+  orionWorkflowNodes,
+  orionWorkflows,
   taskRelations,
   tasks,
 } from "@paperclipai/db";
@@ -184,6 +188,71 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     return { companyId, managerId, coderId, taskId, runId, taskPrefix };
   }
 
+  async function bindTaskToFallbackWorkflow(input: {
+    companyId: string;
+    taskId: string;
+    currentNodeKey?: string;
+    fallbackNodeType?: "fallback" | "agent" | "human_gate";
+    fallbackAgentId?: string | null;
+    includeFallbackEdge?: boolean;
+  }) {
+    const workflowId = randomUUID();
+    const now = new Date("2026-04-22T19:00:00.000Z");
+    await db.insert(orionWorkflows).values({
+      id: workflowId,
+      companyId: input.companyId,
+      name: "Orion Round Table",
+      presetId: "orion_round_table",
+      defaultForCompany: true,
+      definitionJson: { defaultStartNodeKey: input.currentNodeKey ?? "implementer" },
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.insert(orionWorkflowNodes).values([
+      {
+        companyId: input.companyId,
+        workflowId,
+        nodeKey: input.currentNodeKey ?? "implementer",
+        type: "agent",
+        label: "Implementer",
+        config: { roleProfileId: "implementer" },
+        position: 0,
+      },
+      {
+        companyId: input.companyId,
+        workflowId,
+        nodeKey: "recovery_router",
+        type: input.fallbackNodeType ?? "fallback",
+        label: "Recovery Router",
+        agentId: input.fallbackAgentId ?? null,
+        config: { roleProfileId: "recovery_router" },
+        position: 1,
+      },
+    ]);
+    if (input.includeFallbackEdge !== false) {
+      await db.insert(orionWorkflowEdges).values({
+        companyId: input.companyId,
+        workflowId,
+        edgeKey: "implementer-to-recovery",
+        fromNodeKey: input.currentNodeKey ?? "implementer",
+        toNodeKey: "recovery_router",
+        type: "fallback_to",
+        label: "recovery",
+        config: {},
+        position: 0,
+      });
+    }
+    await db.insert(orionTaskWorkflowBindings).values({
+      companyId: input.companyId,
+      taskId: input.taskId,
+      workflowId,
+      currentNodeKey: input.currentNodeKey ?? "implementer",
+      status: "active",
+      updatedAt: now,
+    });
+    return workflowId;
+  }
+
   it("creates one medium-priority evaluation task for a suspicious silent run", async () => {
     const now = new Date("2026-04-22T20:00:00.000Z");
     const { companyId, managerId, runId } = await seedRunningRun({
@@ -213,6 +282,58 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     });
     expect(evaluations[0]?.description).toContain("Decision Checklist");
     expect(evaluations[0]?.description).not.toContain("sk-test-secret-value");
+  });
+
+  it("routes stale-run recovery through workflow fallback before reportsTo", async () => {
+    const now = new Date("2026-04-22T20:00:00.000Z");
+    const { companyId, managerId, taskId } = await seedRunningRun({
+      now,
+      ageMs: ACTIVE_RUN_OUTPUT_SUSPICION_THRESHOLD_MS + 60_000,
+    });
+    const recoveryAgentId = randomUUID();
+    await db.insert(agents).values({
+      id: recoveryAgentId,
+      companyId,
+      name: "Recovery Router",
+      role: "engineer",
+      status: "idle",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+    await bindTaskToFallbackWorkflow({ companyId, taskId, fallbackAgentId: recoveryAgentId });
+    const heartbeat = heartbeatService(db);
+
+    const scan = await heartbeat.scanSilentActiveRuns({ now, companyId });
+
+    expect(scan.created).toBe(1);
+    const [evaluation] = await db
+      .select()
+      .from(tasks)
+      .where(and(eq(tasks.companyId, companyId), eq(tasks.originKind, "stale_active_run_evaluation")));
+    expect(evaluation?.assigneeAgentId).toBe(recoveryAgentId);
+    expect(evaluation?.assigneeAgentId).not.toBe(managerId);
+  });
+
+  it("does not use CEO/CTO stale-run recovery when a workflow fallback is unbound", async () => {
+    const now = new Date("2026-04-22T20:00:00.000Z");
+    const { companyId, managerId, taskId } = await seedRunningRun({
+      now,
+      ageMs: ACTIVE_RUN_OUTPUT_SUSPICION_THRESHOLD_MS + 60_000,
+    });
+    await bindTaskToFallbackWorkflow({ companyId, taskId, fallbackAgentId: null });
+    const heartbeat = heartbeatService(db);
+
+    const scan = await heartbeat.scanSilentActiveRuns({ now, companyId });
+
+    expect(scan.created).toBe(1);
+    const [evaluation] = await db
+      .select()
+      .from(tasks)
+      .where(and(eq(tasks.companyId, companyId), eq(tasks.originKind, "stale_active_run_evaluation")));
+    expect(evaluation?.assigneeAgentId).toBeNull();
+    expect(evaluation?.assigneeAgentId).not.toBe(managerId);
   });
 
   it("redacts sensitive values from actual run-log evidence", async () => {

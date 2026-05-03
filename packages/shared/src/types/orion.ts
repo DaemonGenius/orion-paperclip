@@ -192,6 +192,40 @@ export interface OrionTaskWorkflowBinding {
   updatedAt: Date | string;
 }
 
+export type OrionWorkflowResolutionActionKind =
+  | "assignable_agent"
+  | "operator_required"
+  | "blocked_missing_binding"
+  | "blocked_missing_edge"
+  | "legacy_compatibility";
+
+export interface OrionWorkflowResolutionAgent {
+  id: string;
+  name: string;
+  role: string;
+  status: string;
+  adapterType: string;
+}
+
+export interface OrionTaskWorkflowResolution {
+  taskId: string;
+  companyId: string;
+  workflowId: string | null;
+  binding: OrionTaskWorkflowBinding | null;
+  currentNode: OrionWorkflowNode | null;
+  edge: OrionWorkflowEdge | null;
+  targetNode: OrionWorkflowNode | null;
+  targetRoleProfile: OrionRoleProfile | null;
+  targetAgent: OrionWorkflowResolutionAgent | null;
+  actionKind: OrionWorkflowResolutionActionKind;
+  blockedReason: string | null;
+}
+
+export interface OrionTaskWorkflowAdvanceResult {
+  resolution: OrionTaskWorkflowResolution;
+  binding: OrionTaskWorkflowBinding;
+}
+
 export interface OrionNotionBinding {
   id: string;
   companyId: string;

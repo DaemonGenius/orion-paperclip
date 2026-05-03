@@ -14,6 +14,10 @@ import {
   documents,
   heartbeatRunEvents,
   heartbeatRuns,
+  orionTaskWorkflowBindings,
+  orionWorkflowEdges,
+  orionWorkflowNodes,
+  orionWorkflows,
   taskComments,
   taskDocuments,
   taskRelations,
@@ -656,6 +660,80 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     });
 
     return recovery;
+  }
+
+  async function seedRecoveryRouterAgent(companyId: string) {
+    const recoveryAgentId = randomUUID();
+    await db.insert(agents).values({
+      id: recoveryAgentId,
+      companyId,
+      name: "Recovery Router",
+      role: "engineer",
+      status: "idle",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+    return recoveryAgentId;
+  }
+
+  async function bindTaskToFallbackWorkflow(input: {
+    companyId: string;
+    taskId: string;
+    fallbackAgentId?: string | null;
+    includeFallbackEdge?: boolean;
+  }) {
+    const workflowId = randomUUID();
+    await db.insert(orionWorkflows).values({
+      id: workflowId,
+      companyId: input.companyId,
+      name: "Orion Round Table",
+      presetId: "orion_round_table",
+      defaultForCompany: true,
+      definitionJson: { defaultStartNodeKey: "implementer" },
+    });
+    await db.insert(orionWorkflowNodes).values([
+      {
+        companyId: input.companyId,
+        workflowId,
+        nodeKey: "implementer",
+        type: "agent",
+        label: "Implementer",
+        config: { roleProfileId: "implementer" },
+        position: 0,
+      },
+      {
+        companyId: input.companyId,
+        workflowId,
+        nodeKey: "recovery_router",
+        type: "fallback",
+        label: "Recovery Router",
+        agentId: input.fallbackAgentId ?? null,
+        config: { roleProfileId: "recovery_router" },
+        position: 1,
+      },
+    ]);
+    if (input.includeFallbackEdge !== false) {
+      await db.insert(orionWorkflowEdges).values({
+        companyId: input.companyId,
+        workflowId,
+        edgeKey: "implementer-to-recovery",
+        fromNodeKey: "implementer",
+        toNodeKey: "recovery_router",
+        type: "fallback_to",
+        label: "recovery",
+        config: {},
+        position: 0,
+      });
+    }
+    await db.insert(orionTaskWorkflowBindings).values({
+      companyId: input.companyId,
+      taskId: input.taskId,
+      workflowId,
+      currentNodeKey: "implementer",
+      status: "active",
+    });
   }
 
   async function seedQueuedTaskRunFixture() {
@@ -1447,6 +1525,54 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     expect(comments[0]?.body).toContain("retried continuation");
     expect(comments[0]?.body).toContain("Latest retry failure: `process_lost` - run failed before task advanced.");
     expect(comments[0]?.body).toContain(`Recovery task: [${recovery.identifier}]`);
+  });
+
+  it("assigns stranded recovery to workflow Recovery Router before legacy hierarchy", async () => {
+    const { companyId, agentId, taskId, runId } = await seedStrandedTaskFixture({
+      status: "in_progress",
+      runStatus: "failed",
+      retryReason: "task_continuation_needed",
+    });
+    const recoveryAgentId = await seedRecoveryRouterAgent(companyId);
+    await bindTaskToFallbackWorkflow({ companyId, taskId, fallbackAgentId: recoveryAgentId });
+    const heartbeat = heartbeatService(db);
+
+    const result = await heartbeat.reconcileStrandedAssignedTasks();
+
+    expect(result.escalated).toBe(1);
+    const recovery = await expectStrandedRecoveryArtifacts({
+      companyId,
+      agentId: recoveryAgentId,
+      taskId,
+      runId,
+      previousStatus: "in_progress",
+      retryReason: "task_continuation_needed",
+    });
+    expect(recovery.assigneeAgentId).not.toBe(agentId);
+  });
+
+  it("does not assign stranded workflow recovery to legacy agents when fallback binding is missing", async () => {
+    const { companyId, taskId } = await seedStrandedTaskFixture({
+      status: "in_progress",
+      runStatus: "failed",
+      retryReason: "task_continuation_needed",
+    });
+    const ctoId = await seedRecoveryRouterAgent(companyId);
+    await db.update(agents).set({ role: "cto", name: "Legacy CTO" }).where(eq(agents.id, ctoId));
+    await bindTaskToFallbackWorkflow({ companyId, taskId, fallbackAgentId: null });
+    const heartbeat = heartbeatService(db);
+
+    const result = await heartbeat.reconcileStrandedAssignedTasks();
+
+    expect(result.escalated).toBe(1);
+    const recovery = await db
+      .select()
+      .from(tasks)
+      .where(and(eq(tasks.companyId, companyId), eq(tasks.originKind, "stranded_task_recovery")))
+      .then((rows) => rows[0] ?? null);
+    expect(recovery).toBeNull();
+    const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).then((rows) => rows[0] ?? null);
+    expect(task?.status).toBe("blocked");
   });
 
   it("does not escalate paused-tree recovery when the automatic continuation retry was cancelled by the hold", async () => {

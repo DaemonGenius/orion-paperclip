@@ -81,10 +81,12 @@ export interface NotionKnowledgeSyncResult {
   syncedAt: string;
   rootPageId: string;
   discoveredObjects: number;
+  registeredObjectsProcessed?: number;
   syncedRefs: number;
   mirroredFiles: number;
   exportedDatabaseRows: number;
   importedTasks: number;
+  skippedTaskRows?: number;
   importedProjects: number;
   refs: ExternalObjectRef[];
   obsidianRefs: ExternalObjectRef[];

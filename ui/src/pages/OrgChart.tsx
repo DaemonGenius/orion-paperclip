@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { Link, useNavigate } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
+import { heartbeatsApi, type LiveRunForTask } from "../api/heartbeats";
+import { orionApi } from "../api/orion";
+import { tasksApi } from "../api/tasks";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -9,9 +12,18 @@ import { agentUrl } from "../lib/utils";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
+import { StatusBadge } from "../components/StatusBadge";
 import { AgentIcon } from "../components/AgentIconPicker";
-import { Download, Maximize2, Minus, Network, Plus, Upload } from "lucide-react";
-import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
+import { Download, GitBranch, Maximize2, Minus, Network, Plus, Route, Upload, UsersRound } from "lucide-react";
+import {
+  AGENT_ROLE_LABELS,
+  type Agent,
+  type OrionRoleProfile,
+  type OrionWorkflow,
+  type OrionWorkflowEdge,
+  type OrionWorkflowNode,
+  type Task,
+} from "@paperclipai/shared";
 
 // Layout constants
 const CARD_W = 200;
@@ -48,6 +60,17 @@ interface TouchGesture {
   startDistance: number;
   startCenter: Point;
   moved: boolean;
+}
+
+type OrgViewMode = "round_table" | "hierarchy";
+
+interface RoundTableCardModel {
+  node: OrionWorkflowNode;
+  profile: OrionRoleProfile;
+  agent: Agent | null;
+  currentWork: Task[];
+  liveRunCount: number;
+  fallbackLabel: string | null;
 }
 
 // ── Layout algorithm ────────────────────────────────────────────────────
@@ -132,6 +155,80 @@ function collectEdges(nodes: LayoutNode[]): Array<{ parent: LayoutNode; child: L
   return edges;
 }
 
+function isTerminalTask(task: Task) {
+  return task.status === "done" || task.status === "cancelled";
+}
+
+function readStringConfig(config: Record<string, unknown> | undefined, key: string) {
+  const value = config?.[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function roleProfileIdForNode(node: OrionWorkflowNode) {
+  const explicit = readStringConfig(node.config, "roleProfileId");
+  if (explicit) return explicit;
+  const legacyRole = readStringConfig(node.config, "role");
+  if (legacyRole === "implementation_worker" || legacyRole === "engineer") return "implementer";
+  const owner = readStringConfig(node.config, "owner");
+  if (owner === "operator") return "operator";
+  if (node.type === "verification") return "verifier";
+  if (node.type === "github_pr" || node.type === "task_intake" || node.type === "human_gate") return "operator";
+  return null;
+}
+
+function buildRoundTableCards(input: {
+  workflow: OrionWorkflow | null | undefined;
+  profiles: OrionRoleProfile[] | null | undefined;
+  agents: Agent[] | null | undefined;
+  tasks: Task[] | null | undefined;
+  liveRuns: LiveRunForTask[] | null | undefined;
+}) {
+  const workflow = input.workflow;
+  if (!workflow?.nodes) return [];
+
+  const profileById = new Map((input.profiles ?? []).map((profile) => [profile.roleId, profile]));
+  const agentById = new Map((input.agents ?? []).map((agent) => [agent.id, agent]));
+  const activeTasksByAgent = new Map<string, Task[]>();
+  for (const task of input.tasks ?? []) {
+    if (!task.assigneeAgentId || isTerminalTask(task)) continue;
+    const list = activeTasksByAgent.get(task.assigneeAgentId) ?? [];
+    list.push(task);
+    activeTasksByAgent.set(task.assigneeAgentId, list);
+  }
+
+  const liveRunsByAgent = new Map<string, number>();
+  for (const run of input.liveRuns ?? []) {
+    if (run.status !== "queued" && run.status !== "running") continue;
+    liveRunsByAgent.set(run.agentId, (liveRunsByAgent.get(run.agentId) ?? 0) + 1);
+  }
+
+  const nodeByKey = new Map(workflow.nodes.map((node) => [node.nodeKey, node]));
+  const edges = workflow.edges ?? [];
+
+  return workflow.nodes
+    .map<RoundTableCardModel | null>((node) => {
+      const profileId = roleProfileIdForNode(node);
+      const profile = profileId ? profileById.get(profileId as OrionRoleProfile["roleId"]) : null;
+      if (!profile) return null;
+      const agent = node.agentId ? agentById.get(node.agentId) ?? null : null;
+      const fallbackEdge = edges.find((edge) => edge.fromNodeKey === node.nodeKey && edge.type === "fallback_to");
+      const fallbackNode = fallbackEdge ? nodeByKey.get(fallbackEdge.toNodeKey) : null;
+      return {
+        node,
+        profile,
+        agent,
+        currentWork: agent ? activeTasksByAgent.get(agent.id) ?? [] : [],
+        liveRunCount: agent ? liveRunsByAgent.get(agent.id) ?? 0 : 0,
+        fallbackLabel: fallbackNode?.label ?? fallbackEdge?.toNodeKey ?? null,
+      };
+    })
+    .filter((card): card is RoundTableCardModel => Boolean(card));
+}
+
+function isOrionWorkflow(workflow: OrionWorkflow | null | undefined) {
+  return workflow?.presetId === "orion_round_table" || workflow?.presetId === "orion_operator_auto_to_pr";
+}
+
 function clampZoom(value: number): number {
   return Math.min(Math.max(value, MIN_ZOOM), MAX_ZOOM);
 }
@@ -174,6 +271,7 @@ export function OrgChart() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
+  const [selectedView, setSelectedView] = useState<OrgViewMode | null>(null);
 
   const { data: orgTree, isLoading } = useQuery({
     queryKey: queryKeys.org(selectedCompanyId!),
@@ -187,6 +285,39 @@ export function OrgChart() {
     enabled: !!selectedCompanyId,
   });
 
+  const { data: workflows, isLoading: workflowsLoading } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.orion.workflows(selectedCompanyId) : ["orion", "workflows", "none"],
+    queryFn: () => orionApi.workflows(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  const defaultWorkflow = workflows?.find((workflow) => workflow.defaultForCompany) ?? workflows?.[0] ?? null;
+
+  const { data: workflow } = useQuery({
+    queryKey: defaultWorkflow ? queryKeys.orion.workflow(defaultWorkflow.id) : ["orion", "workflow", "none"],
+    queryFn: () => orionApi.workflow(defaultWorkflow!.id),
+    enabled: !!defaultWorkflow,
+  });
+
+  const { data: roleProfiles } = useQuery({
+    queryKey: queryKeys.orion.roleProfiles,
+    queryFn: () => orionApi.roleProfiles(),
+    enabled: !!selectedCompanyId,
+  });
+
+  const { data: tasks } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.tasks.list(selectedCompanyId) : ["tasks", "none"],
+    queryFn: () => tasksApi.list(selectedCompanyId!, { limit: 200 }),
+    enabled: !!selectedCompanyId,
+  });
+
+  const { data: liveRuns } = useQuery({
+    queryKey: selectedCompanyId ? [...queryKeys.liveRuns(selectedCompanyId), "org-chart"] : ["live-runs", "none"],
+    queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 15_000,
+  });
+
   const agentMap = useMemo(() => {
     const m = new Map<string, Agent>();
     for (const a of agents ?? []) m.set(a.id, a);
@@ -196,6 +327,18 @@ export function OrgChart() {
   useEffect(() => {
     setBreadcrumbs([{ label: "Org Chart" }]);
   }, [setBreadcrumbs]);
+
+  useEffect(() => {
+    setSelectedView(null);
+  }, [selectedCompanyId, defaultWorkflow?.id]);
+
+  const roundTableAvailable = isOrionWorkflow(workflow);
+  const defaultView: OrgViewMode = roundTableAvailable ? "round_table" : "hierarchy";
+  const activeView = selectedView ?? defaultView;
+  const roundTableCards = useMemo(
+    () => buildRoundTableCards({ workflow, profiles: roleProfiles, agents, tasks, liveRuns }),
+    [workflow, roleProfiles, agents, tasks, liveRuns],
+  );
 
   // Layout computation
   const layout = useMemo(() => layoutForest(orgTree ?? []), [orgTree]);
@@ -432,30 +575,47 @@ export function OrgChart() {
     return <EmptyState icon={Network} message="Select a company to view the org chart." />;
   }
 
-  if (isLoading) {
+  if (isLoading || workflowsLoading) {
     return <PageSkeleton variant="org-chart" />;
   }
 
-  if (orgTree && orgTree.length === 0) {
+  if (activeView === "hierarchy" && orgTree && orgTree.length === 0) {
     return <EmptyState icon={Network} message="No organizational hierarchy defined." />;
   }
 
   return (
     <div className="flex h-[calc(100dvh-9rem)] min-h-[420px] flex-col md:h-full md:min-h-0">
-      <div className="mb-2 flex shrink-0 flex-wrap items-center justify-start gap-2">
-        <Link to="/company/import">
-          <Button variant="outline" size="sm">
-            <Upload className="mr-1.5 h-3.5 w-3.5" />
-            Import company
-          </Button>
-        </Link>
-        <Link to="/company/export">
-          <Button variant="outline" size="sm">
-            <Download className="mr-1.5 h-3.5 w-3.5" />
-            Export company
-          </Button>
-        </Link>
+      <div className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <OrgViewToggle
+            value={activeView}
+            roundTableAvailable={roundTableAvailable}
+            onChange={setSelectedView}
+          />
+          {!defaultWorkflow ? (
+            <span className="text-xs text-muted-foreground">No default workflow. Showing hierarchy.</span>
+          ) : (
+            <span className="text-xs text-muted-foreground">{defaultWorkflow.name}</span>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link to="/company/import">
+            <Button variant="outline" size="sm">
+              <Upload className="mr-1.5 h-3.5 w-3.5" />
+              Import company
+            </Button>
+          </Link>
+          <Link to="/company/export">
+            <Button variant="outline" size="sm">
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              Export company
+            </Button>
+          </Link>
+        </div>
       </div>
+      {activeView === "round_table" ? (
+        <RoundTableView cards={roundTableCards} workflow={workflow} />
+      ) : (
       <div
         ref={containerRef}
         data-testid="org-chart-viewport"
@@ -616,6 +776,187 @@ export function OrgChart() {
           })}
         </div>
       </div>
+      )}
+    </div>
+  );
+}
+
+function OrgViewToggle({
+  value,
+  roundTableAvailable,
+  onChange,
+}: {
+  value: OrgViewMode;
+  roundTableAvailable: boolean;
+  onChange: (value: OrgViewMode) => void;
+}) {
+  return (
+    <div className="flex items-center border border-border" aria-label="Org view mode">
+      <button
+        type="button"
+        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors ${
+          value === "round_table" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50"
+        }`}
+        disabled={!roundTableAvailable}
+        onClick={() => onChange("round_table")}
+      >
+        <UsersRound className="h-3.5 w-3.5" />
+        Round Table
+      </button>
+      <button
+        type="button"
+        className={`flex items-center gap-1.5 border-l border-border px-3 py-1.5 text-xs transition-colors ${
+          value === "hierarchy" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50"
+        }`}
+        onClick={() => onChange("hierarchy")}
+      >
+        <GitBranch className="h-3.5 w-3.5" />
+        Hierarchy
+      </button>
+    </div>
+  );
+}
+
+function RoundTableView({
+  cards,
+  workflow,
+}: {
+  cards: RoundTableCardModel[];
+  workflow: OrionWorkflow | null | undefined;
+}) {
+  if (!workflow) {
+    return (
+      <div className="border border-border p-4 text-sm text-muted-foreground">
+        No Orion workflow has been created for this company yet.
+      </div>
+    );
+  }
+
+  if (cards.length === 0) {
+    return (
+      <div className="border border-border p-4 text-sm text-muted-foreground">
+        This workflow has no role-profile council nodes yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-0 flex-1 overflow-auto border border-border bg-muted/10">
+      <div className="border-b border-border px-4 py-3">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <UsersRound className="h-4 w-4 text-muted-foreground" />
+          Round Table Council
+        </div>
+        <div className="mt-1 text-xs text-muted-foreground">
+          {workflow.presetId} · {cards.length} role node{cards.length === 1 ? "" : "s"}
+        </div>
+      </div>
+      <RoundTableRoutingStrip cards={cards} />
+      <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+        {cards.map((card) => (
+          <RoundTableCard key={card.node.nodeKey} card={card} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RoundTableRoutingStrip({ cards }: { cards: RoundTableCardModel[] }) {
+  return (
+    <div className="flex gap-2 overflow-x-auto border-b border-border px-4 py-2">
+      {cards.map((card, index) => (
+        <div key={card.node.nodeKey} className="flex shrink-0 items-center gap-2">
+          {index > 0 ? <span className="text-xs text-muted-foreground">-&gt;</span> : null}
+          <span className="rounded-md border border-border px-2 py-1 text-xs">
+            {card.profile.displayName}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RoundTableCard({ card }: { card: RoundTableCardModel }) {
+  const agent = card.agent;
+  const currentWork = card.currentWork.slice(0, 3);
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">{card.profile.displayName}</div>
+          <div className="mt-1 text-xs text-muted-foreground">{card.node.label}</div>
+        </div>
+        <span className="rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground">
+          {card.profile.defaultAutonomyLevel}
+        </span>
+      </div>
+
+      <p className="mt-3 text-sm text-muted-foreground">{card.profile.purpose}</p>
+
+      <div className="mt-4 space-y-1">
+        <PropertyRow label="Agent" value={agent ? agent.name : "Unbound"} muted={!agent} />
+        <PropertyRow
+          label="Status"
+          value={agent ? <StatusBadge status={agent.status} /> : "Waiting for binding"}
+          muted={!agent}
+        />
+        <PropertyRow label="Adapter" value={agent ? getAdapterLabel(agent.adapterType) : "None"} muted={!agent} />
+        <PropertyRow label="Live runs" value={String(card.liveRunCount)} />
+        <PropertyRow label="Current work" value={String(card.currentWork.length)} />
+        <PropertyRow label="Fallback" value={card.fallbackLabel ?? "Operator"} />
+      </div>
+
+      <div className="mt-4">
+        <div className="mb-1 text-xs text-muted-foreground">Permissions</div>
+        <div className="flex flex-wrap gap-1">
+          {card.profile.permissions.map((permission) => (
+            <span key={permission} className="rounded-md bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+              {permission}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <div className="mb-1 text-xs text-muted-foreground">Evidence duty</div>
+        <p className="text-xs text-muted-foreground line-clamp-2">{card.profile.evidenceDuty[0] ?? "No evidence duty defined."}</p>
+      </div>
+
+      {currentWork.length > 0 ? (
+        <div className="mt-4 border-t border-border pt-3">
+          <div className="mb-2 text-xs text-muted-foreground">Current work</div>
+          <div className="space-y-1">
+            {currentWork.map((task) => (
+              <div key={task.id} className="flex items-center justify-between gap-2 text-xs">
+                <span className="truncate">{task.identifier ?? task.taskKey ?? task.title}</span>
+                <StatusBadge status={task.status} />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Route className="h-3.5 w-3.5" />
+        {card.fallbackLabel ? `Escalates to ${card.fallbackLabel}` : "No explicit fallback edge"}
+      </div>
+    </div>
+  );
+}
+
+function PropertyRow({
+  label,
+  value,
+  muted = false,
+}: {
+  label: string;
+  value: React.ReactNode;
+  muted?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-1">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className={`text-right text-xs ${muted ? "text-muted-foreground" : "text-foreground"}`}>{value}</span>
     </div>
   );
 }

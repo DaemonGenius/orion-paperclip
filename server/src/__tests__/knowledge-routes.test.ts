@@ -150,6 +150,10 @@ describeEmbeddedPostgres("knowledge routes", () => {
     routeMode?: string;
     includeTaskKey?: boolean;
     duplicateRowTitle?: boolean;
+    taskTitle?: string;
+    taskStatus?: string;
+    taskPriority?: string;
+    taskBody?: string;
   }) {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       const urlText = String(url);
@@ -172,12 +176,12 @@ describeEmbeddedPostgres("knowledge routes", () => {
       } else if (urlText.includes("/blocks/project-page/children")) {
         body = notionChildren([notionChildDatabase("tasks-db", "Orion Tasks")]);
       } else if (urlText.includes("/databases/tasks-db/query") && method === "POST") {
-        const firstTitle = input.duplicateRowTitle ? "Finalize cockpit schema" : "Finalize cockpit schema";
+        const firstTitle = input.taskTitle ?? "Finalize cockpit schema";
         const rows = [
           notionPage("task-row-1", firstTitle, {
-            Task: notionTitle("Finalize cockpit schema"),
-            Status: notionStatus("Ready"),
-            Priority: notionSelect("P1 High"),
+            Task: notionTitle(firstTitle),
+            Status: notionStatus(input.taskStatus ?? "Ready"),
+            Priority: notionSelect(input.taskPriority ?? "P1 High"),
             "Project Tag": notionText(input.taskProjectTag ?? input.projectTag ?? "ORN"),
             "Task Key": notionText(input.includeTaskKey === false ? "" : "ORN-V1-003"),
             "Route Mode": notionSelect(input.routeMode ?? "Pair"),
@@ -197,7 +201,7 @@ describeEmbeddedPostgres("knowledge routes", () => {
       } else if (urlText.includes("/databases/tasks-db")) {
         body = notionDatabase("tasks-db", "Orion Tasks");
       } else if (urlText.includes("/blocks/task-row-1/children")) {
-        body = notionChildren([notionParagraph("task-row-body", "Task body from Notion.")]);
+        body = notionChildren([notionParagraph("task-row-body", input.taskBody ?? "Task body from Notion.")]);
       } else if (urlText.includes("/blocks/task-row-2/children")) {
         body = notionChildren([notionParagraph("task-row-2-body", "Second task body from Notion.")]);
       } else {
@@ -442,6 +446,8 @@ describeEmbeddedPostgres("knowledge routes", () => {
     expect(response.status, JSON.stringify(response.body)).toBe(200);
     expect(response.body.importedProjects).toBe(0);
     expect(response.body.importedTasks).toBe(1);
+    expect(response.body.exportedDatabaseRows).toBe(1);
+    expect(response.body.skippedTaskRows).toBe(0);
     expect(response.body.mirroredFiles).toBe(0);
 
     const importedTasks = await db.select().from(tasks).where(eq(tasks.originKind, "notion_task"));
@@ -460,6 +466,164 @@ describeEmbeddedPostgres("knowledge routes", () => {
       projectCategory: "Personal Projects & Ventures",
       projectRepoPath: "D:/_PERSONAL/orion-paperclip",
     });
+  });
+
+  it("imports task rows from registered project task refs and ignores pending refs", async () => {
+    await seedCompany();
+    const [project] = await db
+      .insert(projects)
+      .values({
+        companyId,
+        name: "Orion",
+        description: "Existing Orion project",
+        taskPrefix: "ORN",
+      })
+      .returning();
+
+    const binding = await request(app)
+      .post(`/api/companies/${companyId}/external-apps/notion`)
+      .send({ token: "notion-token", config: { rootPageId: "root-page" } });
+    expect(binding.status, JSON.stringify(binding.body)).toBe(201);
+
+    await db.insert(externalObjectRefs).values([
+      {
+        companyId,
+        provider: "notion",
+        localObjectType: "project_tasks",
+        localObjectId: `${project!.id}:tasks`,
+        externalObjectId: "registered-tasks-db",
+        ownerClass: "operator_owned",
+        checksum: "registered",
+        metadata: {
+          kind: "project_workspace_section",
+          sectionKey: "tasks",
+          title: "Orion Tasks",
+          projectId: project!.id,
+          projectName: "Orion",
+        },
+        syncStatus: "synced",
+      },
+      {
+        companyId,
+        provider: "notion",
+        localObjectType: "project_tasks",
+        localObjectId: `${project!.id}:tasks-pending`,
+        externalObjectId: `pending:notion:project:${project!.id}:tasks`,
+        ownerClass: "operator_owned",
+        checksum: "pending",
+        metadata: {
+          kind: "project_workspace_section",
+          sectionKey: "tasks",
+          title: "Pending Orion Tasks",
+          projectId: project!.id,
+          projectName: "Orion",
+        },
+        syncStatus: "pending",
+      },
+    ]);
+
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const urlText = String(url);
+      const method = init?.method ?? "GET";
+      let body: unknown;
+
+      if (urlText.includes("/pages/root-page")) {
+        body = notionPage("root-page", "Genesis Command Center");
+      } else if (urlText.includes("/blocks/root-page/children")) {
+        body = notionChildren([]);
+      } else if (urlText.includes("/databases/registered-tasks-db/query") && method === "POST") {
+        body = notionChildren([
+          notionPage("registered-task-row", "Registered task", {
+            Task: notionTitle("Registered task"),
+            Status: notionStatus("Ready"),
+            Priority: notionSelect("P2 Medium"),
+            "Project Tag": notionText("ORN"),
+            "Task Key": notionText("ORN-V2-100"),
+            "Route Mode": notionSelect("Pair"),
+          }),
+        ]);
+      } else if (urlText.includes("/databases/registered-tasks-db")) {
+        body = notionDatabase("registered-tasks-db", "Orion Tasks");
+      } else if (urlText.includes("/blocks/registered-task-row/children")) {
+        body = notionChildren([notionParagraph("registered-task-row-body", "Registered body from Notion.")]);
+      } else {
+        throw new Error(`Unexpected Notion fetch: ${method} ${urlText}`);
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => body,
+      } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await request(app)
+      .post(`/api/orion/companies/${companyId}/knowledge/notion/sync`)
+      .send({ mirrorToObsidian: false });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(response.body.discoveredObjects).toBe(0);
+    expect(response.body.registeredObjectsProcessed).toBe(1);
+    expect(response.body.exportedDatabaseRows).toBe(1);
+    expect(response.body.importedTasks).toBe(1);
+
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("pending:notion"))).toBe(false);
+    const importedTasks = await db.select().from(tasks).where(eq(tasks.originKind, "notion_task"));
+    expect(importedTasks).toHaveLength(1);
+    expect(importedTasks[0]).toMatchObject({
+      projectId: project!.id,
+      taskKey: "ORN-V2-100",
+      identifier: "ORN-V2-100",
+      title: "Registered task",
+    });
+  });
+
+  it("updates an existing imported task on a later Notion sync", async () => {
+    await seedCompany();
+    await db.insert(projects).values({
+      companyId,
+      name: "Orion",
+      description: "Existing Orion project",
+      taskPrefix: "ORN",
+    });
+
+    const binding = await request(app)
+      .post(`/api/companies/${companyId}/external-apps/notion`)
+      .send({ token: "notion-token", config: { rootPageId: "root-page" } });
+    expect(binding.status, JSON.stringify(binding.body)).toBe(201);
+
+    stubNotionProjectSync({ projectTag: "ORN" });
+    const firstSync = await request(app)
+      .post(`/api/orion/companies/${companyId}/knowledge/notion/sync`)
+      .send({ mirrorToObsidian: false });
+    expect(firstSync.status, JSON.stringify(firstSync.body)).toBe(200);
+    expect(firstSync.body.importedTasks).toBe(1);
+
+    stubNotionProjectSync({
+      projectTag: "ORN",
+      taskTitle: "Updated cockpit schema",
+      taskStatus: "Done",
+      taskPriority: "P3 Low",
+      taskBody: "Updated task body from Notion.",
+    });
+    const secondSync = await request(app)
+      .post(`/api/orion/companies/${companyId}/knowledge/notion/sync`)
+      .send({ mirrorToObsidian: false });
+    expect(secondSync.status, JSON.stringify(secondSync.body)).toBe(200);
+    expect(secondSync.body.importedTasks).toBe(1);
+    expect(secondSync.body.exportedDatabaseRows).toBe(1);
+
+    const importedTasks = await db.select().from(tasks).where(eq(tasks.originKind, "notion_task"));
+    expect(importedTasks).toHaveLength(1);
+    expect(importedTasks[0]).toMatchObject({
+      originId: "task-row-1",
+      taskKey: "ORN-V1-003",
+      identifier: "ORN-V1-003",
+      title: "Updated cockpit schema",
+      status: "done",
+      priority: "low",
+    });
+    expect(importedTasks[0].description).toContain("Updated task body from Notion.");
   });
 
   it("imports multiple Notion project roots and task rows with stable project prefixes idempotently", async () => {

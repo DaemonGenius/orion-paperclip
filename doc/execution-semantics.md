@@ -326,6 +326,10 @@ Examples:
 
 The source task remains visible and blocked on the recovery task when blocking is necessary for correctness. The recovery owner must restore a live path, resolve the source task manually, or record the reason it is a false positive.
 
+For Orion workflow-bound tasks, explicit recovery owner selection is graph-first. Paperclip uses the task's workflow binding, current node, and first `fallback_to` edge to find the recovery target. A bound fallback target agent may own recovery only when that exact agent is invokable and budget-allowed. Missing fallback edges, missing targets, unbound agent targets, unavailable fallback agents, or operator-style targets such as `human_gate`, `fallback`, `decision`, `verification`, or `github_pr` create visible blocked/operator-required recovery evidence instead of selecting a CEO, CTO, `reportsTo` manager, root agent, or ordered fallback agent.
+
+Legacy `reportsTo`, creator-chain, root-agent, and CEO/CTO recovery lookup remain compatibility behavior for tasks with no workflow binding. They are not a secondary guess path for incomplete Orion graphs.
+
 ### Human Escalation
 
 Human escalation is required when the next safe action depends on board judgment, budget/approval policy, or information unavailable to the control plane.
