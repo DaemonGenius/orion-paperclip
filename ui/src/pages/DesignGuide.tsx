@@ -276,6 +276,75 @@ export function DesignGuide() {
       </Section>
 
       {/* ============================================================ */}
+      {/*  VAPORWAVE NEO TOKYO THEME                                   */}
+      {/* ============================================================ */}
+      <Section title="Vaporwave Neo Tokyo Theme">
+        <p className="text-sm text-muted-foreground">
+          Optional production theme assets driven by the root DESIGN.md manifest. Enable the theme in Instance
+          Settings &gt; General &gt; Appearance.
+        </p>
+        <SubSection title="Theme tokens">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <Swatch name="VNT background" cssVar="--vnt-background" />
+            <Swatch name="VNT surface" cssVar="--vnt-surface" />
+            <Swatch name="VNT glass" cssVar="--vnt-surface-glass" />
+            <Swatch name="VNT border" cssVar="--vnt-border" />
+            <Swatch name="VNT primary" cssVar="--vnt-primary" />
+            <Swatch name="VNT accent" cssVar="--vnt-accent" />
+            <Swatch name="VNT secondary" cssVar="--vnt-secondary" />
+            <Swatch name="VNT warning" cssVar="--vnt-warning" />
+            <Swatch name="VNT success" cssVar="--vnt-success" />
+          </div>
+        </SubSection>
+        <SubSection title="Surfaces and states">
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="vnt-glass-surface rounded-lg border border-border p-4">
+              <div className="text-sm font-semibold">Glass surface</div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Dense panel with translucent midnight surface and lavender hairline border.
+              </p>
+            </div>
+            <div className="vnt-glass-surface vnt-neon-rail rounded-lg border border-border p-4">
+              <div className="text-sm font-semibold">Selected rail</div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Active navigation and current workflow states use a neon side rail.
+              </p>
+            </div>
+            <div className="vnt-glass-surface vnt-focus-glow rounded-lg border border-border p-4">
+              <div className="text-sm font-semibold">Focus glow</div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Aqua glow is reserved for focused, live, or operator-selected controls.
+              </p>
+            </div>
+          </div>
+        </SubSection>
+        <SubSection title="Dashboard and task patterns">
+          <div className="grid gap-3 md:grid-cols-2">
+            <MetricCard
+              icon={Bot}
+              value={12}
+              label="Agents Enabled"
+              description="2 running, 1 paused, 0 errors"
+            />
+            <div className="vnt-glass-surface overflow-hidden rounded-lg border border-border">
+              <EntityRow
+                leading={<><StatusIcon status="in_progress" /><PriorityIcon priority="high" /></>}
+                identifier="ORN-V3-012"
+                title="Write V3 homelab release checklist and go/no-go record"
+                trailing={<StatusBadge status="in_progress" />}
+              />
+              <EntityRow
+                leading={<><StatusIcon status="done" /><PriorityIcon priority="medium" /></>}
+                identifier="ORN-V1-014"
+                title="Write V1 release checklist"
+                trailing={<StatusBadge status="done" />}
+              />
+            </div>
+          </div>
+        </SubSection>
+      </Section>
+
+      {/* ============================================================ */}
       {/*  TYPOGRAPHY                                                   */}
       {/* ============================================================ */}
       <Section title="Typography">

@@ -1,24 +1,57 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { PatchInstanceGeneralSettings, BackupRetentionPolicy } from "@paperclipai/shared";
+import type { PatchInstanceGeneralSettings, BackupRetentionPolicy, ThemeMode } from "@paperclipai/shared";
 import {
   DAILY_RETENTION_PRESETS,
   WEEKLY_RETENTION_PRESETS,
   MONTHLY_RETENTION_PRESETS,
   DEFAULT_BACKUP_RETENTION,
 } from "@paperclipai/shared";
-import { LogOut, SlidersHorizontal } from "lucide-react";
+import { LogOut, Monitor, Moon, Palette, SlidersHorizontal, Sparkles, Sun } from "lucide-react";
 import { authApi } from "@/api/auth";
 import { healthApi } from "@/api/health";
 import { instanceSettingsApi } from "@/api/instanceSettings";
 import { ModeBadge } from "@/components/access/ModeBadge";
 import { Button } from "../components/ui/button";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
+import { THEME_MODE_CHANGE_EVENT } from "../context/ThemeContext";
 import { queryKeys } from "../lib/queryKeys";
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import { cn } from "../lib/utils";
 
 const FEEDBACK_TERMS_URL = import.meta.env.VITE_FEEDBACK_TERMS_URL?.trim() || "https://paperclip.ing/tos";
+
+const themeOptions: Array<{
+  value: ThemeMode;
+  label: string;
+  description: string;
+  icon: typeof Monitor;
+}> = [
+  {
+    value: "system",
+    label: "System",
+    description: "Follow the operating system preference.",
+    icon: Monitor,
+  },
+  {
+    value: "dark",
+    label: "Dark",
+    description: "Use Paperclip's current dark control-plane theme.",
+    icon: Moon,
+  },
+  {
+    value: "light",
+    label: "Light",
+    description: "Use the light theme for bright environments.",
+    icon: Sun,
+  },
+  {
+    value: "vaporwave-neo-tokyo",
+    label: "Vaporwave Neo Tokyo",
+    description: "Midnight glass, neon pink, aqua, lavender, and mint telemetry.",
+    icon: Sparkles,
+  },
+];
 
 export function InstanceGeneralSettings() {
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -63,6 +96,21 @@ export function InstanceGeneralSettings() {
     },
   });
 
+  const updateThemeMode = (nextThemeMode: ThemeMode) => {
+    updateGeneralMutation.mutate(
+      { themeMode: nextThemeMode },
+      {
+        onSuccess: () => {
+          window.dispatchEvent(
+            new CustomEvent(THEME_MODE_CHANGE_EVENT, {
+              detail: { themeMode: nextThemeMode },
+            }),
+          );
+        },
+      },
+    );
+  };
+
   if (generalQuery.isLoading) {
     return <div className="text-sm text-muted-foreground">Loading general settings...</div>;
   }
@@ -79,6 +127,7 @@ export function InstanceGeneralSettings() {
 
   const censorUsernameInLogs = generalQuery.data?.censorUsernameInLogs === true;
   const keyboardShortcuts = generalQuery.data?.keyboardShortcuts === true;
+  const themeMode = generalQuery.data?.themeMode ?? "system";
   const feedbackDataSharingPreference = generalQuery.data?.feedbackDataSharingPreference ?? "prompt";
   const backupRetention: BackupRetentionPolicy = generalQuery.data?.backupRetention ?? DEFAULT_BACKUP_RETENTION;
 
@@ -100,6 +149,47 @@ export function InstanceGeneralSettings() {
           {actionError}
         </div>
       )}
+
+      <section className="rounded-xl border border-border bg-card p-5">
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <Palette className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold">Appearance</h2>
+            </div>
+            <p className="max-w-2xl text-sm text-muted-foreground">
+              Choose the instance-wide theme. Vaporwave Neo Tokyo is an optional production theme built from the
+              root design manifest.
+            </p>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            {themeOptions.map((option) => {
+              const Icon = option.icon;
+              const active = themeMode === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  disabled={updateGeneralMutation.isPending}
+                  className={cn(
+                    "rounded-lg border px-3 py-3 text-left transition-[background-color,border-color,box-shadow] disabled:cursor-not-allowed disabled:opacity-60",
+                    active
+                      ? "vnt-pink-glow border-foreground bg-accent text-foreground"
+                      : "border-border bg-background hover:bg-accent/50",
+                  )}
+                  onClick={() => updateThemeMode(option.value)}
+                >
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Icon className="h-4 w-4 text-muted-foreground" />
+                    {option.label}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">{option.description}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
 
       <section className="rounded-xl border border-border bg-card p-5">
         <div className="space-y-3">

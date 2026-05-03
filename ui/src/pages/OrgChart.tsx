@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { Link, useNavigate } from "@/lib/router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
 import { heartbeatsApi, type LiveRunForTask } from "../api/heartbeats";
 import { orionApi } from "../api/orion";
@@ -14,11 +14,12 @@ import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { StatusBadge } from "../components/StatusBadge";
 import { AgentIcon } from "../components/AgentIconPicker";
-import { Download, GitBranch, Maximize2, Minus, Network, Plus, Route, Upload, UsersRound } from "lucide-react";
+import { Download, GitBranch, Maximize2, Minus, Network, Plus, Route, Upload, UserPlus, UsersRound } from "lucide-react";
 import {
   AGENT_ROLE_LABELS,
   type Agent,
   type OrionRoleProfile,
+  type OrionRoundTableSetupResult,
   type OrionWorkflow,
   type OrionWorkflowEdge,
   type OrionWorkflowNode,
@@ -72,6 +73,33 @@ interface RoundTableCardModel {
   liveRunCount: number;
   fallbackLabel: string | null;
 }
+
+interface RoundTableStageModel {
+  node: OrionWorkflowNode;
+  profile: OrionRoleProfile | null;
+  agent: Agent | null;
+  fallbackLabel: string | null;
+}
+
+interface RoundTableViewModel {
+  councilCards: RoundTableCardModel[];
+  operatorStages: RoundTableStageModel[];
+  workflowStages: RoundTableStageModel[];
+}
+
+interface RoundTableSourceAgent {
+  id: string;
+  label: string;
+}
+
+const ROUND_TABLE_EXECUTABLE_NODE_KEYS = new Set([
+  "planner",
+  "architect",
+  "implementer",
+  "verifier",
+  "knowledge_steward",
+  "recovery_router",
+]);
 
 // ── Layout algorithm ────────────────────────────────────────────────────
 
@@ -176,15 +204,15 @@ function roleProfileIdForNode(node: OrionWorkflowNode) {
   return null;
 }
 
-function buildRoundTableCards(input: {
+function buildRoundTableViewModel(input: {
   workflow: OrionWorkflow | null | undefined;
   profiles: OrionRoleProfile[] | null | undefined;
   agents: Agent[] | null | undefined;
   tasks: Task[] | null | undefined;
   liveRuns: LiveRunForTask[] | null | undefined;
-}) {
+}): RoundTableViewModel {
   const workflow = input.workflow;
-  if (!workflow?.nodes) return [];
+  if (!workflow?.nodes) return { councilCards: [], operatorStages: [], workflowStages: [] };
 
   const profileById = new Map((input.profiles ?? []).map((profile) => [profile.roleId, profile]));
   const agentById = new Map((input.agents ?? []).map((agent) => [agent.id, agent]));
@@ -205,24 +233,44 @@ function buildRoundTableCards(input: {
   const nodeByKey = new Map(workflow.nodes.map((node) => [node.nodeKey, node]));
   const edges = workflow.edges ?? [];
 
-  return workflow.nodes
-    .map<RoundTableCardModel | null>((node) => {
+  const workflowStages = workflow.nodes
+    .slice()
+    .sort((a, b) => a.position - b.position)
+    .map<RoundTableStageModel>((node) => {
       const profileId = roleProfileIdForNode(node);
-      const profile = profileId ? profileById.get(profileId as OrionRoleProfile["roleId"]) : null;
-      if (!profile) return null;
       const agent = node.agentId ? agentById.get(node.agentId) ?? null : null;
       const fallbackEdge = edges.find((edge) => edge.fromNodeKey === node.nodeKey && edge.type === "fallback_to");
       const fallbackNode = fallbackEdge ? nodeByKey.get(fallbackEdge.toNodeKey) : null;
       return {
         node,
-        profile,
+        profile: profileId ? profileById.get(profileId as OrionRoleProfile["roleId"]) ?? null : null,
+        agent,
+        fallbackLabel: fallbackNode?.label ?? fallbackEdge?.toNodeKey ?? null,
+      };
+    });
+
+  const operatorStages = workflowStages.filter((stage) => {
+    if (ROUND_TABLE_EXECUTABLE_NODE_KEYS.has(stage.node.nodeKey)) return false;
+    return stage.profile?.roleId === "operator" || stage.node.type === "task_intake" || stage.node.type === "human_gate" || stage.node.type === "github_pr";
+  });
+
+  const councilCards = workflowStages
+    .filter((stage) => ROUND_TABLE_EXECUTABLE_NODE_KEYS.has(stage.node.nodeKey))
+    .map<RoundTableCardModel | null>((stage) => {
+      if (!stage.profile) return null;
+      const agent = stage.agent;
+      return {
+        node: stage.node,
+        profile: stage.profile,
         agent,
         currentWork: agent ? activeTasksByAgent.get(agent.id) ?? [] : [],
         liveRunCount: agent ? liveRunsByAgent.get(agent.id) ?? 0 : 0,
-        fallbackLabel: fallbackNode?.label ?? fallbackEdge?.toNodeKey ?? null,
+        fallbackLabel: stage.fallbackLabel,
       };
     })
     .filter((card): card is RoundTableCardModel => Boolean(card));
+
+  return { councilCards, operatorStages, workflowStages };
 }
 
 function isOrionWorkflow(workflow: OrionWorkflow | null | undefined) {
@@ -271,7 +319,10 @@ export function OrgChart() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [selectedView, setSelectedView] = useState<OrgViewMode | null>(null);
+  const [sourceAgentId, setSourceAgentId] = useState("");
+  const [lastSetupResult, setLastSetupResult] = useState<OrionRoundTableSetupResult | null>(null);
 
   const { data: orgTree, isLoading } = useQuery({
     queryKey: queryKeys.org(selectedCompanyId!),
@@ -335,10 +386,55 @@ export function OrgChart() {
   const roundTableAvailable = isOrionWorkflow(workflow);
   const defaultView: OrgViewMode = roundTableAvailable ? "round_table" : "hierarchy";
   const activeView = selectedView ?? defaultView;
-  const roundTableCards = useMemo(
-    () => buildRoundTableCards({ workflow, profiles: roleProfiles, agents, tasks, liveRuns }),
+  const roundTableModel = useMemo(
+    () => buildRoundTableViewModel({ workflow, profiles: roleProfiles, agents, tasks, liveRuns }),
     [workflow, roleProfiles, agents, tasks, liveRuns],
   );
+
+  const { data: roundTableSetup } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.orion.roundTableSetup(selectedCompanyId) : ["orion", "round-table-setup", "none"],
+    queryFn: () => orionApi.roundTableSetupReadiness(selectedCompanyId!),
+    enabled: !!selectedCompanyId && roundTableAvailable && activeView === "round_table",
+  });
+
+  const sourceAgentCandidates = useMemo<RoundTableSourceAgent[]>(() => {
+    return (agents ?? [])
+      .filter((agent) => agent.status !== "terminated")
+      .map((agent) => ({
+        id: agent.id,
+        label: `${agent.name} · ${agent.title ?? roleLabel(agent.role)} · ${getAdapterLabel(agent.adapterType)}`,
+      }));
+  }, [agents]);
+
+  const suggestedSourceAgentId = useMemo(() => {
+    const boundImplementer = roundTableModel.councilCards.find((card) => card.node.nodeKey === "implementer" && card.agent)?.agent;
+    if (boundImplementer) return boundImplementer.id;
+    const worker = (agents ?? []).find((agent) => agent.status !== "terminated" && agent.role === "implementation_worker");
+    return worker?.id ?? sourceAgentCandidates[0]?.id ?? "";
+  }, [agents, roundTableModel.councilCards, sourceAgentCandidates]);
+
+  useEffect(() => {
+    if (!suggestedSourceAgentId) return;
+    if (sourceAgentId && sourceAgentCandidates.some((agent) => agent.id === sourceAgentId)) return;
+    setSourceAgentId(suggestedSourceAgentId);
+  }, [sourceAgentId, sourceAgentCandidates, suggestedSourceAgentId]);
+
+  const setupMutation = useMutation({
+    mutationFn: () =>
+      orionApi.setupRoundTable(selectedCompanyId!, {
+        sourceAgentId,
+        makeDefault: true,
+      }),
+    onSuccess: (result) => {
+      setLastSetupResult(result);
+      if (!selectedCompanyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.orion.roundTableSetup(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orion.workflows(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: ["orion", "workflow"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.org(selectedCompanyId) });
+    },
+  });
 
   // Layout computation
   const layout = useMemo(() => layoutForest(orgTree ?? []), [orgTree]);
@@ -614,12 +710,23 @@ export function OrgChart() {
         </div>
       </div>
       {activeView === "round_table" ? (
-        <RoundTableView cards={roundTableCards} workflow={workflow} />
+        <RoundTableView
+          model={roundTableModel}
+          workflow={workflow}
+          setupReadiness={roundTableSetup}
+          setupResult={lastSetupResult}
+          sourceAgents={sourceAgentCandidates}
+          selectedSourceAgentId={sourceAgentId}
+          onSourceAgentChange={setSourceAgentId}
+          onSetup={() => setupMutation.mutate()}
+          setupPending={setupMutation.isPending}
+          setupError={setupMutation.error instanceof Error ? setupMutation.error.message : null}
+        />
       ) : (
       <div
         ref={containerRef}
         data-testid="org-chart-viewport"
-        className="w-full flex-1 min-h-0 overflow-hidden relative bg-muted/20 border border-border rounded-lg"
+        className="vnt-grid-bg vnt-glass-surface w-full flex-1 min-h-0 overflow-hidden relative bg-muted/20 border border-border rounded-lg"
         style={{
           cursor: dragging ? "grabbing" : "grab",
           touchAction: "none",
@@ -725,7 +832,7 @@ export function OrgChart() {
               <div
                 key={node.id}
                 data-org-card
-                className="absolute bg-card border border-border rounded-lg shadow-sm hover:shadow-md hover:border-foreground/20 transition-[box-shadow,border-color] duration-150 cursor-pointer select-none"
+                className="vnt-glass-surface absolute bg-card border border-border rounded-lg shadow-sm hover:border-ring/40 transition-[box-shadow,border-color] duration-150 cursor-pointer select-none"
                 style={{
                   left: node.x,
                   top: node.y,
@@ -818,12 +925,29 @@ function OrgViewToggle({
 }
 
 function RoundTableView({
-  cards,
+  model,
   workflow,
+  setupReadiness,
+  setupResult,
+  sourceAgents,
+  selectedSourceAgentId,
+  onSourceAgentChange,
+  onSetup,
+  setupPending,
+  setupError,
 }: {
-  cards: RoundTableCardModel[];
+  model: RoundTableViewModel;
   workflow: OrionWorkflow | null | undefined;
+  setupReadiness: OrionRoundTableSetupResult | null | undefined;
+  setupResult: OrionRoundTableSetupResult | null;
+  sourceAgents: RoundTableSourceAgent[];
+  selectedSourceAgentId: string;
+  onSourceAgentChange: (agentId: string) => void;
+  onSetup: () => void;
+  setupPending: boolean;
+  setupError: string | null;
 }) {
+  const { councilCards, operatorStages, workflowStages } = model;
   if (!workflow) {
     return (
       <div className="border border-border p-4 text-sm text-muted-foreground">
@@ -832,46 +956,205 @@ function RoundTableView({
     );
   }
 
-  if (cards.length === 0) {
-    return (
-      <div className="border border-border p-4 text-sm text-muted-foreground">
-        This workflow has no role-profile council nodes yet.
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-0 flex-1 overflow-auto border border-border bg-muted/10">
+    <div className="vnt-glass-surface min-h-0 flex-1 overflow-auto border border-border bg-muted/10">
       <div className="border-b border-border px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-medium">
           <UsersRound className="h-4 w-4 text-muted-foreground" />
           Round Table Council
         </div>
         <div className="mt-1 text-xs text-muted-foreground">
-          {workflow.presetId} · {cards.length} role node{cards.length === 1 ? "" : "s"}
+          {workflow.presetId} · {councilCards.length} council role{councilCards.length === 1 ? "" : "s"} · {operatorStages.length} human/operator-owned stage{operatorStages.length === 1 ? "" : "s"}
         </div>
       </div>
-      <RoundTableRoutingStrip cards={cards} />
-      <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
-        {cards.map((card) => (
-          <RoundTableCard key={card.node.nodeKey} card={card} />
-        ))}
+      <RoundTableRoutingStrip stages={workflowStages} />
+      <RoundTableOperatorStages stages={operatorStages} />
+      <RoundTableSetupPanel
+        readiness={setupReadiness}
+        result={setupResult}
+        currentWorkflow={workflow}
+        sourceAgents={sourceAgents}
+        selectedSourceAgentId={selectedSourceAgentId}
+        onSourceAgentChange={onSourceAgentChange}
+        onSetup={onSetup}
+        pending={setupPending}
+        error={setupError}
+      />
+      <RoundTableCouncilGrid cards={councilCards} />
+    </div>
+  );
+}
+
+function RoundTableRoutingStrip({ stages }: { stages: RoundTableStageModel[] }) {
+  return (
+    <div className="flex gap-2 overflow-x-auto border-b border-border px-4 py-2">
+      {stages.map((stage, index) => (
+        <div key={stage.node.nodeKey} className="flex shrink-0 items-center gap-2">
+          {index > 0 ? <span className="text-xs text-muted-foreground">-&gt;</span> : null}
+          <span className="rounded-md border border-border px-2 py-1 text-xs">
+            {stage.node.label}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RoundTableOperatorStages({ stages }: { stages: RoundTableStageModel[] }) {
+  if (stages.length === 0) return null;
+
+  return (
+    <div className="border-b border-border bg-background/50 px-4 py-3" data-testid="round-table-operator-stages">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="text-sm font-medium">Human/operator-owned stages</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            These workflow steps stay with the board operator or integration boundary; they are not separate agents.
+          </div>
+        </div>
+        <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {stages.map((stage) => (
+            <div key={stage.node.nodeKey} className="rounded-lg border border-border bg-card/60 p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate text-xs font-medium text-foreground">{stage.node.label}</div>
+                  <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{stage.node.type}</div>
+                </div>
+                <span className="shrink-0 rounded-md border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  human
+                </span>
+              </div>
+              <div className="mt-2 text-[11px] text-muted-foreground">
+                {stage.agent ? `Bound: ${stage.agent.name}` : "Human-owned"}
+              </div>
+              <div className="mt-1 text-[11px] text-muted-foreground">
+                {stage.fallbackLabel ? `Fallback: ${stage.fallbackLabel}` : "No explicit fallback edge"}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
-function RoundTableRoutingStrip({ cards }: { cards: RoundTableCardModel[] }) {
-  return (
-    <div className="flex gap-2 overflow-x-auto border-b border-border px-4 py-2">
-      {cards.map((card, index) => (
-        <div key={card.node.nodeKey} className="flex shrink-0 items-center gap-2">
-          {index > 0 ? <span className="text-xs text-muted-foreground">-&gt;</span> : null}
-          <span className="rounded-md border border-border px-2 py-1 text-xs">
-            {card.profile.displayName}
-          </span>
+function RoundTableCouncilGrid({ cards }: { cards: RoundTableCardModel[] }) {
+  if (cards.length === 0) {
+    return (
+      <div className="p-4">
+        <div className="border border-border p-4 text-sm text-muted-foreground">
+          This workflow has no executable Round Table council role nodes yet.
         </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3" data-testid="round-table-council-grid">
+      {cards.map((card) => (
+        <RoundTableCard key={card.node.nodeKey} card={card} />
       ))}
+    </div>
+  );
+}
+
+function RoundTableSetupPanel({
+  readiness,
+  result,
+  currentWorkflow,
+  sourceAgents,
+  selectedSourceAgentId,
+  onSourceAgentChange,
+  onSetup,
+  pending,
+  error,
+}: {
+  readiness: OrionRoundTableSetupResult | null | undefined;
+  result: OrionRoundTableSetupResult | null;
+  currentWorkflow: OrionWorkflow | null | undefined;
+  sourceAgents: RoundTableSourceAgent[];
+  selectedSourceAgentId: string;
+  onSourceAgentChange: (agentId: string) => void;
+  onSetup: () => void;
+  pending: boolean;
+  error: string | null;
+}) {
+  if (!readiness && !result) return null;
+
+  const missing = readiness?.missingRoleBindings ?? [];
+  const blockedReasons = readiness?.blockedReasons ?? [];
+  const shouldShow =
+    blockedReasons.length > 0 ||
+    missing.length > 0 ||
+    readiness?.presetId !== "orion_round_table" ||
+    readiness?.defaultForCompany === false ||
+    Boolean(result);
+  if (!shouldShow) return null;
+
+  const canRun = blockedReasons.length === 0 && sourceAgents.length > 0 && Boolean(selectedSourceAgentId);
+  const createdCount = result?.createdAgents.length ?? 0;
+  const reusedCount = result?.reusedAgents.length ?? 0;
+  const boundCount = result?.boundNodes.length ?? 0;
+
+  return (
+    <div className="border-b border-border bg-background/60 px-4 py-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0 space-y-2">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <UserPlus className="h-4 w-4 text-muted-foreground" />
+            Round Table setup
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Current workflow: {currentWorkflow?.presetId ?? "none"} · Target: orion_round_table
+          </div>
+          {missing.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {missing.map((entry) => (
+                <span key={entry.nodeKey} className="rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground">
+                  {entry.displayName}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {blockedReasons.length > 0 ? (
+            <div className="text-xs text-destructive">{blockedReasons.join(" ")}</div>
+          ) : null}
+          {result ? (
+            <div className="text-xs text-muted-foreground">
+              Setup result: {createdCount} created, {reusedCount} reused, {boundCount} bound, {result.skippedNodes.length} human/system skipped.
+            </div>
+          ) : null}
+          {error ? <div className="text-xs text-destructive">{error}</div> : null}
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <select
+            className="h-9 min-w-[260px] border border-border bg-background px-3 text-xs"
+            value={selectedSourceAgentId}
+            onChange={(event) => onSourceAgentChange(event.target.value)}
+            disabled={sourceAgents.length === 0 || pending}
+            aria-label="Source agent"
+          >
+            {sourceAgents.length === 0 ? (
+              <option value="">No source agent available</option>
+            ) : (
+              sourceAgents.map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.label}
+                </option>
+              ))
+            )}
+          </select>
+          <Button
+            type="button"
+            size="sm"
+            onClick={onSetup}
+            disabled={!canRun || pending}
+          >
+            <UserPlus className="mr-1.5 h-3.5 w-3.5" />
+            {pending ? "Setting up..." : "Create / bind agents"}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -880,7 +1163,11 @@ function RoundTableCard({ card }: { card: RoundTableCardModel }) {
   const agent = card.agent;
   const currentWork = card.currentWork.slice(0, 3);
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
+    <div
+      className="vnt-glass-surface rounded-lg border border-border bg-card p-4"
+      data-round-table-card
+      data-node-key={card.node.nodeKey}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-semibold">{card.profile.displayName}</div>
@@ -903,7 +1190,7 @@ function RoundTableCard({ card }: { card: RoundTableCardModel }) {
         <PropertyRow label="Adapter" value={agent ? getAdapterLabel(agent.adapterType) : "None"} muted={!agent} />
         <PropertyRow label="Live runs" value={String(card.liveRunCount)} />
         <PropertyRow label="Current work" value={String(card.currentWork.length)} />
-        <PropertyRow label="Fallback" value={card.fallbackLabel ?? "Operator"} />
+        <PropertyRow label="Fallback" value={card.fallbackLabel ?? "No explicit fallback edge"} />
       </div>
 
       <div className="mt-4">

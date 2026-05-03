@@ -24,15 +24,20 @@
         const key = "paperclip.theme";
         const darkThemeColor = "#18181b";
         const lightThemeColor = "#ffffff";
+        const vaporwaveThemeColor = "#070816";
         try {
           const stored = window.localStorage.getItem(key);
-          const theme = stored === "light" || stored === "dark" ? stored : "dark";
-          const isDark = theme === "dark";
+          const themeMode = stored === "light" || stored === "dark" || stored === "system" || stored === "vaporwave-neo-tokyo"
+            ? stored
+            : "dark";
+          const systemLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+          const isDark = themeMode === "vaporwave-neo-tokyo" || themeMode === "dark" || (themeMode === "system" && !systemLight);
           document.documentElement.classList.toggle("dark", isDark);
+          document.documentElement.classList.toggle("theme-vaporwave-neo-tokyo", themeMode === "vaporwave-neo-tokyo");
           document.documentElement.style.colorScheme = isDark ? "dark" : "light";
           const themeColorMeta = document.querySelector('meta[name="theme-color"]');
           if (themeColorMeta) {
-            themeColorMeta.setAttribute("content", isDark ? darkThemeColor : lightThemeColor);
+            themeColorMeta.setAttribute("content", themeMode === "vaporwave-neo-tokyo" ? vaporwaveThemeColor : isDark ? darkThemeColor : lightThemeColor);
           }
         } catch {
           document.documentElement.classList.add("dark");

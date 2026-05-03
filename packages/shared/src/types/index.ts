@@ -23,6 +23,8 @@ export type {
   OrionWorkflowResolutionAgent,
   OrionTaskWorkflowResolution,
   OrionTaskWorkflowAdvanceResult,
+  OrionRoundTableSetupRoleBinding,
+  OrionRoundTableSetupResult,
   OrionNotionBinding,
   OrionNotionSyncState,
   OrionNotionSyncbackResult,
@@ -56,8 +58,8 @@ export type {
   FeedbackTraceBundleFile,
   FeedbackTraceBundle,
 } from "./feedback.js";
-export type { InstanceExperimentalSettings, InstanceGeneralSettings, InstanceSettings, BackupRetentionPolicy } from "./instance.js";
-export { DAILY_RETENTION_PRESETS, WEEKLY_RETENTION_PRESETS, MONTHLY_RETENTION_PRESETS, DEFAULT_BACKUP_RETENTION } from "./instance.js";
+export type { InstanceExperimentalSettings, InstanceGeneralSettings, InstanceSettings, BackupRetentionPolicy, ThemeMode } from "./instance.js";
+export { DAILY_RETENTION_PRESETS, WEEKLY_RETENTION_PRESETS, MONTHLY_RETENTION_PRESETS, DEFAULT_BACKUP_RETENTION, THEME_MODES } from "./instance.js";
 export type {
   CompanySkillSourceType,
   CompanySkillTrustLevel,

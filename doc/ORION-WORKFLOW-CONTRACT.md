@@ -104,6 +104,32 @@ POST /api/orion/tasks/:taskId/workflow/advance
 
 Advancing a task updates the task binding and active workflow run node. Bound agent targets assign the task to that agent and keep it active; operator-required targets clear the agent assignee and move the task to review/operator attention.
 
+## Guided Round Table Setup
+
+ORN-V2-011 adds an explicit operator-triggered setup path for existing Orion companies. No company is migrated on app load, deploy, or `/org` render.
+
+```text
+GET  /api/orion/companies/:companyId/round-table/setup-readiness
+POST /api/orion/companies/:companyId/round-table/setup
+```
+
+Setup creates or reuses the `orion_round_table` workflow only after the operator submits the action. It may make that workflow the company default, but it does not delete the prior workflow or rewrite `agents.reportsTo`.
+
+Executable council nodes are the only nodes setup can create agents for:
+
+- `planner`
+- `architect`
+- `implementer`
+- `verifier`
+- `knowledge_steward`
+- `recovery_router`
+
+`operator`, `task_intake`, `github_pr`, `human_review`, and other human/system nodes remain unbound unless an operator had already bound them. Operator authority remains the human board/operator, not a generated agent.
+
+The setup request requires a `sourceAgentId`. Orion copies adapter/runtime configuration from that company-scoped source agent for newly created council agents. If the selected source agent is already an implementation worker, setup binds it to the Implementer node instead of creating a duplicate Implementer. Existing node bindings are preserved.
+
+Setup is idempotent: repeated calls do not create duplicate Round Table workflows, duplicate nodes, or duplicate agents for already-bound executable roles. Paperclip companies using `paperclip_company` are reported as blocked rather than silently converted. The operation does not mutate Notion/Obsidian bindings, secrets, imported tasks, existing task assignments, or external-service credentials.
+
 ## MVP Rules
 
 - New Orion onboarding defaults to `orion_round_table`.

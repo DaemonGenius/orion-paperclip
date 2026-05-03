@@ -54,6 +54,10 @@ pnpm build-storybook
 
 These run the `@paperclipai/ui` Storybook on port `6006` and build the static output to `ui/storybook-static/`.
 
+## Design Manifest
+
+The root [`DESIGN.md`](../DESIGN.md) file is the AI-readable visual manifest for optional theme directions. Use it as prompt/context for design generation and keep its exact theme tokens aligned with `ui/src/index.css` when a documented theme is implemented in code.
+
 Inspect or stop the current repo's managed dev runner:
 
 ```sh

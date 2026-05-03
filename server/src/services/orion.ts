@@ -41,9 +41,11 @@ import type {
   OrionTaskWorkflowAdvanceResult,
   OrionTaskWorkflowResolution,
   OrionRunReadiness,
+  OrionRoundTableSetupResult,
   OrionWorkflowDefinition,
   OrionWorkflowPresetId,
   ResolveOrionTaskWorkflow,
+  SetupOrionRoundTable,
   OrionSyncNotion,
   ApproveOrionLedgerPlan,
   RecordOrionLedgerEvidence,
@@ -88,7 +90,24 @@ const ORION_NOTION_SYNCBACK_FIELDS = [
 const ACTIVE_ORION_RUN_STATUSES = ["queued", "running"] as const;
 const ORION_TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed", "cancelled", "timed_out"]);
 const execFile = promisify(execFileCallback);
+const ROUND_TABLE_EXECUTABLE_NODE_KEYS = [
+  "planner",
+  "architect",
+  "implementer",
+  "verifier",
+  "knowledge_steward",
+  "recovery_router",
+] as const;
+const ROUND_TABLE_AGENT_DEFAULTS: Record<(typeof ROUND_TABLE_EXECUTABLE_NODE_KEYS)[number], { name: string; title: string; role: string }> = {
+  planner: { name: "Round Table Planner", title: "Planner", role: "planner" },
+  architect: { name: "Round Table Architect", title: "Architect", role: "architect" },
+  implementer: { name: "Codex Implementer 01", title: "Implementer", role: "implementation_worker" },
+  verifier: { name: "Round Table Verifier", title: "Verifier", role: "verifier" },
+  knowledge_steward: { name: "Round Table Knowledge Steward", title: "Knowledge Steward", role: "knowledge_steward" },
+  recovery_router: { name: "Round Table Recovery Router", title: "Recovery Router", role: "recovery_router" },
+};
 const VERIFICATION_OUTPUT_MAX_CHARS = 12_000;
+type RoundTableExecutableNodeKey = (typeof ROUND_TABLE_EXECUTABLE_NODE_KEYS)[number];
 
 function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
@@ -98,6 +117,18 @@ function readConfigString(config: unknown, key: string): string | null {
   if (!config || typeof config !== "object" || Array.isArray(config)) return null;
   const value = (config as Record<string, unknown>)[key];
   return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function setupRoleProfileIdForNodeKey(nodeKey: RoundTableExecutableNodeKey) {
+  return nodeKey;
+}
+
+function setupRoleProfileIdForWorkflowNode(node: { nodeKey: string; config: unknown; type: string }) {
+  const explicit = readConfigString(node.config, "roleProfileId");
+  const profile = resolveOrionRoleProfile(explicit);
+  if (profile) return profile.roleId;
+  if (node.type === "verification") return "verifier";
+  return "operator";
 }
 
 function stableJson(value: unknown): string {
@@ -346,6 +377,14 @@ function systemProjectionChecksum(value: Record<string, unknown>) {
 export function orionService(db: Db) {
   const secrets = secretService(db);
 
+  async function listWorkflows(companyId: string) {
+    return db
+      .select()
+      .from(orionWorkflows)
+      .where(eq(orionWorkflows.companyId, companyId))
+      .orderBy(desc(orionWorkflows.defaultForCompany), desc(orionWorkflows.createdAt));
+  }
+
   async function getWorkflowDetail(workflowId: string) {
     const workflow = await db
       .select()
@@ -477,6 +516,233 @@ export function orionService(db: Db) {
       })
       .returning();
     return event!;
+  }
+
+  async function getRoundTableSetupReadiness(companyId: string): Promise<OrionRoundTableSetupResult> {
+    return computeRoundTableSetupState(companyId, false);
+  }
+
+  async function computeRoundTableSetupState(
+    companyId: string,
+    dryRun: boolean,
+    createdAgents: OrionRoundTableSetupResult["createdAgents"] = [],
+    reusedAgents: OrionRoundTableSetupResult["reusedAgents"] = [],
+    boundNodes: OrionRoundTableSetupResult["boundNodes"] = [],
+  ): Promise<OrionRoundTableSetupResult> {
+    const workflows = await listWorkflows(companyId);
+    const defaultWorkflow = workflows.find((workflow) => workflow.defaultForCompany) ?? workflows[0] ?? null;
+    const roundTableWorkflow = workflows.find((workflow) => workflow.presetId === "orion_round_table") ?? null;
+    const workflow = roundTableWorkflow ? await getWorkflowDetail(roundTableWorkflow.id) : null;
+    const blockedReasons: string[] = [];
+    if (defaultWorkflow?.presetId === "paperclip_company") {
+      blockedReasons.push("Paperclip companies stay on the legacy hierarchy preset unless an operator creates a separate Orion company.");
+    }
+
+    const nodes = workflow?.nodes ?? [];
+    const nodeByKey = new Map(nodes.map((node) => [node.nodeKey, node]));
+    const missingRoleBindings: OrionRoundTableSetupResult["missingRoleBindings"] = [];
+    for (const nodeKey of ROUND_TABLE_EXECUTABLE_NODE_KEYS) {
+      const node = nodeByKey.get(nodeKey);
+      const defaults = ROUND_TABLE_AGENT_DEFAULTS[nodeKey];
+      if (!node || !node.agentId) {
+        missingRoleBindings.push({
+          nodeKey,
+          roleProfileId: setupRoleProfileIdForNodeKey(nodeKey),
+          displayName: defaults.title,
+          agentId: node?.agentId ?? null,
+          status: "missing",
+          reason: node ? "No agent is bound to this workflow node." : "Round Table workflow node does not exist yet.",
+        });
+      }
+    }
+
+    const skippedNodes: OrionRoundTableSetupResult["skippedNodes"] = (workflow?.nodes ?? [])
+      .filter((node) => !ROUND_TABLE_EXECUTABLE_NODE_KEYS.includes(node.nodeKey as (typeof ROUND_TABLE_EXECUTABLE_NODE_KEYS)[number]))
+      .map((node) => ({
+        nodeKey: node.nodeKey,
+        roleProfileId: setupRoleProfileIdForWorkflowNode(node),
+        displayName: node.label,
+        agentId: node.agentId ?? null,
+        status: "skipped",
+        reason: "Human/system Round Table nodes are not auto-created by setup.",
+      })) as OrionRoundTableSetupResult["skippedNodes"];
+
+    return {
+      companyId,
+      workflowId: workflow?.id ?? null,
+      presetId: workflow?.presetId as OrionWorkflowPresetId | null,
+      defaultForCompany: Boolean(workflow?.defaultForCompany),
+      missingRoleBindings,
+      createdAgents,
+      reusedAgents,
+      boundNodes,
+      skippedNodes,
+      blockedReasons,
+      dryRun,
+    };
+  }
+
+  async function setupRoundTable(companyId: string, input: SetupOrionRoundTable): Promise<OrionRoundTableSetupResult> {
+    const sourceAgent = await db
+      .select()
+      .from(agents)
+      .where(and(eq(agents.id, input.sourceAgentId), eq(agents.companyId, companyId)))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    if (!sourceAgent) throw unprocessable("Source agent must belong to this company.");
+
+    const before = await computeRoundTableSetupState(companyId, input.dryRun);
+    if (before.blockedReasons.length > 0) return before;
+    if (input.dryRun) return before;
+
+    const createdAgents: OrionRoundTableSetupResult["createdAgents"] = [];
+    const reusedAgents: OrionRoundTableSetupResult["reusedAgents"] = [];
+    const boundNodes: OrionRoundTableSetupResult["boundNodes"] = [];
+    const now = new Date();
+
+    await db.transaction(async (tx) => {
+      let [workflow] = await tx
+        .select()
+        .from(orionWorkflows)
+        .where(and(eq(orionWorkflows.companyId, companyId), eq(orionWorkflows.presetId, "orion_round_table")))
+        .limit(1);
+
+      if (!workflow) {
+        const preset = ORION_WORKFLOW_PRESETS.orion_round_table;
+        [workflow] = await tx
+          .insert(orionWorkflows)
+          .values({
+            companyId,
+            name: preset.name,
+            presetId: preset.presetId,
+            defaultForCompany: input.makeDefault,
+            definitionJson: preset as unknown as Record<string, unknown>,
+            updatedAt: now,
+          })
+          .returning();
+        await tx.insert(orionWorkflowNodes).values(
+          preset.nodes.map((node) => ({
+            companyId,
+            workflowId: workflow!.id,
+            nodeKey: node.nodeKey,
+            type: node.type,
+            label: node.label,
+            agentId: null,
+            config: node.config,
+            position: node.position,
+            updatedAt: now,
+          })),
+        );
+        if (preset.edges.length > 0) {
+          await tx.insert(orionWorkflowEdges).values(
+            preset.edges.map((edge) => ({
+              companyId,
+              workflowId: workflow!.id,
+              edgeKey: edge.edgeKey,
+              fromNodeKey: edge.fromNodeKey,
+              toNodeKey: edge.toNodeKey,
+              type: edge.type,
+              label: edge.label ?? null,
+              config: edge.config,
+              position: edge.position,
+              updatedAt: now,
+            })),
+          );
+        }
+      }
+
+      if (input.makeDefault) {
+        await tx
+          .update(orionWorkflows)
+          .set({ defaultForCompany: false, updatedAt: now })
+          .where(eq(orionWorkflows.companyId, companyId));
+        await tx.update(orionWorkflows).set({ defaultForCompany: true, updatedAt: now }).where(eq(orionWorkflows.id, workflow!.id));
+      }
+
+      const workflowNodes = await tx
+        .select()
+        .from(orionWorkflowNodes)
+        .where(eq(orionWorkflowNodes.workflowId, workflow!.id));
+      const nodeByKey = new Map(workflowNodes.map((node) => [node.nodeKey, node]));
+
+      for (const nodeKey of ROUND_TABLE_EXECUTABLE_NODE_KEYS) {
+        const node = nodeByKey.get(nodeKey);
+        if (!node || node.agentId) {
+          if (node?.agentId) {
+            reusedAgents.push({
+              nodeKey,
+              roleProfileId: setupRoleProfileIdForNodeKey(nodeKey),
+              displayName: ROUND_TABLE_AGENT_DEFAULTS[nodeKey].title,
+              agentId: node.agentId,
+              status: "reused",
+              reason: "Workflow node already had a bound agent.",
+            });
+          }
+          continue;
+        }
+
+        const defaults = ROUND_TABLE_AGENT_DEFAULTS[nodeKey];
+        const sourceAgentMetadata = readRecord(sourceAgent.metadata);
+        const sourceLooksLikeImplementer =
+          nodeKey === "implementer" &&
+          (sourceAgent.role === "implementation_worker" || readString(sourceAgentMetadata.roleProfileId) === "implementer");
+        if (sourceLooksLikeImplementer) {
+          await tx
+            .update(orionWorkflowNodes)
+            .set({ agentId: sourceAgent.id, updatedAt: now })
+            .where(eq(orionWorkflowNodes.id, node.id));
+          const binding = {
+            nodeKey,
+            roleProfileId: setupRoleProfileIdForNodeKey(nodeKey),
+            displayName: defaults.title,
+            agentId: sourceAgent.id,
+            status: "reused" as const,
+            reason: "Bound the selected existing Implementer source agent.",
+          };
+          reusedAgents.push(binding);
+          boundNodes.push({ ...binding, status: "bound", reason: "Bound existing Implementer to Round Table workflow node." });
+          continue;
+        }
+
+        const [created] = await tx
+          .insert(agents)
+          .values({
+            companyId,
+            name: defaults.name,
+            role: defaults.role,
+            title: defaults.title,
+            status: "idle",
+            adapterType: sourceAgent.adapterType,
+            adapterConfig: sourceAgent.adapterConfig,
+            runtimeConfig: sourceAgent.runtimeConfig,
+            defaultEnvironmentId: sourceAgent.defaultEnvironmentId,
+            permissions: { canCreateAgents: false },
+            metadata: {
+              source: "orion_round_table_setup",
+              roleProfileId: setupRoleProfileIdForNodeKey(nodeKey),
+              copiedFromAgentId: sourceAgent.id,
+            },
+            updatedAt: now,
+          })
+          .returning();
+        await tx
+          .update(orionWorkflowNodes)
+          .set({ agentId: created!.id, updatedAt: now })
+          .where(eq(orionWorkflowNodes.id, node.id));
+        const binding = {
+          nodeKey,
+          roleProfileId: setupRoleProfileIdForNodeKey(nodeKey),
+          displayName: defaults.title,
+          agentId: created!.id,
+          status: "created" as const,
+          reason: "Created from selected source agent adapter/runtime config.",
+        };
+        createdAgents.push(binding);
+        boundNodes.push({ ...binding, status: "bound", reason: "Bound new agent to Round Table workflow node." });
+      }
+    });
+
+    return computeRoundTableSetupState(companyId, false, createdAgents, reusedAgents, boundNodes);
   }
 
   async function getLedgerByRunId(runId: string) {
@@ -1194,18 +1460,13 @@ export function orionService(db: Db) {
         .where(eq(syncConflicts.companyId, companyId))
         .orderBy(desc(syncConflicts.createdAt)),
 
-    listWorkflows: async (companyId: string) => {
-      const workflows = await db
-        .select()
-        .from(orionWorkflows)
-        .where(eq(orionWorkflows.companyId, companyId))
-        .orderBy(desc(orionWorkflows.defaultForCompany), desc(orionWorkflows.createdAt));
-      return workflows;
-    },
+    listWorkflows,
 
     getWorkflow: getWorkflowDetail,
 
     createWorkflowFromPreset,
+    getRoundTableSetupReadiness,
+    setupRoundTable,
 
     getTaskPolicy: async (taskId: string) => {
       const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).then((rows) => rows[0] ?? null);

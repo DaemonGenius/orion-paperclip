@@ -192,6 +192,29 @@ export interface OrionTaskWorkflowBinding {
   updatedAt: Date | string;
 }
 
+export interface OrionRoundTableSetupRoleBinding {
+  nodeKey: string;
+  roleProfileId: OrionRoleProfileId;
+  displayName: string;
+  agentId: string | null;
+  status: "bound" | "missing" | "created" | "reused" | "skipped";
+  reason: string | null;
+}
+
+export interface OrionRoundTableSetupResult {
+  companyId: string;
+  workflowId: string | null;
+  presetId: OrionWorkflowPresetId | null;
+  defaultForCompany: boolean;
+  missingRoleBindings: OrionRoundTableSetupRoleBinding[];
+  createdAgents: OrionRoundTableSetupRoleBinding[];
+  reusedAgents: OrionRoundTableSetupRoleBinding[];
+  boundNodes: OrionRoundTableSetupRoleBinding[];
+  skippedNodes: OrionRoundTableSetupRoleBinding[];
+  blockedReasons: string[];
+  dryRun: boolean;
+}
+
 export type OrionWorkflowResolutionActionKind =
   | "assignable_agent"
   | "operator_required"

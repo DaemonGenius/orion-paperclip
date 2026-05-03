@@ -7,6 +7,7 @@ import type {
   OrionAutonomyMode,
   OrionReqLedger,
   OrionRoleProfile,
+  OrionRoundTableSetupResult,
   OrionRunReadiness,
   OrionTaskPolicy,
   OrionTaskWorkflowBinding,
@@ -31,6 +32,10 @@ export const orionApi = {
   workflowPresets: () => api.get<OrionWorkflowDefinition[]>("/orion/workflow-presets"),
   roleProfiles: () => api.get<OrionRoleProfile[]>("/orion/role-profiles"),
   workflows: (companyId: string) => api.get<OrionWorkflow[]>(`/orion/companies/${companyId}/workflows`),
+  roundTableSetupReadiness: (companyId: string) =>
+    api.get<OrionRoundTableSetupResult>(`/orion/companies/${companyId}/round-table/setup-readiness`),
+  setupRoundTable: (companyId: string, data: { sourceAgentId: string; makeDefault?: boolean; dryRun?: boolean }) =>
+    api.post<OrionRoundTableSetupResult>(`/orion/companies/${companyId}/round-table/setup`, data),
   createWorkflowFromPreset: (companyId: string, data: CreateOrionWorkflowFromPreset) =>
     api.post<OrionWorkflow>(`/orion/companies/${companyId}/workflows/presets`, data),
   workflow: (workflowId: string) => api.get<OrionWorkflow>(`/orion/workflows/${workflowId}`),

@@ -52,6 +52,7 @@ describe("instance settings routes", () => {
     mockInstanceSettingsService.getGeneral.mockResolvedValue({
       censorUsernameInLogs: false,
       keyboardShortcuts: false,
+      themeMode: "system",
       feedbackDataSharingPreference: "prompt",
     });
     mockInstanceSettingsService.getExperimental.mockResolvedValue({
@@ -65,6 +66,7 @@ describe("instance settings routes", () => {
       general: {
         censorUsernameInLogs: true,
         keyboardShortcuts: true,
+        themeMode: "vaporwave-neo-tokyo",
         feedbackDataSharingPreference: "allowed",
       },
     });
@@ -177,6 +179,7 @@ describe("instance settings routes", () => {
     expect(getRes.body).toEqual({
       censorUsernameInLogs: false,
       keyboardShortcuts: false,
+      themeMode: "system",
       feedbackDataSharingPreference: "prompt",
     });
 
@@ -185,6 +188,7 @@ describe("instance settings routes", () => {
       .send({
         censorUsernameInLogs: true,
         keyboardShortcuts: true,
+        themeMode: "vaporwave-neo-tokyo",
         feedbackDataSharingPreference: "allowed",
       });
 
@@ -192,9 +196,26 @@ describe("instance settings routes", () => {
     expect(mockInstanceSettingsService.updateGeneral).toHaveBeenCalledWith({
       censorUsernameInLogs: true,
       keyboardShortcuts: true,
+      themeMode: "vaporwave-neo-tokyo",
       feedbackDataSharingPreference: "allowed",
     });
     expect(mockLogActivity).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects invalid theme modes", async () => {
+    const app = await createApp({
+      type: "board",
+      userId: "local-board",
+      source: "local_implicit",
+      isInstanceAdmin: true,
+    });
+
+    const res = await request(app)
+      .patch("/api/instance/settings/general")
+      .send({ themeMode: "neo-tokyo-but-make-it-chaos" });
+
+    expect(res.status).toBe(400);
+    expect(mockInstanceSettingsService.updateGeneral).not.toHaveBeenCalled();
   });
 
   it("allows non-admin board users to read general settings", async () => {
@@ -212,6 +233,7 @@ describe("instance settings routes", () => {
     expect(res.body).toEqual({
       censorUsernameInLogs: false,
       keyboardShortcuts: false,
+      themeMode: "system",
       feedbackDataSharingPreference: "prompt",
     });
   });

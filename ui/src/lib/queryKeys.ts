@@ -8,6 +8,7 @@ export const queryKeys = {
     workflowPresets: ["orion", "workflow-presets"] as const,
     roleProfiles: ["orion", "role-profiles"] as const,
     workflows: (companyId: string) => ["orion", "workflows", companyId] as const,
+    roundTableSetup: (companyId: string) => ["orion", "round-table-setup", companyId] as const,
     workflow: (workflowId: string) => ["orion", "workflow", workflowId] as const,
     taskPolicy: (taskId: string) => ["orion", "task-policy", taskId] as const,
     runReadiness: (taskId: string) => ["orion", "run-readiness", taskId] as const,

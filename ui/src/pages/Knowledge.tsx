@@ -55,7 +55,7 @@ function ProviderPill({ value }: { value: string }) {
 
 function SummaryTile({ icon: Icon, label, value }: { icon: typeof Database; label: string; value: number | string }) {
   return (
-    <div className="border border-border p-4">
+    <div className="vnt-glass-surface border border-border p-4">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Icon className="h-4 w-4" />
         {label}
@@ -173,7 +173,7 @@ function ProjectWorkspacePanel({ refs }: { refs: ExternalObjectRef[] }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       {workspaces.map((workspace) => (
-        <div key={workspace.projectId} className="border border-border p-4">
+        <div key={workspace.projectId} className="vnt-glass-surface border border-border p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold">
@@ -222,7 +222,7 @@ function CompanyKnowledgePanel({ refs }: { refs: ExternalObjectRef[] }) {
   }
 
   return (
-    <div className="border border-border p-4">
+    <div className="vnt-glass-surface border border-border p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold">{metadataText(root ?? sections[0]!, "title") ?? "Shared Company Knowledge"}</div>
@@ -251,7 +251,7 @@ function RefsTable({ refs }: { refs: ExternalObjectRef[] }) {
     return <div className="border border-border p-4 text-sm text-muted-foreground">No indexed refs yet.</div>;
   }
   return (
-    <div className="overflow-hidden border border-border">
+    <div className="vnt-glass-surface overflow-hidden border border-border">
       <div className="grid grid-cols-[120px_minmax(220px,1fr)_140px_120px_180px] border-b border-border px-4 py-2 text-xs uppercase tracking-wide text-muted-foreground">
         <div>Provider</div>
         <div>Object</div>
@@ -286,7 +286,7 @@ function ConflictsTable({ conflicts }: { conflicts: SyncConflict[] }) {
     return <div className="border border-border p-4 text-sm text-muted-foreground">No sync conflicts.</div>;
   }
   return (
-    <div className="overflow-hidden border border-border">
+    <div className="vnt-glass-surface overflow-hidden border border-border">
       <div className="grid grid-cols-[120px_minmax(220px,1fr)_110px_180px] border-b border-border px-4 py-2 text-xs uppercase tracking-wide text-muted-foreground">
         <div>Provider</div>
         <div>Object</div>

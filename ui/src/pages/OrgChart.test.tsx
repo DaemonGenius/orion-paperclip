@@ -13,6 +13,8 @@ const listMock = vi.fn();
 const workflowsMock = vi.fn();
 const workflowMock = vi.fn();
 const roleProfilesMock = vi.fn();
+const roundTableSetupReadinessMock = vi.fn();
+const setupRoundTableMock = vi.fn();
 const tasksMock = vi.fn();
 const liveRunsMock = vi.fn();
 
@@ -41,6 +43,8 @@ vi.mock("../api/orion", () => ({
     workflows: () => workflowsMock(),
     workflow: () => workflowMock(),
     roleProfiles: () => roleProfilesMock(),
+    roundTableSetupReadiness: () => roundTableSetupReadinessMock(),
+    setupRoundTable: (_companyId: string, data: unknown) => setupRoundTableMock(data),
   },
 }));
 
@@ -183,16 +187,47 @@ const roundTableWorkflowSummary = {
   presetId: "orion_round_table",
 };
 
+const operatorLedWorkflowSummary = {
+  ...paperclipWorkflowSummary,
+  id: "workflow-operator-led",
+  name: "Orion Operator-led Auto-to-PR",
+  presetId: "orion_operator_auto_to_pr",
+};
+
 const roundTableWorkflow = {
   ...roundTableWorkflowSummary,
   nodes: [
+    {
+      nodeKey: "task_intake",
+      type: "task_intake",
+      label: "Task Intake",
+      agentId: null,
+      config: { source: "notion", roleProfileId: "operator" },
+      position: 0,
+    },
     {
       nodeKey: "operator",
       type: "human_gate",
       label: "Operator",
       agentId: null,
       config: { roleProfileId: "operator" },
-      position: 0,
+      position: 1,
+    },
+    {
+      nodeKey: "planner",
+      type: "agent",
+      label: "Planner",
+      agentId: null,
+      config: { roleProfileId: "planner" },
+      position: 2,
+    },
+    {
+      nodeKey: "architect",
+      type: "agent",
+      label: "Architect",
+      agentId: null,
+      config: { roleProfileId: "architect" },
+      position: 3,
     },
     {
       nodeKey: "implementer",
@@ -200,7 +235,39 @@ const roundTableWorkflow = {
       label: "Implementer",
       agentId: "agent-impl",
       config: { roleProfileId: "implementer", role: "implementation_worker" },
-      position: 1,
+      position: 4,
+    },
+    {
+      nodeKey: "verifier",
+      type: "verification",
+      label: "Verifier",
+      agentId: null,
+      config: { roleProfileId: "verifier" },
+      position: 5,
+    },
+    {
+      nodeKey: "github_pr",
+      type: "github_pr",
+      label: "PR Creation",
+      agentId: null,
+      config: { provider: "github", roleProfileId: "operator" },
+      position: 6,
+    },
+    {
+      nodeKey: "human_review",
+      type: "human_gate",
+      label: "Human Review",
+      agentId: null,
+      config: { roleProfileId: "operator" },
+      position: 7,
+    },
+    {
+      nodeKey: "knowledge_steward",
+      type: "agent",
+      label: "Knowledge Steward",
+      agentId: null,
+      config: { roleProfileId: "knowledge_steward" },
+      position: 8,
     },
     {
       nodeKey: "recovery_router",
@@ -208,10 +275,19 @@ const roundTableWorkflow = {
       label: "Recovery Router",
       agentId: null,
       config: { roleProfileId: "recovery_router" },
-      position: 2,
+      position: 9,
     },
   ],
   edges: [
+    {
+      edgeKey: "intake-to-planner",
+      fromNodeKey: "task_intake",
+      toNodeKey: "planner",
+      type: "assigns_to",
+      label: "plan",
+      config: {},
+      position: 0,
+    },
     {
       edgeKey: "implementer-to-recovery",
       fromNodeKey: "implementer",
@@ -219,9 +295,40 @@ const roundTableWorkflow = {
       type: "fallback_to",
       label: "recovery routing",
       config: {},
-      position: 0,
+      position: 1,
+    },
+    {
+      edgeKey: "pr-to-recovery",
+      fromNodeKey: "github_pr",
+      toNodeKey: "recovery_router",
+      type: "fallback_to",
+      label: "recovery routing",
+      config: {},
+      position: 2,
     },
   ],
+};
+
+const operatorLedWorkflow = {
+  ...operatorLedWorkflowSummary,
+  nodes: roundTableWorkflow.nodes,
+  edges: roundTableWorkflow.edges,
+};
+
+const boundRoundTableWorkflow = {
+  ...roundTableWorkflowSummary,
+  nodes: roundTableWorkflow.nodes.map((node) => {
+    const agentByNodeKey: Record<string, string> = {
+      planner: "agent-planner",
+      architect: "agent-architect",
+      implementer: "agent-impl",
+      verifier: "agent-verifier",
+      knowledge_steward: "agent-knowledge",
+      recovery_router: "agent-recovery",
+    };
+    return { ...node, agentId: agentByNodeKey[node.nodeKey] ?? node.agentId };
+  }),
+  edges: roundTableWorkflow.edges,
 };
 
 const roundTableAgents = [
@@ -251,6 +358,68 @@ const roundTableAgents = [
     permissions: null,
   },
 ];
+
+const boundRoundTableAgents = [
+  ...roundTableAgents,
+  { ...roundTableAgents[0]!, id: "agent-planner", name: "Round Table Planner", role: "planner", title: "Planner", urlKey: "round-table-planner" },
+  { ...roundTableAgents[0]!, id: "agent-architect", name: "Round Table Architect", role: "architect", title: "Architect", urlKey: "round-table-architect" },
+  { ...roundTableAgents[0]!, id: "agent-verifier", name: "Round Table Verifier", role: "verifier", title: "Verifier", urlKey: "round-table-verifier" },
+  {
+    ...roundTableAgents[0]!,
+    id: "agent-knowledge",
+    name: "Round Table Knowledge Steward",
+    role: "knowledge_steward",
+    title: "Knowledge Steward",
+    urlKey: "round-table-knowledge-steward",
+  },
+  {
+    ...roundTableAgents[0]!,
+    id: "agent-recovery",
+    name: "Round Table Recovery Router",
+    role: "recovery_router",
+    title: "Recovery Router",
+    urlKey: "round-table-recovery-router",
+  },
+];
+
+const readyRoundTableSetup = {
+  companyId: "company-1",
+  workflowId: "workflow-round-table",
+  presetId: "orion_round_table",
+  defaultForCompany: true,
+  missingRoleBindings: [],
+  createdAgents: [],
+  reusedAgents: [],
+  boundNodes: [],
+  skippedNodes: [],
+  blockedReasons: [],
+  dryRun: false,
+};
+
+const missingRoundTableSetup = {
+  ...readyRoundTableSetup,
+  workflowId: null,
+  presetId: null,
+  defaultForCompany: false,
+  missingRoleBindings: [
+    {
+      nodeKey: "planner",
+      roleProfileId: "planner",
+      displayName: "Planner",
+      agentId: null,
+      status: "missing",
+      reason: "Round Table workflow node does not exist yet.",
+    },
+    {
+      nodeKey: "architect",
+      roleProfileId: "architect",
+      displayName: "Architect",
+      agentId: null,
+      status: "missing",
+      reason: "Round Table workflow node does not exist yet.",
+    },
+  ],
+};
 
 function createTouchEvent(type: string, touches: Array<{ clientX: number; clientY: number }>) {
   const event = new Event(type, { bubbles: true, cancelable: true });
@@ -286,6 +455,14 @@ describe("OrgChart mobile gestures", () => {
     workflowsMock.mockResolvedValue([paperclipWorkflowSummary]);
     workflowMock.mockResolvedValue(paperclipWorkflow);
     roleProfilesMock.mockResolvedValue(ORION_LEAN_SEVEN_ROLE_PROFILES);
+    roundTableSetupReadinessMock.mockResolvedValue(readyRoundTableSetup);
+    setupRoundTableMock.mockResolvedValue({
+      ...readyRoundTableSetup,
+      createdAgents: [],
+      reusedAgents: [],
+      boundNodes: [],
+      skippedNodes: [],
+    });
     tasksMock.mockResolvedValue([]);
     liveRunsMock.mockResolvedValue([]);
 
@@ -386,6 +563,10 @@ describe("OrgChart mobile gestures", () => {
     await renderOrgChart();
 
     expect(container.textContent).toContain("Round Table Council");
+    expect(container.textContent).toContain("Human/operator-owned stages");
+    expect(container.textContent).toContain("Task Intake");
+    expect(container.textContent).toContain("PR Creation");
+    expect(container.textContent).toContain("Human Review");
     expect(container.textContent).toContain("Implementer");
     expect(container.textContent).toContain("Changes code inside approved task and autonomy-envelope boundaries.");
     expect(container.textContent).toContain("code.edit");
@@ -397,6 +578,10 @@ describe("OrgChart mobile gestures", () => {
     expect(container.textContent).not.toContain("CEO");
     expect(container.textContent).not.toContain("CTO");
     expect(container.querySelector('[data-testid="org-chart-viewport"]')).toBeNull();
+
+    expect(container.querySelectorAll('[data-testid="round-table-operator-stages"]')).toHaveLength(1);
+    expect(container.querySelectorAll("[data-round-table-card]")).toHaveLength(6);
+    expect(container.querySelector('[data-round-table-card][data-node-key="operator"]')).toBeNull();
   });
 
   it("falls back to hierarchy with an explicit notice when no workflow exists", async () => {
@@ -461,9 +646,79 @@ describe("OrgChart mobile gestures", () => {
 
     await renderOrgChart();
 
-    expect(container.textContent).toContain("Operator");
+    expect(container.textContent).toContain("Human/operator-owned stages");
     expect(container.textContent).toContain("Unbound");
     expect(container.textContent).toContain("Waiting for binding");
+  });
+
+  it("shows guided Round Table setup for Orion companies with missing council bindings", async () => {
+    orgMock.mockResolvedValue([]);
+    listMock.mockResolvedValue(roundTableAgents);
+    workflowsMock.mockResolvedValue([operatorLedWorkflowSummary]);
+    workflowMock.mockResolvedValue(operatorLedWorkflow);
+    roundTableSetupReadinessMock.mockResolvedValue(missingRoundTableSetup);
+    setupRoundTableMock.mockResolvedValue({
+      ...missingRoundTableSetup,
+      workflowId: "workflow-round-table",
+      presetId: "orion_round_table",
+      defaultForCompany: true,
+      missingRoleBindings: [],
+      reusedAgents: [
+        {
+          nodeKey: "implementer",
+          roleProfileId: "implementer",
+          displayName: "Implementer",
+          agentId: "agent-impl",
+          status: "reused",
+          reason: "Bound the selected existing Implementer source agent.",
+        },
+      ],
+      boundNodes: [
+        {
+          nodeKey: "implementer",
+          roleProfileId: "implementer",
+          displayName: "Implementer",
+          agentId: "agent-impl",
+          status: "bound",
+          reason: "Bound existing Implementer to Round Table workflow node.",
+        },
+      ],
+    });
+
+    await renderOrgChart();
+
+    expect(container.textContent).toContain("Round Table setup");
+    expect(container.textContent).toContain("Planner");
+    expect(container.textContent).toContain("Architect");
+
+    const button = Array.from(container.querySelectorAll("button")).find((candidate) =>
+      candidate.textContent?.includes("Create / bind agents"),
+    ) as HTMLButtonElement;
+    await act(async () => {
+      button.click();
+    });
+    await flushReact();
+
+    expect(setupRoundTableMock).toHaveBeenCalledWith({
+      sourceAgentId: "agent-impl",
+      makeDefault: true,
+    });
+    expect(container.textContent).toContain("Setup result:");
+  });
+
+  it("shows newly bound Round Table agents after setup refreshes company data", async () => {
+    orgMock.mockResolvedValue([]);
+    listMock.mockResolvedValue(boundRoundTableAgents);
+    workflowsMock.mockResolvedValue([roundTableWorkflowSummary]);
+    workflowMock.mockResolvedValue(boundRoundTableWorkflow);
+
+    await renderOrgChart();
+
+    expect(container.textContent).toContain("Round Table Planner");
+    expect(container.textContent).toContain("Round Table Architect");
+    expect(container.textContent).toContain("Round Table Verifier");
+    expect(container.textContent).toContain("Round Table Knowledge Steward");
+    expect(container.textContent).toContain("Round Table Recovery Router");
   });
 
   it("pans the chart with one-finger touch drag", async () => {

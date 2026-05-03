@@ -46,7 +46,7 @@ function ChartLegend({ items }: { items: { color: string; label: string }[] }) {
 
 export function ChartCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <div className="border border-border rounded-lg p-4 space-y-3">
+    <div className="vnt-glass-surface border border-border rounded-lg p-4 space-y-3">
       <div>
         <h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
         {subtitle && <span className="text-[10px] text-muted-foreground/60">{subtitle}</span>}
@@ -105,8 +105,8 @@ export function RunActivityChart(props: RunChartProps) {
             <div key={day} className="flex-1 h-full flex flex-col justify-end" title={`${day}: ${total} runs`}>
               {total > 0 ? (
                 <div className="flex flex-col-reverse gap-px overflow-hidden" style={{ height: `${heightPct}%`, minHeight: 2 }}>
-                  {entry.succeeded > 0 && <div className="bg-emerald-500" style={{ flex: entry.succeeded }} />}
-                  {entry.failed > 0 && <div className="bg-red-500" style={{ flex: entry.failed }} />}
+                  {entry.succeeded > 0 && <div style={{ flex: entry.succeeded, backgroundColor: "var(--chart-5)" }} />}
+                  {entry.failed > 0 && <div style={{ flex: entry.failed, backgroundColor: "var(--destructive)" }} />}
                   {entry.other > 0 && <div className="bg-neutral-500" style={{ flex: entry.other }} />}
                 </div>
               ) : (
@@ -122,10 +122,10 @@ export function RunActivityChart(props: RunChartProps) {
 }
 
 const priorityColors: Record<string, string> = {
-  critical: "#ef4444",
-  high: "#f97316",
-  medium: "#eab308",
-  low: "#6b7280",
+  critical: "var(--destructive)",
+  high: "var(--chart-3)",
+  medium: "var(--vnt-warning, #eab308)",
+  low: "var(--muted-foreground)",
 };
 
 const priorityOrder = ["critical", "high", "medium", "low"] as const;
@@ -175,13 +175,13 @@ export function PriorityChart({ tasks }: { tasks: { priority: string; createdAt:
 }
 
 const statusColors: Record<string, string> = {
-  todo: "#3b82f6",
-  in_progress: "#8b5cf6",
-  in_review: "#a855f7",
-  done: "#10b981",
-  blocked: "#ef4444",
-  cancelled: "#6b7280",
-  backlog: "#64748b",
+  todo: "var(--chart-1)",
+  in_progress: "var(--chart-4)",
+  in_review: "var(--chart-2)",
+  done: "var(--chart-5)",
+  blocked: "var(--destructive)",
+  cancelled: "var(--muted-foreground)",
+  backlog: "var(--border)",
 };
 
 const statusLabels: Record<string, string> = {
@@ -255,7 +255,7 @@ export function SuccessRateChart(props: RunChartProps) {
         {days.map(day => {
           const entry = grouped.get(day) ?? { date: day, succeeded: 0, failed: 0, other: 0, total: 0 };
           const rate = entry.total > 0 ? entry.succeeded / entry.total : 0;
-          const color = entry.total === 0 ? undefined : rate >= 0.8 ? "#10b981" : rate >= 0.5 ? "#eab308" : "#ef4444";
+          const color = entry.total === 0 ? undefined : rate >= 0.8 ? "var(--chart-5)" : rate >= 0.5 ? "var(--chart-3)" : "var(--destructive)";
           return (
             <div key={day} className="flex-1 h-full flex flex-col justify-end" title={`${day}: ${entry.total > 0 ? Math.round(rate * 100) : 0}% (${entry.succeeded}/${entry.total})`}>
               {entry.total > 0 ? (

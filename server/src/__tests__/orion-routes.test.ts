@@ -20,6 +20,8 @@ import {
   orionReqLedgerArtifacts,
   orionReqLedgerEvents,
   orionReqLedgers,
+  orionWorkflowNodes,
+  orionWorkflows,
   syncConflicts,
   syncCursors,
   tasks,
@@ -1270,6 +1272,141 @@ describeEmbeddedPostgres("Orion routes", () => {
       .send({ workflowId: workflow.body.id, currentNodeKey: "task_intake" });
     expect(binding.status, JSON.stringify(binding.body)).toBe(201);
     expect(binding.body.currentNodeKey).toBe("task_intake");
+  });
+
+  it("guides existing Orion companies into Round Table setup without duplicating the source Implementer", async () => {
+    await seedCompanyAndAgent();
+    await db
+      .update(agents)
+      .set({ name: "Codex Implementer 01", role: "implementation_worker", title: "Implementer" })
+      .where(eq(agents.id, agentId));
+
+    const operatorLed = await request(app)
+      .post(`/api/orion/companies/${companyId}/workflows/presets`)
+      .send({
+        presetId: "orion_operator_auto_to_pr",
+        makeDefault: true,
+        agentBindings: { codex_worker: agentId },
+      });
+    expect(operatorLed.status, JSON.stringify(operatorLed.body)).toBe(201);
+
+    const readiness = await request(app).get(`/api/orion/companies/${companyId}/round-table/setup-readiness`);
+    expect(readiness.status, JSON.stringify(readiness.body)).toBe(200);
+    expect(readiness.body.workflowId).toBeNull();
+    expect(readiness.body.missingRoleBindings.map((entry: { nodeKey: string }) => entry.nodeKey)).toEqual([
+      "planner",
+      "architect",
+      "implementer",
+      "verifier",
+      "knowledge_steward",
+      "recovery_router",
+    ]);
+
+    const setup = await request(app)
+      .post(`/api/orion/companies/${companyId}/round-table/setup`)
+      .send({ sourceAgentId: agentId });
+    expect(setup.status, JSON.stringify(setup.body)).toBe(200);
+    expect(setup.body.presetId).toBe("orion_round_table");
+    expect(setup.body.defaultForCompany).toBe(true);
+    expect(setup.body.createdAgents.map((entry: { nodeKey: string }) => entry.nodeKey).sort()).toEqual([
+      "architect",
+      "knowledge_steward",
+      "planner",
+      "recovery_router",
+      "verifier",
+    ]);
+    expect(setup.body.reusedAgents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ nodeKey: "implementer", agentId }),
+      ]),
+    );
+    expect(setup.body.boundNodes).toHaveLength(6);
+
+    const workflows = await db.select().from(orionWorkflows).where(eq(orionWorkflows.companyId, companyId));
+    expect(workflows.filter((workflow) => workflow.presetId === "orion_round_table")).toHaveLength(1);
+    expect(workflows.find((workflow) => workflow.presetId === "orion_round_table")?.defaultForCompany).toBe(true);
+    expect(workflows.find((workflow) => workflow.presetId === "orion_operator_auto_to_pr")?.defaultForCompany).toBe(false);
+
+    const roundTableWorkflow = workflows.find((workflow) => workflow.presetId === "orion_round_table")!;
+    const nodes = await db.select().from(orionWorkflowNodes).where(eq(orionWorkflowNodes.workflowId, roundTableWorkflow.id));
+    expect(nodes.find((node) => node.nodeKey === "implementer")?.agentId).toBe(agentId);
+    expect(nodes.find((node) => node.nodeKey === "operator")?.agentId).toBeNull();
+    expect(nodes.find((node) => node.nodeKey === "human_review")?.agentId).toBeNull();
+    expect(nodes.find((node) => node.nodeKey === "github_pr")?.agentId).toBeNull();
+
+    const allAgents = await db.select().from(agents).where(eq(agents.companyId, companyId));
+    expect(allAgents).toHaveLength(6);
+    expect(allAgents.filter((agent) => agent.permissions && (agent.permissions as Record<string, unknown>).canCreateAgents === false)).toHaveLength(5);
+  });
+
+  it("keeps Round Table setup idempotent when rerun", async () => {
+    await seedCompanyAndAgent();
+    await db.update(agents).set({ role: "implementation_worker", title: "Implementer" }).where(eq(agents.id, agentId));
+
+    await request(app)
+      .post(`/api/orion/companies/${companyId}/workflows/presets`)
+      .send({
+        presetId: "orion_operator_auto_to_pr",
+        makeDefault: true,
+        agentBindings: { codex_worker: agentId },
+      });
+    const first = await request(app)
+      .post(`/api/orion/companies/${companyId}/round-table/setup`)
+      .send({ sourceAgentId: agentId });
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+
+    const agentCount = await db.select({ count: sql<number>`count(*)::int` }).from(agents).where(eq(agents.companyId, companyId));
+    const workflowCount = await db.select({ count: sql<number>`count(*)::int` }).from(orionWorkflows).where(eq(orionWorkflows.companyId, companyId));
+
+    const second = await request(app)
+      .post(`/api/orion/companies/${companyId}/round-table/setup`)
+      .send({ sourceAgentId: agentId });
+    expect(second.status, JSON.stringify(second.body)).toBe(200);
+    expect(second.body.createdAgents).toHaveLength(0);
+    expect(second.body.missingRoleBindings).toHaveLength(0);
+    expect(second.body.reusedAgents).toHaveLength(6);
+
+    const agentCountAfter = await db.select({ count: sql<number>`count(*)::int` }).from(agents).where(eq(agents.companyId, companyId));
+    const workflowCountAfter = await db.select({ count: sql<number>`count(*)::int` }).from(orionWorkflows).where(eq(orionWorkflows.companyId, companyId));
+    expect(agentCountAfter[0]?.count).toBe(agentCount[0]?.count);
+    expect(workflowCountAfter[0]?.count).toBe(workflowCount[0]?.count);
+  });
+
+  it("blocks guided setup for Paperclip companies and invalid source agents without partial migration", async () => {
+    await seedCompanyAndAgent();
+    const paperclip = await request(app)
+      .post(`/api/orion/companies/${companyId}/workflows/presets`)
+      .send({
+        presetId: "paperclip_company",
+        makeDefault: true,
+        agentBindings: { ceo: agentId },
+      });
+    expect(paperclip.status, JSON.stringify(paperclip.body)).toBe(201);
+
+    const blocked = await request(app)
+      .post(`/api/orion/companies/${companyId}/round-table/setup`)
+      .send({ sourceAgentId: agentId });
+    expect(blocked.status, JSON.stringify(blocked.body)).toBe(200);
+    expect(blocked.body.blockedReasons[0]).toContain("Paperclip companies");
+
+    let workflows = await db.select().from(orionWorkflows).where(eq(orionWorkflows.companyId, companyId));
+    expect(workflows.some((workflow) => workflow.presetId === "orion_round_table")).toBe(false);
+
+    await db.execute(sql.raw(`TRUNCATE TABLE "companies" CASCADE`));
+    await seedCompanyAndAgent();
+    await request(app)
+      .post(`/api/orion/companies/${companyId}/workflows/presets`)
+      .send({
+        presetId: "orion_operator_auto_to_pr",
+        makeDefault: true,
+        agentBindings: { codex_worker: agentId },
+      });
+    const invalidSource = await request(app)
+      .post(`/api/orion/companies/${companyId}/round-table/setup`)
+      .send({ sourceAgentId: randomUUID() });
+    expect(invalidSource.status, JSON.stringify(invalidSource.body)).toBe(422);
+    workflows = await db.select().from(orionWorkflows).where(eq(orionWorkflows.companyId, companyId));
+    expect(workflows.some((workflow) => workflow.presetId === "orion_round_table")).toBe(false);
   });
 
   it("resolves and advances Round Table assignments through explicitly bound role nodes", async () => {

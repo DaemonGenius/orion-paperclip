@@ -114,6 +114,63 @@
   --sidebar-ring: oklch(0.439 0 0);
 }
 
+.theme-vaporwave-neo-tokyo {
+  color-scheme: dark;
+  --vnt-background: #070816;
+  --vnt-background-alt: #0d0920;
+  --vnt-surface: #11152a;
+  --vnt-surface-raised: #171b34;
+  --vnt-surface-glass: rgba(17, 21, 42, 0.78);
+  --vnt-border: #6f63a6;
+  --vnt-border-subtle: rgba(111, 99, 166, 0.34);
+  --vnt-primary: #ff4fd8;
+  --vnt-primary-soft: rgba(255, 79, 216, 0.16);
+  --vnt-accent: #38f5ff;
+  --vnt-accent-soft: rgba(56, 245, 255, 0.14);
+  --vnt-secondary: #a78bfa;
+  --vnt-warning: #ffb86b;
+  --vnt-warning-strong: #ff8f3d;
+  --vnt-success: #4dffb3;
+  --vnt-error: #ff4d6d;
+  --vnt-text: #f8f7ff;
+  --vnt-text-secondary: #c8c3e8;
+  --vnt-text-muted: #8e89b6;
+  --vnt-grid: rgba(56, 245, 255, 0.08);
+  --vnt-scanline: rgba(248, 247, 255, 0.035);
+  --background: var(--vnt-background);
+  --foreground: var(--vnt-text);
+  --card: var(--vnt-surface-glass);
+  --card-foreground: var(--vnt-text);
+  --popover: #11152a;
+  --popover-foreground: var(--vnt-text);
+  --primary: var(--vnt-primary);
+  --primary-foreground: #070816;
+  --secondary: rgba(167, 139, 250, 0.14);
+  --secondary-foreground: var(--vnt-text);
+  --muted: rgba(200, 195, 232, 0.12);
+  --muted-foreground: var(--vnt-text-muted);
+  --accent: var(--vnt-accent-soft);
+  --accent-foreground: var(--vnt-text);
+  --destructive: var(--vnt-error);
+  --destructive-foreground: var(--vnt-text);
+  --border: var(--vnt-border-subtle);
+  --input: rgba(111, 99, 166, 0.42);
+  --ring: var(--vnt-accent);
+  --chart-1: var(--vnt-accent);
+  --chart-2: var(--vnt-primary);
+  --chart-3: var(--vnt-warning);
+  --chart-4: var(--vnt-secondary);
+  --chart-5: var(--vnt-success);
+  --sidebar: rgba(7, 8, 22, 0.92);
+  --sidebar-foreground: var(--vnt-text);
+  --sidebar-primary: var(--vnt-primary);
+  --sidebar-primary-foreground: #070816;
+  --sidebar-accent: var(--vnt-primary-soft);
+  --sidebar-accent-foreground: var(--vnt-text);
+  --sidebar-border: rgba(111, 99, 166, 0.28);
+  --sidebar-ring: var(--vnt-accent);
+}
+
 @layer base {
   * {
     @apply border-border;
@@ -146,6 +203,71 @@
   .paperclip-mdxeditor [class*="_placeholder_"],
   .paperclip-mdxeditor-content {
     font-family: inherit;
+  }
+}
+
+@layer components {
+  .theme-vaporwave-neo-tokyo .vnt-app-bg {
+    background:
+      linear-gradient(180deg, rgba(7, 8, 22, 0.96), rgba(13, 9, 32, 0.96)),
+      radial-gradient(circle at 18% 0%, rgba(255, 79, 216, 0.11), transparent 28rem),
+      radial-gradient(circle at 82% 8%, rgba(56, 245, 255, 0.09), transparent 24rem);
+  }
+
+  .theme-vaporwave-neo-tokyo .vnt-app-bg::before {
+    content: "";
+    pointer-events: none;
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background-image:
+      linear-gradient(var(--vnt-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--vnt-grid) 1px, transparent 1px),
+      linear-gradient(to bottom, transparent 0 50%, var(--vnt-scanline) 50% 100%);
+    background-size: 96px 96px, 96px 96px, 100% 4px;
+    mask-image: linear-gradient(to bottom, transparent, black 16%, black 82%, transparent);
+    opacity: 0.7;
+  }
+
+  .theme-vaporwave-neo-tokyo .vnt-content-layer {
+    position: relative;
+    z-index: 1;
+  }
+
+  .theme-vaporwave-neo-tokyo .vnt-glass-surface {
+    border-color: var(--vnt-border-subtle);
+    background: var(--vnt-surface-glass);
+    box-shadow: inset 0 1px 0 rgba(248, 247, 255, 0.04);
+  }
+
+  .theme-vaporwave-neo-tokyo .vnt-neon-rail {
+    box-shadow: inset 2px 0 0 var(--vnt-primary), 0 0 18px rgba(255, 79, 216, 0.1);
+  }
+
+  .theme-vaporwave-neo-tokyo .vnt-focus-glow {
+    box-shadow: 0 0 0 1px rgba(56, 245, 255, 0.32), 0 0 18px rgba(56, 245, 255, 0.1);
+  }
+
+  .theme-vaporwave-neo-tokyo .vnt-pink-glow {
+    box-shadow: 0 0 0 1px rgba(255, 79, 216, 0.3), 0 0 18px rgba(255, 79, 216, 0.1);
+  }
+
+  .theme-vaporwave-neo-tokyo .vnt-scanlines {
+    background-image: linear-gradient(to bottom, transparent 0 50%, var(--vnt-scanline) 50% 100%);
+    background-size: 100% 4px;
+  }
+
+  .theme-vaporwave-neo-tokyo .vnt-grid-bg {
+    background-image:
+      linear-gradient(var(--vnt-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--vnt-grid) 1px, transparent 1px);
+    background-size: 64px 64px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-vaporwave-neo-tokyo .animate-pulse {
+    animation: none;
   }
 }
 

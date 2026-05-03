@@ -265,6 +265,7 @@ export type {
   InstanceGeneralSettings,
   InstanceSettings,
   BackupRetentionPolicy,
+  ThemeMode,
   Agent,
   AgentAccessState,
   AgentChainOfCommandEntry,
@@ -532,6 +533,8 @@ export type {
   OrionWorkflowResolutionAgent,
   OrionTaskWorkflowResolution,
   OrionTaskWorkflowAdvanceResult,
+  OrionRoundTableSetupRoleBinding,
+  OrionRoundTableSetupResult,
   OrionNotionBinding,
   OrionNotionSyncState,
   OrionNotionSyncbackResult,
@@ -614,6 +617,7 @@ export {
   WEEKLY_RETENTION_PRESETS,
   MONTHLY_RETENTION_PRESETS,
   DEFAULT_BACKUP_RETENTION,
+  THEME_MODES,
 } from "./types/instance.js";
 
 export {
@@ -806,6 +810,8 @@ export {
   orionWorkflowResolutionActionKindSchema,
   orionTaskWorkflowResolutionSchema,
   orionTaskWorkflowAdvanceResultSchema,
+  setupOrionRoundTableSchema,
+  orionRoundTableSetupResultSchema,
   createOrionWorkflowNodeSchema,
   createOrionWorkflowEdgeSchema,
   orionBootstrapNotionSchema,
@@ -837,6 +843,7 @@ export {
   type CreateOrionWorkflowFromPreset,
   type BindOrionTaskWorkflow,
   type ResolveOrionTaskWorkflow,
+  type SetupOrionRoundTable,
   type CreateOrionWorkflowNode,
   type CreateOrionWorkflowEdge,
   type OrionSyncNotion,

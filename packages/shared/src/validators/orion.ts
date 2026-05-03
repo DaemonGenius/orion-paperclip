@@ -472,6 +472,37 @@ export const orionTaskWorkflowAdvanceResultSchema = z.object({
   binding: persistedOrionTaskWorkflowBindingSchema,
 });
 
+export const setupOrionRoundTableSchema = z
+  .object({
+    sourceAgentId: z.string().uuid(),
+    makeDefault: z.boolean().optional().default(true),
+    dryRun: z.boolean().optional().default(false),
+  })
+  .strict();
+
+const orionRoundTableSetupRoleBindingSchema = z.object({
+  nodeKey: z.string(),
+  roleProfileId: orionRoleProfileIdSchema,
+  displayName: z.string(),
+  agentId: z.string().uuid().nullable(),
+  status: z.enum(["bound", "missing", "created", "reused", "skipped"]),
+  reason: z.string().nullable().default(null),
+});
+
+export const orionRoundTableSetupResultSchema = z.object({
+  companyId: z.string().uuid(),
+  workflowId: z.string().uuid().nullable(),
+  presetId: orionWorkflowPresetIdSchema.nullable(),
+  defaultForCompany: z.boolean(),
+  missingRoleBindings: z.array(orionRoundTableSetupRoleBindingSchema),
+  createdAgents: z.array(orionRoundTableSetupRoleBindingSchema),
+  reusedAgents: z.array(orionRoundTableSetupRoleBindingSchema),
+  boundNodes: z.array(orionRoundTableSetupRoleBindingSchema),
+  skippedNodes: z.array(orionRoundTableSetupRoleBindingSchema),
+  blockedReasons: z.array(z.string()),
+  dryRun: z.boolean(),
+});
+
 export const createOrionWorkflowNodeSchema = orionWorkflowNodeSchema;
 export const createOrionWorkflowEdgeSchema = orionWorkflowEdgeSchema;
 
@@ -671,6 +702,8 @@ export type BindOrionTaskWorkflow = z.infer<typeof bindOrionTaskWorkflowSchema>;
 export type ResolveOrionTaskWorkflow = z.infer<typeof resolveOrionTaskWorkflowSchema>;
 export type OrionTaskWorkflowResolution = z.infer<typeof orionTaskWorkflowResolutionSchema>;
 export type OrionTaskWorkflowAdvanceResult = z.infer<typeof orionTaskWorkflowAdvanceResultSchema>;
+export type SetupOrionRoundTable = z.infer<typeof setupOrionRoundTableSchema>;
+export type OrionRoundTableSetupResult = z.infer<typeof orionRoundTableSetupResultSchema>;
 export type CreateOrionWorkflowNode = z.infer<typeof createOrionWorkflowNodeSchema>;
 export type CreateOrionWorkflowEdge = z.infer<typeof createOrionWorkflowEdgeSchema>;
 export type OrionBootstrapNotion = z.infer<typeof orionBootstrapNotionSchema>;

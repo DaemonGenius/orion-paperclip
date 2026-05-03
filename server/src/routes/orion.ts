@@ -22,6 +22,7 @@ import {
   resolveOrionTaskWorkflowSchema,
   runOrionVerificationSchema,
   saveOrionLedgerPlanSchema,
+  setupOrionRoundTableSchema,
   startOrionCodexRunSchema,
   startOrionLedgerExecutionSchema,
   syncbackOrionNotionSchema,
@@ -59,6 +60,41 @@ export function orionRoutes(db: Db) {
     assertCompanyAccess(req, companyId);
     res.json(await svc.listWorkflows(companyId));
   });
+
+  router.get("/orion/companies/:companyId/round-table/setup-readiness", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    res.json(await svc.getRoundTableSetupReadiness(companyId));
+  });
+
+  router.post(
+    "/orion/companies/:companyId/round-table/setup",
+    validate(setupOrionRoundTableSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      const result = await svc.setupRoundTable(companyId, req.body);
+      const actor = getActorInfo(req);
+      await logActivity(db, {
+        companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        action: result.blockedReasons.length > 0 ? "orion.round_table_setup_blocked" : "orion.round_table_setup",
+        entityType: "company",
+        entityId: companyId,
+        details: {
+          workflowId: result.workflowId,
+          createdAgentIds: result.createdAgents.map((entry) => entry.agentId).filter(Boolean),
+          reusedAgentIds: result.reusedAgents.map((entry) => entry.agentId).filter(Boolean),
+          boundNodeKeys: result.boundNodes.map((entry) => entry.nodeKey),
+          blockedReasons: result.blockedReasons,
+          dryRun: result.dryRun,
+        },
+      });
+      res.json(result);
+    },
+  );
 
   router.get("/orion/companies/:companyId/sync/conflicts", async (req, res) => {
     const companyId = req.params.companyId as string;

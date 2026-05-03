@@ -13,10 +13,12 @@ import {
   recordOrionLedgerEvidenceSchema,
   recordOrionLedgerVerificationSchema,
   recordOrionPrSchema,
+  orionRoundTableSetupResultSchema,
   resolveOrionTaskWorkflowSchema,
   resolveOrionRoleProfileForAgentRole,
   runOrionVerificationSchema,
   saveOrionLedgerPlanSchema,
+  setupOrionRoundTableSchema,
   startOrionCodexRunSchema,
   startOrionLedgerExecutionSchema,
   syncbackOrionNotionSchema,
@@ -278,6 +280,59 @@ describe("Orion validators", () => {
       actionKind: "blocked_missing_binding",
       blockedReason: "Workflow node planner requires an explicit agent binding before work can be assigned.",
     }).actionKind).toBe("blocked_missing_binding");
+  });
+
+  it("validates guided Round Table setup requests and responses", () => {
+    expect(
+      setupOrionRoundTableSchema.parse({
+        sourceAgentId: "00000000-0000-4000-8000-000000000020",
+      }),
+    ).toEqual({
+      sourceAgentId: "00000000-0000-4000-8000-000000000020",
+      makeDefault: true,
+      dryRun: false,
+    });
+    expect(() => setupOrionRoundTableSchema.parse({ sourceAgentId: "not-a-uuid" })).toThrow();
+
+    const parsed = orionRoundTableSetupResultSchema.parse({
+      companyId: "00000000-0000-4000-8000-000000000021",
+      workflowId: "00000000-0000-4000-8000-000000000022",
+      presetId: "orion_round_table",
+      defaultForCompany: true,
+      missingRoleBindings: [],
+      createdAgents: [
+        {
+          nodeKey: "planner",
+          roleProfileId: "planner",
+          displayName: "Planner",
+          agentId: "00000000-0000-4000-8000-000000000023",
+          status: "created",
+          reason: "Created from source agent.",
+        },
+      ],
+      reusedAgents: [],
+      boundNodes: [],
+      skippedNodes: [
+        {
+          nodeKey: "operator",
+          roleProfileId: "operator",
+          displayName: "Operator",
+          agentId: null,
+          status: "skipped",
+          reason: "Human node.",
+        },
+      ],
+      blockedReasons: [],
+      dryRun: false,
+    });
+
+    expect(parsed.createdAgents[0]?.roleProfileId).toBe("planner");
+    expect(() =>
+      orionRoundTableSetupResultSchema.parse({
+        ...parsed,
+        createdAgents: [{ ...parsed.createdAgents[0], roleProfileId: "cto" }],
+      }),
+    ).toThrow();
   });
 
   it("requires an agent, mode, and valid envelope shape for run creation", () => {
