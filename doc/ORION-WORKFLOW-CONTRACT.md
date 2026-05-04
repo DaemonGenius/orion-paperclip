@@ -2,6 +2,8 @@
 
 Orion treats the original Paperclip CEO hierarchy as one workflow preset, not as the required substrate.
 
+The V2 release-readiness aggregation point for this workflow layer is `doc/orion-v2-release-checklist.md`. It maps the Round Table review gates, implementation evidence, and smoke results into the go/no-go checklist for enabling V2 Round Table behavior.
+
 ## Authority Model
 
 - Board/operator remains the default authority for creating agents and changing workflow topology.

@@ -10,10 +10,10 @@ export function PropertiesPanel() {
 
   return (
     <aside
-      className="hidden md:flex border-l border-border bg-card flex-col shrink-0 overflow-hidden transition-[width,opacity] duration-200 ease-in-out h-full"
-      style={{ width: panelVisible ? 320 : 0, opacity: panelVisible ? 1 : 0 }}
+      className="hidden border-l border-border bg-card md:flex md:w-[min(400px,calc(100vw-4.5rem))] lg:w-[min(440px,calc(100vw-4.5rem))] xl:w-[min(480px,calc(100vw-4.5rem))] flex-col shrink-0 overflow-hidden transition-[width,opacity] duration-200 ease-in-out h-full"
+      style={{ width: panelVisible ? undefined : 0, opacity: panelVisible ? 1 : 0 }}
     >
-      <div className="w-80 flex-1 flex flex-col min-w-[320px] min-h-0">
+      <div className="flex-1 flex flex-col min-h-0 md:w-[min(400px,calc(100vw-4.5rem))] lg:w-[min(440px,calc(100vw-4.5rem))] xl:w-[min(480px,calc(100vw-4.5rem))]">
         <div className="flex items-center justify-between px-4 py-2 border-b border-border">
           <span className="text-sm font-medium">Properties</span>
           <Button variant="ghost" size="icon-xs" onClick={() => setPanelVisible(false)}>

@@ -971,6 +971,7 @@ export function taskRoutes(
       routeMode: queryStringList(req.query.routeMode),
       prState: queryStringList(req.query.prState),
       agentConfidenceLevel: queryStringList(req.query.agentConfidence ?? req.query.agentConfidenceLevel),
+      orionIntake: req.query.orionIntake === "true" || req.query.orionIntake === "1",
       includeRoutineExecutions:
         req.query.includeRoutineExecutions === "true" || req.query.includeRoutineExecutions === "1",
       excludeRoutineExecutions:

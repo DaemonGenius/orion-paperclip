@@ -136,6 +136,7 @@ export interface TaskFilters {
   routeMode?: string;
   prState?: string;
   agentConfidenceLevel?: string;
+  orionIntake?: boolean;
   includeRoutineExecutions?: boolean;
   excludeRoutineExecutions?: boolean;
   includeBlockedBy?: boolean;
@@ -2138,6 +2139,12 @@ export function taskService(db: Db) {
       if (prStateFilter) conditions.push(prStateFilter);
       const confidenceFilter = multiTextFilter(tasks.agentConfidenceLevel, filters?.agentConfidenceLevel);
       if (confidenceFilter) conditions.push(confidenceFilter);
+      if (filters?.orionIntake) {
+        conditions.push(sql<boolean>`
+          ${tasks.executionState} -> 'orionIntake' ->> 'state' in ('queued', 'routed')
+          and ${tasks.executionRunId} is null
+        `);
+      }
       if (filters?.dueDateFrom) conditions.push(sql<boolean>`${tasks.dueDate} >= ${filters.dueDateFrom}`);
       if (filters?.dueDateTo) conditions.push(sql<boolean>`${tasks.dueDate} <= ${filters.dueDateTo}`);
       if (filters?.labelId) {

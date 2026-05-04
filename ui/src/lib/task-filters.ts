@@ -31,6 +31,7 @@ export type TaskFilterState = {
   routeModes: string[];
   prStates: string[];
   agentConfidenceLevels: string[];
+  orionIntake?: boolean;
   liveOnly?: boolean;
   hideRoutineExecutions: boolean;
 };
@@ -56,6 +57,7 @@ export const defaultTaskFilterState: TaskFilterState = {
   routeModes: [],
   prStates: [],
   agentConfidenceLevels: [],
+  orionIntake: false,
   liveOnly: false,
   hideRoutineExecutions: false,
 };
@@ -110,6 +112,7 @@ export function normalizeTaskFilterState(value: unknown): TaskFilterState {
     routeModes: normalizeTaskFilterValueArray(candidate.routeModes),
     prStates: normalizeTaskFilterValueArray(candidate.prStates),
     agentConfidenceLevels: normalizeTaskFilterValueArray(candidate.agentConfidenceLevels),
+    orionIntake: candidate.orionIntake === true,
     liveOnly: candidate.liveOnly === true,
     hideRoutineExecutions: candidate.hideRoutineExecutions === true,
   };
@@ -223,6 +226,15 @@ export function applyTaskFilters(
     result = result.filter((task) =>
       task.agentConfidenceLevel != null && state.agentConfidenceLevels.includes(task.agentConfidenceLevel));
   }
+  if (state.orionIntake) {
+    result = result.filter((task) => {
+      const intake = task.executionState?.orionIntake;
+      const stateValue = intake && typeof intake === "object" && "state" in intake
+        ? String((intake as { state?: unknown }).state ?? "")
+        : "";
+      return (stateValue === "queued" || stateValue === "routed") && !task.executionRunId;
+    });
+  }
   return result;
 }
 
@@ -250,6 +262,7 @@ export function countActiveTaskFilters(
   if (state.routeModes.length > 0) count += 1;
   if (state.prStates.length > 0) count += 1;
   if (state.agentConfidenceLevels.length > 0) count += 1;
+  if (state.orionIntake) count += 1;
   if (state.liveOnly) count += 1;
   if (enableRoutineVisibilityFilter && state.hideRoutineExecutions) count += 1;
   return count;
@@ -276,6 +289,7 @@ export const taskFilterUrlParams = {
   routeModes: "routeMode",
   prStates: "prState",
   agentConfidenceLevels: "agentConfidence",
+  orionIntake: "orionIntake",
   liveOnly: "liveOnly",
   hideRoutineExecutions: "hideRoutineExecutions",
 } as const;
@@ -313,6 +327,7 @@ export function taskFiltersFromSearchParams(params: URLSearchParams): Partial<Ta
     routeModes: readUrlValues(params, taskFilterUrlParams.routeModes),
     prStates: readUrlValues(params, taskFilterUrlParams.prStates),
     agentConfidenceLevels: readUrlValues(params, taskFilterUrlParams.agentConfidenceLevels),
+    orionIntake: params.get(taskFilterUrlParams.orionIntake) === "true",
     liveOnly: params.get(taskFilterUrlParams.liveOnly) === "true",
     hideRoutineExecutions: params.get(taskFilterUrlParams.hideRoutineExecutions) === "true",
   };
@@ -352,6 +367,8 @@ export function writeTaskFiltersToSearchParams(params: URLSearchParams, filters:
   setString(taskFilterUrlParams.dueDateTo, filters.dueDateTo);
   if (filters.liveOnly) next.set(taskFilterUrlParams.liveOnly, "true");
   else next.delete(taskFilterUrlParams.liveOnly);
+  if (filters.orionIntake) next.set(taskFilterUrlParams.orionIntake, "true");
+  else next.delete(taskFilterUrlParams.orionIntake);
   if (filters.hideRoutineExecutions) next.set(taskFilterUrlParams.hideRoutineExecutions, "true");
   else next.delete(taskFilterUrlParams.hideRoutineExecutions);
   return next;

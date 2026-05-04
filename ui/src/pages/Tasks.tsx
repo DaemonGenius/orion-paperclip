@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useCallback } from "react";
-import { useLocation, useSearchParams } from "@/lib/router";
+import { useEffect, useMemo, useCallback, useState } from "react";
+import { useLocation, useNavigate, useSearchParams } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { tasksApi } from "../api/tasks";
+import { orionApi } from "../api/orion";
 import { agentsApi } from "../api/agents";
 import { projectsApi } from "../api/projects";
 import { heartbeatsApi } from "../api/heartbeats";
@@ -19,7 +20,10 @@ import {
 } from "../lib/task-filters";
 import { EmptyState } from "../components/EmptyState";
 import { TasksList } from "../components/TasksList";
-import { CircleDot } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { CircleDot, FileText, GitBranch } from "lucide-react";
 
 const WORKSPACE_FILTER_TASK_LIMIT = 1000;
 
@@ -41,8 +45,12 @@ export function Tasks() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const location = useLocation();
-  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const [plannerDraftOpen, setPlannerDraftOpen] = useState(false);
+  const [plannerDraftTitle, setPlannerDraftTitle] = useState("");
+  const [plannerDraftDescription, setPlannerDraftDescription] = useState("");
 
   const initialSearch = searchParams.get("q") ?? "";
   const participantAgentId = searchParams.get("participantAgentId") ?? undefined;
@@ -125,29 +133,134 @@ export function Tasks() {
     },
   });
 
+  const queueExisting = useMutation({
+    mutationFn: () => orionApi.queueExistingRoundTableIntake(selectedCompanyId!, { limit: 500 }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(selectedCompanyId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orion.workflows(selectedCompanyId!) });
+    },
+  });
+
+  const createPlannerDraft = useMutation({
+    mutationFn: () => orionApi.createPlannerDraft(selectedCompanyId!, {
+      title: plannerDraftTitle,
+      description: plannerDraftDescription || null,
+      priority: "medium",
+      routeMode: "pair",
+      taskType: "Feature",
+    }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(selectedCompanyId!) });
+      setPlannerDraftTitle("");
+      setPlannerDraftDescription("");
+      setPlannerDraftOpen(false);
+      navigate(`/tasks/${result.taskId}`);
+    },
+  });
+
+  const showOrionIntake = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    next.set("orionIntake", "true");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   if (!selectedCompanyId) {
     return <EmptyState icon={CircleDot} message="Select a company to view tasks." />;
   }
 
   return (
-    <TasksList
-      tasks={tasks ?? []}
-      isLoading={isLoading}
-      error={error as Error | null}
-      agents={agents}
-      projects={projects}
-      liveTaskIds={liveTaskIds}
-      viewStateKey="paperclip:tasks-view"
-      taskLinkState={taskLinkState}
-      initialAssignees={searchParams.get("assignee") ? [searchParams.get("assignee")!] : undefined}
-      initialWorkspaces={initialWorkspaces.length > 0 ? initialWorkspaces : undefined}
-      initialFilterState={initialFilterState}
-      initialSearch={initialSearch}
-      onSearchChange={handleSearchChange}
-      onFilterStateChange={handleFilterStateChange}
-      enableRoutineVisibilityFilter
-      onUpdateTask={(id, data) => updateTask.mutate({ id, data })}
-      searchFilters={participantAgentId || workspaceIdFilter ? { participantAgentId, workspaceId: workspaceIdFilter } : undefined}
-    />
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">Orion Intake</p>
+          <p className="text-xs text-muted-foreground">Queue eligible tasks for Round Table routing without launching runs.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={showOrionIntake}>
+            View intake
+          </Button>
+          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setPlannerDraftOpen((value) => !value)}>
+            <FileText className="h-3.5 w-3.5" />
+            Planner draft
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            className="gap-2"
+            disabled={queueExisting.isPending}
+            onClick={() => queueExisting.mutate()}
+          >
+            <GitBranch className="h-3.5 w-3.5" />
+            {queueExisting.isPending ? "Queueing..." : "Queue existing tasks"}
+          </Button>
+        </div>
+        {queueExisting.data ? (
+          <p className="basis-full text-xs text-muted-foreground">
+            Queued {queueExisting.data.queued}; skipped {queueExisting.data.skipped}.
+          </p>
+        ) : null}
+        {queueExisting.error ? (
+          <p className="basis-full text-xs text-destructive">
+            {queueExisting.error instanceof Error ? queueExisting.error.message : "Unable to queue tasks."}
+          </p>
+        ) : null}
+        {plannerDraftOpen ? (
+          <div className="basis-full space-y-2 rounded-md border border-border bg-muted/10 p-2">
+            <div className="grid gap-2 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto]">
+              <Input
+                value={plannerDraftTitle}
+                onChange={(event) => setPlannerDraftTitle(event.target.value)}
+                placeholder="Feature title"
+                aria-label="Planner draft title"
+              />
+              <Textarea
+                value={plannerDraftDescription}
+                onChange={(event) => setPlannerDraftDescription(event.target.value)}
+                placeholder="What should Planner help specify?"
+                aria-label="Planner draft description"
+                rows={1}
+              />
+              <Button
+                type="button"
+                size="sm"
+                disabled={createPlannerDraft.isPending || plannerDraftTitle.trim().length === 0}
+                onClick={() => createPlannerDraft.mutate()}
+              >
+                {createPlannerDraft.isPending ? "Creating..." : "Create draft"}
+              </Button>
+            </div>
+            {createPlannerDraft.error ? (
+              <p className="text-xs text-destructive">
+                {createPlannerDraft.error instanceof Error ? createPlannerDraft.error.message : "Unable to create planner draft."}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Drafts stay local until you approve and publish them to Notion from the task.
+              </p>
+            )}
+          </div>
+        ) : null}
+      </div>
+      <TasksList
+        key={`${selectedCompanyId}:${searchParams.toString()}`}
+        tasks={tasks ?? []}
+        isLoading={isLoading}
+        error={error as Error | null}
+        agents={agents}
+        projects={projects}
+        liveTaskIds={liveTaskIds}
+        viewStateKey="paperclip:tasks-view"
+        taskLinkState={taskLinkState}
+        initialAssignees={searchParams.get("assignee") ? [searchParams.get("assignee")!] : undefined}
+        initialWorkspaces={initialWorkspaces.length > 0 ? initialWorkspaces : undefined}
+        initialFilterState={initialFilterState}
+        initialSearch={initialSearch}
+        onSearchChange={handleSearchChange}
+        onFilterStateChange={handleFilterStateChange}
+        enableRoutineVisibilityFilter
+        onUpdateTask={(id, data) => updateTask.mutate({ id, data })}
+        searchFilters={participantAgentId || workspaceIdFilter ? { participantAgentId, workspaceId: workspaceIdFilter } : undefined}
+      />
+    </div>
   );
 }

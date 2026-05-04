@@ -5,6 +5,7 @@ import {
   bindOrionTaskWorkflowSchema,
   cancelOrionRunSchema,
   createKnowledgeProposalSchema,
+  createOrionPlannerDraftSchema,
   ensureCompanyKnowledgeStructureSchema,
   ensureProjectWorkspaceStructureSchema,
   createOrionWorkflowEdgeSchema,
@@ -19,8 +20,13 @@ import {
   recordOrionPrSchema,
   recordOrionLedgerEvidenceSchema,
   recordOrionLedgerVerificationSchema,
+  publishOrionPlannerDraftSchema,
+  queueExistingOrionRoundTableIntakeSchema,
+  queueOrionRoundTableIntakeSchema,
   resolveOrionTaskWorkflowSchema,
+  routeOrionRoundTableIntakeSchema,
   runOrionVerificationSchema,
+  runOrionPreflightSchema,
   saveOrionLedgerPlanSchema,
   setupOrionRoundTableSchema,
   startOrionCodexRunSchema,
@@ -29,17 +35,25 @@ import {
   syncNotionKnowledgeSchema,
   upsertOrionTaskPolicySchema,
 } from "@paperclipai/shared";
+import type { DeploymentExposure, DeploymentMode } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import { knowledgeService } from "../services/knowledge.js";
 import { heartbeatService } from "../services/heartbeat.js";
 import { orionService } from "../services/orion.js";
+import { orionPreflightService } from "../services/orion-preflight.js";
 import { logActivity } from "../services/activity-log.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 import { unprocessable } from "../errors.js";
 
-export function orionRoutes(db: Db) {
+export function orionRoutes(db: Db, opts: {
+  deploymentMode?: DeploymentMode;
+  deploymentExposure?: DeploymentExposure;
+  allowedHostnames?: string[];
+  publicUrl?: string | null;
+} = {}) {
   const router = Router();
   const svc = orionService(db);
+  const preflight = orionPreflightService(db, opts);
   const heartbeat = heartbeatService(db);
   const knowledge = knowledgeService(db);
 
@@ -96,11 +110,73 @@ export function orionRoutes(db: Db) {
     },
   );
 
+  router.post(
+    "/orion/companies/:companyId/round-table/queue-existing",
+    validate(queueExistingOrionRoundTableIntakeSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      const result = await svc.queueExistingRoundTableIntake(companyId, req.body);
+      const actor = getActorInfo(req);
+      await logActivity(db, {
+        companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        action: "orion.round_table_intake.bulk_queued",
+        entityType: "company",
+        entityId: companyId,
+        details: { queued: result.queued, skipped: result.skipped, workflowId: result.workflowId },
+      });
+      res.json(result);
+    },
+  );
+
+  router.post(
+    "/orion/companies/:companyId/planner-drafts",
+    validate(createOrionPlannerDraftSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      const result = await svc.createPlannerDraft(companyId, req.body);
+      const actor = getActorInfo(req);
+      await logActivity(db, {
+        companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        action: "orion.planner_draft.created",
+        entityType: "task",
+        entityId: result.taskId,
+        details: { status: result.status },
+      });
+      res.status(201).json(result);
+    },
+  );
+
   router.get("/orion/companies/:companyId/sync/conflicts", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
     res.json(await svc.listSyncConflicts(companyId));
   });
+
+  router.get("/orion/companies/:companyId/preflight", async (req, res) => {
+    assertBoard(req);
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    res.json(await preflight.run(companyId, { testMode: false }));
+  });
+
+  router.post(
+    "/orion/companies/:companyId/preflight",
+    validate(runOrionPreflightSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      res.json(await preflight.run(companyId, req.body));
+    },
+  );
 
   router.post(
     "/orion/companies/:companyId/workflows/presets",
@@ -143,6 +219,89 @@ export function orionRoutes(db: Db) {
     const binding = await svc.bindTaskWorkflow(req.params.taskId as string, req.body);
     res.status(201).json(binding);
   });
+
+  router.get("/orion/tasks/:taskId/round-table/intake", async (req, res) => {
+    assertBoard(req);
+    const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
+    if (task) assertCompanyAccess(req, task.companyId);
+    res.json(await svc.getRoundTableIntake(req.params.taskId as string));
+  });
+
+  router.post(
+    "/orion/tasks/:taskId/round-table/queue",
+    validate(queueOrionRoundTableIntakeSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
+      if (task) assertCompanyAccess(req, task.companyId);
+      const result = await svc.queueRoundTableIntake(req.params.taskId as string, req.body, { createWorkflowIfMissing: true });
+      const actor = getActorInfo(req);
+      await logActivity(db, {
+        companyId: result.intake.companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        action: "orion.round_table_intake.queued",
+        entityType: "task",
+        entityId: req.params.taskId as string,
+        details: {
+          workflowId: result.intake.workflowId,
+          currentNodeKey: result.intake.currentNodeKey,
+          source: result.intake.source,
+          createdBinding: result.createdBinding,
+        },
+      });
+      res.status(result.createdBinding ? 201 : 200).json(result);
+    },
+  );
+
+  router.post(
+    "/orion/tasks/:taskId/round-table/route",
+    validate(routeOrionRoundTableIntakeSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
+      if (task) assertCompanyAccess(req, task.companyId);
+      const result = await svc.routeRoundTableIntake(req.params.taskId as string, req.body);
+      const actor = getActorInfo(req);
+      await logActivity(db, {
+        companyId: result.intake.companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        action: "orion.round_table_intake.routed",
+        entityType: "task",
+        entityId: req.params.taskId as string,
+        details: {
+          workflowId: result.intake.workflowId,
+          currentNodeKey: result.intake.currentNodeKey,
+          targetRoleProfileId: result.intake.routedTarget?.roleProfileId ?? null,
+          targetAgentId: result.intake.routedTarget?.agent?.id ?? null,
+        },
+      });
+      res.json(result);
+    },
+  );
+
+  router.post(
+    "/orion/tasks/:taskId/planner-draft/publish-to-notion",
+    validate(publishOrionPlannerDraftSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
+      if (task) assertCompanyAccess(req, task.companyId);
+      const result = await svc.publishPlannerDraftToNotion(req.params.taskId as string, req.body);
+      const actor = getActorInfo(req);
+      await logActivity(db, {
+        companyId: result.companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        action: "orion.planner_draft.published_to_notion",
+        entityType: "task",
+        entityId: result.taskId,
+        details: { notionPageId: result.notionPageId, notionUrl: result.notionUrl },
+      });
+      res.json(result);
+    },
+  );
 
   router.get("/orion/tasks/:taskId/workflow-resolution", async (req, res) => {
     const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);

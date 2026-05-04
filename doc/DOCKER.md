@@ -2,6 +2,8 @@
 
 Run Paperclip in Docker without installing Node or pnpm locally.
 
+For Orion V3, the private homelab target and remaining deployability gaps are tracked in `doc/orion-v3-homelab-release-boundary.md`. The concrete private homelab deployment profile is `doc/orion-v3-homelab-deployment.md`.
+
 All commands below assume you are in the **project root** (the directory containing `package.json`), not inside `docker/`.
 
 ## Building the image
@@ -60,6 +62,12 @@ pnpm docker:dev
 
 This runs `paperclip-local:main` as the dependency/tooling base, bind-mounts the repo source folders into `/app`, reuses `./data/docker-paperclip` for `/paperclip`, and starts `pnpm dev --bind lan` inside the container.
 
+For a clean checkout or after Dockerfile, dependency, or package manifest changes, rebuild and start the dev container in the background:
+
+```sh
+pnpm docker:dev:rebuild
+```
+
 Useful commands:
 
 ```sh
@@ -68,11 +76,13 @@ pnpm docker:dev:logs
 pnpm docker:dev:down
 ```
 
-The base image is only needed for Linux-native dependencies and bundled local agent CLIs. Rebuild it when dependencies, Dockerfile tooling, or package manifests change:
+Confirm the container is healthy:
 
 ```sh
-docker build -t paperclip-local:main .
+curl http://localhost:3100/api/health
 ```
+
+The dev compose file has a local default `BETTER_AUTH_SECRET` for convenience. Quickstart and full-stack compose require `BETTER_AUTH_SECRET` to be supplied explicitly. On Windows, Docker may also warn that it cannot read the host Docker config file; treat that as host setup noise only if the container still starts and `/api/health` responds.
 
 ### Quickstart (embedded SQLite)
 
@@ -111,6 +121,34 @@ BETTER_AUTH_SECRET=$(openssl rand -hex 32) \
 ```
 
 PostgreSQL data persists in a named Docker volume (`pgdata`). Paperclip data persists in `paperclip-data`.
+
+### Orion V3 homelab profile
+
+Use this when deploying Orion privately on a homelab host, LAN, VPN, or tailnet. This is the V3 reference profile for real Orion work: authenticated/private mode, PostgreSQL 17, explicit host bind mounts, and a mounted Obsidian vault.
+
+```sh
+cp docker/homelab.env.example docker/homelab.env
+```
+
+Edit `docker/homelab.env`, then validate and start:
+
+```sh
+pnpm docker:homelab:config
+pnpm docker:homelab:up
+```
+
+Useful commands:
+
+```sh
+pnpm docker:homelab:logs
+pnpm docker:homelab:down
+```
+
+The homelab profile persists PostgreSQL, `PAPERCLIP_HOME`, encrypted secrets, workspaces, run logs, Codex home data, and the mounted Obsidian vault through explicit host paths. Notion and GitHub tokens are configured inside Orion and stored as company-scoped secrets. `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` may be set in `docker/homelab.env` when local adapters need them.
+
+After first boot and integration setup, run `pnpm paperclipai orion preflight --company-id <company-id>` before live smoke or real Orion tasks.
+
+See `doc/orion-v3-homelab-deployment.md` for the full runbook.
 
 ### Untrusted PR review
 
@@ -234,6 +272,7 @@ systemctl --user stop paperclip-pod      # Stop all
 - Containers in a pod share `localhost`, so Paperclip reaches Postgres at `127.0.0.1:5432`.
 - PostgreSQL data persists in the `paperclip-pgdata` named volume.
 - Paperclip data persists at `~/.local/share/paperclip`.
+- For V3 homelab parity, set `PAPERCLIP_DEPLOYMENT_MODE=authenticated`, `PAPERCLIP_DEPLOYMENT_EXPOSURE=private`, `PAPERCLIP_PUBLIC_URL`, optional `PAPERCLIP_ALLOWED_HOSTNAMES`, and mount the Obsidian host vault into the app container at `/vaults/orion`.
 - For rootful quadlet deployment, remove `%h` prefixes and use absolute paths.
 
 ## Onboard Smoke Test (Ubuntu + npm only)

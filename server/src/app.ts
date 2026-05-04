@@ -285,7 +285,12 @@ export async function createApp(
     ),
   );
   api.use(adapterRoutes());
-  api.use(orionRoutes(db));
+  api.use(orionRoutes(db, {
+    deploymentMode: opts.deploymentMode,
+    deploymentExposure: opts.deploymentExposure,
+    allowedHostnames: opts.allowedHostnames,
+    publicUrl: process.env.PAPERCLIP_PUBLIC_URL ?? null,
+  }));
   api.use(
     accessRoutes(db, {
       deploymentMode: opts.deploymentMode,

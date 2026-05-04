@@ -25,6 +25,12 @@ import type {
   ProjectWorkspaceStructure,
   SyncConflict,
   OrionNotionSyncbackResult,
+  OrionPlannerDraftResult,
+  OrionRoundTableBulkQueueResult,
+  OrionRoundTableIntakeState,
+  OrionRoundTableQueueResult,
+  OrionRoundTableRouteResult,
+  OrionRoleProfileId,
 } from "@paperclipai/shared";
 import { api } from "./client";
 
@@ -36,6 +42,21 @@ export const orionApi = {
     api.get<OrionRoundTableSetupResult>(`/orion/companies/${companyId}/round-table/setup-readiness`),
   setupRoundTable: (companyId: string, data: { sourceAgentId: string; makeDefault?: boolean; dryRun?: boolean }) =>
     api.post<OrionRoundTableSetupResult>(`/orion/companies/${companyId}/round-table/setup`, data),
+  queueExistingRoundTableIntake: (companyId: string, data?: { limit?: number }) =>
+    api.post<OrionRoundTableBulkQueueResult>(`/orion/companies/${companyId}/round-table/queue-existing`, data ?? {}),
+  createPlannerDraft: (companyId: string, data: {
+    title: string;
+    description?: string | null;
+    acceptanceCriteria?: string | null;
+    priority?: "critical" | "high" | "medium" | "low";
+    projectId?: string | null;
+    taskType?: string | null;
+    routeMode?: "pair" | "auto_to_pr" | "manual_review" | "blocked" | "replan" | null;
+    layer?: string | null;
+    module?: string | null;
+    repoPath?: string | null;
+    riskLevel?: string | null;
+  }) => api.post<OrionPlannerDraftResult>(`/orion/companies/${companyId}/planner-drafts`, data),
   createWorkflowFromPreset: (companyId: string, data: CreateOrionWorkflowFromPreset) =>
     api.post<OrionWorkflow>(`/orion/companies/${companyId}/workflows/presets`, data),
   workflow: (workflowId: string) => api.get<OrionWorkflow>(`/orion/workflows/${workflowId}`),
@@ -45,6 +66,17 @@ export const orionApi = {
     api.post(`/orion/workflows/${workflowId}/edges`, data),
   bindTaskWorkflow: (taskId: string, data: BindOrionTaskWorkflow) =>
     api.post<OrionTaskWorkflowBinding>(`/orion/tasks/${taskId}/workflow-binding`, data),
+  roundTableIntake: (taskId: string) =>
+    api.get<OrionRoundTableIntakeState>(`/orion/tasks/${taskId}/round-table/intake`),
+  queueRoundTableIntake: (taskId: string, data?: { workflowId?: string | null; source?: string }) =>
+    api.post<OrionRoundTableQueueResult>(`/orion/tasks/${taskId}/round-table/queue`, data ?? {}),
+  routeRoundTableIntake: (taskId: string, data?: {
+    targetRoleProfileId?: OrionRoleProfileId | null;
+    targetNodeKey?: string | null;
+    note?: string | null;
+  }) => api.post<OrionRoundTableRouteResult>(`/orion/tasks/${taskId}/round-table/route`, data ?? {}),
+  publishPlannerDraftToNotion: (taskId: string, data?: { idempotencyKey?: string | null }) =>
+    api.post<OrionPlannerDraftResult>(`/orion/tasks/${taskId}/planner-draft/publish-to-notion`, data ?? {}),
   taskPolicy: (taskId: string) =>
     api.get<OrionTaskPolicy | null>(`/orion/tasks/${taskId}/policy`),
   upsertTaskPolicy: (

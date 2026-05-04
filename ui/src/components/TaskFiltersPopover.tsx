@@ -419,6 +419,13 @@ export function TaskFiltersPopover({
                   />
                   <span className="text-sm">Live runs only</span>
                 </label>
+                <label className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1 hover:bg-accent/50">
+                  <Checkbox
+                    checked={state.orionIntake}
+                    onCheckedChange={(checked) => onChange({ orionIntake: checked === true })}
+                  />
+                  <span className="text-sm">Orion intake</span>
+                </label>
                 {enableRoutineVisibilityFilter ? (
                   <label className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1 hover:bg-accent/50">
                     <Checkbox

@@ -212,6 +212,8 @@ export interface TaskExecutionState {
   completedStageIds: string[];
   lastDecisionId: string | null;
   lastDecisionOutcome: TaskExecutionDecisionOutcome | null;
+  orionIntake?: Record<string, unknown>;
+  orionPlannerDraft?: Record<string, unknown>;
 }
 
 export interface TaskExecutionDecision {

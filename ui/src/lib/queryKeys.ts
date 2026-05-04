@@ -10,6 +10,7 @@ export const queryKeys = {
     workflows: (companyId: string) => ["orion", "workflows", companyId] as const,
     roundTableSetup: (companyId: string) => ["orion", "round-table-setup", companyId] as const,
     workflow: (workflowId: string) => ["orion", "workflow", workflowId] as const,
+    roundTableIntake: (taskId: string) => ["orion", "round-table-intake", taskId] as const,
     taskPolicy: (taskId: string) => ["orion", "task-policy", taskId] as const,
     runReadiness: (taskId: string) => ["orion", "run-readiness", taskId] as const,
     runLedger: (runId: string) => ["orion", "run-ledger", runId] as const,

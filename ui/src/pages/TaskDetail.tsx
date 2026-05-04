@@ -72,6 +72,7 @@ import { TaskRelatedWorkPanel } from "../components/TaskRelatedWorkPanel";
 import { TaskProperties } from "../components/TaskProperties";
 import { TaskRunLedger } from "../components/TaskRunLedger";
 import { OrionRunLauncher } from "../components/OrionRunLauncher";
+import { RoundTableIntakePanel } from "../components/RoundTableIntakePanel";
 import { TaskWorkspaceCard } from "../components/TaskWorkspaceCard";
 import type { MentionOption } from "../components/MarkdownEditor";
 import { ImageGalleryModal } from "../components/ImageGalleryModal";
@@ -946,6 +947,9 @@ function TaskDetailActivityTab({
 
   return (
     <>
+      <div className="mb-3">
+        <RoundTableIntakePanel taskId={taskId} companyId={companyId} task={task} />
+      </div>
       <div className="mb-3">
         <OrionRunLauncher taskId={taskId} />
       </div>

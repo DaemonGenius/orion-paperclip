@@ -472,6 +472,120 @@ export const orionTaskWorkflowAdvanceResultSchema = z.object({
   binding: persistedOrionTaskWorkflowBindingSchema,
 });
 
+export const orionRoundTableIntakeSourceSchema = z.enum([
+  "manual",
+  "notion_sync",
+  "bulk_existing",
+  "planner_draft",
+]);
+
+export const queueOrionRoundTableIntakeSchema = z.object({
+  workflowId: z.string().uuid().optional().nullable(),
+  source: orionRoundTableIntakeSourceSchema.optional().default("manual"),
+});
+
+export const queueExistingOrionRoundTableIntakeSchema = z.object({
+  limit: z.number().int().positive().max(500).optional().default(200),
+});
+
+export const routeOrionRoundTableIntakeSchema = z
+  .object({
+    targetRoleProfileId: orionRoleProfileIdSchema.optional().nullable(),
+    targetNodeKey: z.string().trim().min(1).max(120).optional().nullable(),
+    note: z.string().trim().max(2000).optional().nullable(),
+  })
+  .strict();
+
+export const orionRoundTableIntakeTargetSchema = z.object({
+  nodeKey: z.string().trim().min(1).max(120),
+  roleProfileId: orionRoleProfileIdSchema,
+  displayName: z.string().trim().min(1).max(240),
+  reason: z.string().trim().min(1).max(1000),
+  agent: z
+    .object({
+      id: z.string().uuid(),
+      name: z.string(),
+      role: z.string(),
+      status: z.string(),
+      adapterType: z.string(),
+    })
+    .nullable(),
+});
+
+export const orionRoundTableIntakeActionKindSchema = z.enum([
+  "ready_to_route",
+  "assignable_agent",
+  "operator_required",
+  "blocked_missing_binding",
+  "blocked_missing_workflow",
+  "blocked_active_run",
+]);
+
+export const orionRoundTableIntakeStateSchema = z.object({
+  taskId: z.string().uuid(),
+  companyId: z.string().uuid(),
+  queued: z.boolean(),
+  source: z.union([orionRoundTableIntakeSourceSchema, z.string()]).nullable(),
+  workflowId: z.string().uuid().nullable(),
+  currentNodeKey: z.string().trim().min(1).max(120).nullable(),
+  binding: persistedOrionTaskWorkflowBindingSchema.nullable(),
+  suggestedTarget: orionRoundTableIntakeTargetSchema.nullable(),
+  routedTarget: orionRoundTableIntakeTargetSchema.nullable(),
+  actionKind: orionRoundTableIntakeActionKindSchema,
+  blockedReasons: z.array(z.string()),
+  activeRun: z.object({ runId: z.string().uuid(), status: z.string() }).nullable(),
+  updatedAt: z.union([z.date(), z.string()]).nullable(),
+});
+
+export const orionRoundTableQueueResultSchema = z.object({
+  intake: orionRoundTableIntakeStateSchema,
+  createdBinding: z.boolean(),
+});
+
+export const orionRoundTableBulkQueueResultSchema = z.object({
+  companyId: z.string().uuid(),
+  workflowId: z.string().uuid().nullable(),
+  queued: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  results: z.array(z.object({
+    taskId: z.string().uuid(),
+    status: z.enum(["queued", "skipped"]),
+    reason: z.string().nullable(),
+  })),
+});
+
+export const orionRoundTableRouteResultSchema = z.object({
+  intake: orionRoundTableIntakeStateSchema,
+  binding: persistedOrionTaskWorkflowBindingSchema,
+});
+
+export const createOrionPlannerDraftSchema = z.object({
+  title: z.string().trim().min(1).max(240),
+  description: z.string().trim().max(20000).optional().nullable(),
+  acceptanceCriteria: z.string().trim().max(20000).optional().nullable(),
+  priority: z.enum(["critical", "high", "medium", "low"]).optional().default("medium"),
+  projectId: z.string().uuid().optional().nullable(),
+  taskType: z.string().trim().max(120).optional().nullable(),
+  routeMode: z.enum(["pair", "auto_to_pr", "manual_review", "blocked", "replan"]).optional().nullable(),
+  layer: z.string().trim().max(120).optional().nullable(),
+  module: z.string().trim().max(120).optional().nullable(),
+  repoPath: z.string().trim().max(500).optional().nullable(),
+  riskLevel: z.string().trim().max(120).optional().nullable(),
+});
+
+export const publishOrionPlannerDraftSchema = z.object({
+  idempotencyKey: z.string().trim().min(1).max(120).optional().nullable(),
+});
+
+export const orionPlannerDraftResultSchema = z.object({
+  taskId: z.string().uuid(),
+  companyId: z.string().uuid(),
+  status: z.enum(["draft", "published"]),
+  notionPageId: z.string().nullable(),
+  notionUrl: z.string().nullable(),
+  intake: orionRoundTableIntakeStateSchema.nullable(),
+});
+
 export const setupOrionRoundTableSchema = z
   .object({
     sourceAgentId: z.string().uuid(),
@@ -570,6 +684,46 @@ export const syncbackOrionNotionSchema = z.object({
   runId: z.string().uuid().optional().nullable(),
   dryRun: z.boolean().optional().default(false),
   idempotencyKey: z.string().trim().min(1).max(120).optional().nullable(),
+});
+
+export const runOrionPreflightSchema = z.object({
+  testMode: z.boolean().optional().default(false),
+});
+
+export const orionPreflightStatusSchema = z.enum(["pass", "warn", "fail"]);
+export const orionPreflightSubsystemSchema = z.enum([
+  "deployment",
+  "database",
+  "persistence",
+  "orion_schema",
+  "company_setup",
+  "integrations",
+  "notion_schema",
+  "v1_readiness",
+]);
+
+export const orionPreflightCheckSchema = z.object({
+  id: z.string().trim().min(1).max(120),
+  subsystem: orionPreflightSubsystemSchema,
+  status: orionPreflightStatusSchema,
+  title: z.string().trim().min(1).max(240),
+  message: z.string().trim().min(1).max(2000),
+  action: z.string().trim().max(2000).optional().nullable(),
+  evidence: z.record(z.unknown()).optional().default({}),
+});
+
+export const orionPreflightResultSchema = z.object({
+  companyId: z.string().uuid(),
+  checkedAt: z.string().datetime(),
+  testMode: z.boolean(),
+  ready: z.boolean(),
+  overallStatus: orionPreflightStatusSchema,
+  summary: z.object({
+    passed: z.number().int().nonnegative(),
+    warned: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+  }),
+  checks: z.array(orionPreflightCheckSchema),
 });
 
 export const createOrionRunSchema = z.object({
@@ -702,6 +856,19 @@ export type BindOrionTaskWorkflow = z.infer<typeof bindOrionTaskWorkflowSchema>;
 export type ResolveOrionTaskWorkflow = z.infer<typeof resolveOrionTaskWorkflowSchema>;
 export type OrionTaskWorkflowResolution = z.infer<typeof orionTaskWorkflowResolutionSchema>;
 export type OrionTaskWorkflowAdvanceResult = z.infer<typeof orionTaskWorkflowAdvanceResultSchema>;
+export type OrionRoundTableIntakeSource = z.infer<typeof orionRoundTableIntakeSourceSchema>;
+export type QueueOrionRoundTableIntake = z.infer<typeof queueOrionRoundTableIntakeSchema>;
+export type QueueExistingOrionRoundTableIntake = z.infer<typeof queueExistingOrionRoundTableIntakeSchema>;
+export type RouteOrionRoundTableIntake = z.infer<typeof routeOrionRoundTableIntakeSchema>;
+export type OrionRoundTableIntakeTarget = z.infer<typeof orionRoundTableIntakeTargetSchema>;
+export type OrionRoundTableIntakeActionKind = z.infer<typeof orionRoundTableIntakeActionKindSchema>;
+export type OrionRoundTableIntakeState = z.infer<typeof orionRoundTableIntakeStateSchema>;
+export type OrionRoundTableQueueResult = z.infer<typeof orionRoundTableQueueResultSchema>;
+export type OrionRoundTableBulkQueueResult = z.infer<typeof orionRoundTableBulkQueueResultSchema>;
+export type OrionRoundTableRouteResult = z.infer<typeof orionRoundTableRouteResultSchema>;
+export type CreateOrionPlannerDraft = z.infer<typeof createOrionPlannerDraftSchema>;
+export type PublishOrionPlannerDraft = z.infer<typeof publishOrionPlannerDraftSchema>;
+export type OrionPlannerDraftResult = z.infer<typeof orionPlannerDraftResultSchema>;
 export type SetupOrionRoundTable = z.infer<typeof setupOrionRoundTableSchema>;
 export type OrionRoundTableSetupResult = z.infer<typeof orionRoundTableSetupResultSchema>;
 export type CreateOrionWorkflowNode = z.infer<typeof createOrionWorkflowNodeSchema>;
@@ -709,6 +876,11 @@ export type CreateOrionWorkflowEdge = z.infer<typeof createOrionWorkflowEdgeSche
 export type OrionBootstrapNotion = z.infer<typeof orionBootstrapNotionSchema>;
 export type OrionSyncNotion = z.infer<typeof orionSyncNotionSchema>;
 export type SyncbackOrionNotion = z.infer<typeof syncbackOrionNotionSchema>;
+export type RunOrionPreflight = z.infer<typeof runOrionPreflightSchema>;
+export type OrionPreflightStatus = z.infer<typeof orionPreflightStatusSchema>;
+export type OrionPreflightSubsystem = z.infer<typeof orionPreflightSubsystemSchema>;
+export type OrionPreflightCheck = z.infer<typeof orionPreflightCheckSchema>;
+export type OrionPreflightResult = z.infer<typeof orionPreflightResultSchema>;
 export type CreateOrionRun = z.infer<typeof createOrionRunSchema>;
 export type UpsertOrionTaskPolicy = z.infer<typeof upsertOrionTaskPolicySchema>;
 export type CancelOrionRun = z.infer<typeof cancelOrionRunSchema>;

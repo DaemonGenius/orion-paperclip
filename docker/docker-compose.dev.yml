@@ -3,6 +3,9 @@ name: paperclip-dev
 services:
   paperclip-dev:
     image: "${PAPERCLIP_DEV_IMAGE:-paperclip-local:main}"
+    build:
+      context: ..
+      dockerfile: Dockerfile
     ports:
       - "${PAPERCLIP_PORT:-3100}:3100"
     environment:

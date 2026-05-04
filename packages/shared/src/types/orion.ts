@@ -249,6 +249,78 @@ export interface OrionTaskWorkflowAdvanceResult {
   binding: OrionTaskWorkflowBinding;
 }
 
+export type OrionRoundTableIntakeSource =
+  | "manual"
+  | "notion_sync"
+  | "bulk_existing"
+  | "planner_draft";
+
+export type OrionRoundTableIntakeActionKind =
+  | "ready_to_route"
+  | "assignable_agent"
+  | "operator_required"
+  | "blocked_missing_binding"
+  | "blocked_missing_workflow"
+  | "blocked_active_run";
+
+export interface OrionRoundTableIntakeTarget {
+  nodeKey: string;
+  roleProfileId: OrionRoleProfileId;
+  displayName: string;
+  reason: string;
+  agent: OrionWorkflowResolutionAgent | null;
+}
+
+export interface OrionRoundTableIntakeState {
+  taskId: string;
+  companyId: string;
+  queued: boolean;
+  source: OrionRoundTableIntakeSource | string | null;
+  workflowId: string | null;
+  currentNodeKey: string | null;
+  binding: OrionTaskWorkflowBinding | null;
+  suggestedTarget: OrionRoundTableIntakeTarget | null;
+  routedTarget: OrionRoundTableIntakeTarget | null;
+  actionKind: OrionRoundTableIntakeActionKind;
+  blockedReasons: string[];
+  activeRun: {
+    runId: string;
+    status: string;
+  } | null;
+  updatedAt: Date | string | null;
+}
+
+export interface OrionRoundTableQueueResult {
+  intake: OrionRoundTableIntakeState;
+  createdBinding: boolean;
+}
+
+export interface OrionRoundTableBulkQueueResult {
+  companyId: string;
+  workflowId: string | null;
+  queued: number;
+  skipped: number;
+  results: Array<{
+    taskId: string;
+    status: "queued" | "skipped";
+    reason: string | null;
+  }>;
+}
+
+export interface OrionRoundTableRouteResult {
+  intake: OrionRoundTableIntakeState;
+  binding: OrionTaskWorkflowBinding;
+}
+
+export interface OrionPlannerDraftResult {
+  taskId: string;
+  companyId: string;
+  status: "draft" | "published";
+  notionPageId: string | null;
+  notionUrl: string | null;
+  intake: OrionRoundTableIntakeState | null;
+}
+
 export interface OrionNotionBinding {
   id: string;
   companyId: string;
@@ -288,6 +360,41 @@ export interface OrionNotionSyncbackResult {
     conflictId?: string | null;
     reason?: string | null;
   }>;
+}
+
+export type OrionPreflightStatus = "pass" | "warn" | "fail";
+export type OrionPreflightSubsystem =
+  | "deployment"
+  | "database"
+  | "persistence"
+  | "orion_schema"
+  | "company_setup"
+  | "integrations"
+  | "notion_schema"
+  | "v1_readiness";
+
+export interface OrionPreflightCheck {
+  id: string;
+  subsystem: OrionPreflightSubsystem;
+  status: OrionPreflightStatus;
+  title: string;
+  message: string;
+  action?: string | null;
+  evidence: Record<string, unknown>;
+}
+
+export interface OrionPreflightResult {
+  companyId: string;
+  checkedAt: string;
+  testMode: boolean;
+  ready: boolean;
+  overallStatus: OrionPreflightStatus;
+  summary: {
+    passed: number;
+    warned: number;
+    failed: number;
+  };
+  checks: OrionPreflightCheck[];
 }
 
 export interface OrionReqLedgerEvent {

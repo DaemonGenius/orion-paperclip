@@ -16,10 +16,14 @@ import {
   externalObjectRefs,
   getEmbeddedPostgresTestSupport,
   heartbeatRuns,
+  instanceUserRoles,
+  companyNotionBindings,
   orionPrReceipts,
   orionReqLedgerArtifacts,
   orionReqLedgerEvents,
   orionReqLedgers,
+  orionTaskPolicies,
+  orionTaskWorkflowBindings,
   orionWorkflowNodes,
   orionWorkflows,
   syncConflicts,
@@ -49,7 +53,12 @@ function createApp(db: ReturnType<typeof createDb>) {
     };
     next();
   });
-  app.use("/api", orionRoutes(db));
+  app.use("/api", orionRoutes(db, {
+    deploymentMode: "authenticated",
+    deploymentExposure: "private",
+    publicUrl: "http://orion.local:3100",
+    allowedHostnames: ["orion.local"],
+  }));
   app.use(errorHandler);
   return app;
 }
@@ -120,6 +129,13 @@ describeEmbeddedPostgres("Orion routes", () => {
     });
   }
 
+  async function seedInstanceAdmin() {
+    await db.insert(instanceUserRoles).values({
+      userId: "local-board",
+      role: "instance_admin",
+    }).onConflictDoNothing();
+  }
+
   async function seedAgent(input: { name: string; role: string; reportsTo?: string | null }) {
     const id = randomUUID();
     await db.insert(agents).values({
@@ -181,6 +197,133 @@ describeEmbeddedPostgres("Orion routes", () => {
       configJson: { host: "github.com" },
     });
   }
+
+  async function seedExternalBinding(provider: "notion" | "github" | "obsidian", configJson: Record<string, unknown>, secretValue?: string) {
+    const secret = secretValue
+      ? await secretService(db).create(companyId, {
+          name: provider === "github" ? "github.access_token" : "notion.integration_token",
+          provider: "local_encrypted",
+          value: secretValue,
+        })
+      : null;
+    const [binding] = await db.insert(companyExternalAppBindings).values({
+      companyId,
+      provider,
+      displayName: provider,
+      status: "configured",
+      secretId: secret?.id ?? null,
+      configJson,
+    }).returning();
+    return { binding, secret };
+  }
+
+  it("reports safe Orion preflight failures without mutating external app health", async () => {
+    await seedCompanyAndAgent();
+    await seedInstanceAdmin();
+    const { binding } = await seedExternalBinding("notion", { rootPageId: "root", dataSourceIds: { tasks: "tasks-ds" } }, "notion-token");
+
+    const response = await request(app).get(`/api/orion/companies/${companyId}/preflight`).send();
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(response.body.testMode).toBe(false);
+    expect(response.body.ready).toBe(false);
+    expect(response.body.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "integrations.notion", status: "pass" }),
+      expect.objectContaining({ id: "integrations.github", status: "fail" }),
+      expect.objectContaining({ id: "integrations.obsidian", status: "fail" }),
+    ]));
+
+    const [after] = await db.select().from(companyExternalAppBindings).where(eq(companyExternalAppBindings.id, binding.id));
+    expect(after.status).toBe("configured");
+    expect(after.lastCheckedAt).toBeNull();
+  });
+
+  it("runs explicit Orion preflight test mode and validates Notion task fields", async () => {
+    await seedCompanyAndAgent();
+    await seedInstanceAdmin();
+    const vaultPath = await mkdtemp(path.join(os.tmpdir(), "orion-preflight-vault-"));
+    try {
+      await request(app)
+        .post(`/api/orion/companies/${companyId}/workflows/presets`)
+        .send({ presetId: "orion_round_table", makeDefault: true, agentBindings: { implementer: agentId } });
+      const [task] = await db.insert(tasks).values({
+        companyId,
+        title: "Imported Auto Task",
+        status: "todo",
+        priority: "high",
+        originKind: "notion",
+        originId: "notion-page-1",
+        taskKey: "ORN-V3-004",
+      }).returning();
+      await db.insert(orionTaskPolicies).values({
+        companyId,
+        taskId: task.id,
+        mode: "auto_to_pr",
+        autonomyEnvelope: autoEnvelope(),
+      });
+      const notionBinding = await seedExternalBinding("notion", { rootPageId: "root" }, "notion-token");
+      await db.insert(companyNotionBindings).values({
+        companyId,
+        rootPageId: "root",
+        tokenSecretId: notionBinding.secret!.id,
+        dataSourceIds: { tasks: "tasks-ds" },
+      });
+      await seedExternalBinding("github", { host: "github.com" }, "github-token");
+      await seedExternalBinding("obsidian", { mode: "local_vault_path", vaultPath }, undefined);
+      const notionFields = [
+        "Task Key", "Task", "Project Tag", "Status", "Priority", "Route Mode", "REQ ID", "Run ID", "Run Status",
+        "Ledger ID", "Ledger Status", "Ledger Phase", "Verification Status", "Active Agent", "Branch",
+        "Last Orion Sync", "PR State", "PR URL",
+      ];
+      const fetchMock = vi.fn(async (url: string) => ({
+        ok: true,
+        status: 200,
+        json: async () => url.includes("/data_sources/")
+          ? { properties: Object.fromEntries(notionFields.map((field) => [field, {}])) }
+          : { object: "ok", id: url.includes("/users/me") ? "bot-user" : "root-page", login: "paperclip-bot" },
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await request(app)
+        .post(`/api/orion/companies/${companyId}/preflight`)
+        .send({ testMode: true });
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      expect(response.body.testMode).toBe(true);
+      expect(response.body.checks).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: "integrations.notion", status: "pass" }),
+        expect.objectContaining({ id: "integrations.github", status: "pass" }),
+        expect.objectContaining({ id: "integrations.obsidian", status: "pass" }),
+        expect.objectContaining({ id: "notion_schema.required_fields", status: "pass" }),
+        expect.objectContaining({ id: "v1_readiness.auto_to_pr_policy", status: "pass" }),
+      ]));
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://api.notion.com/v1/data_sources/tasks-ds",
+        expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer notion-token" }) }),
+      );
+    } finally {
+      await rm(vaultPath, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects Orion preflight for companies outside board scope", async () => {
+    await seedCompanyAndAgent();
+    const scoped = express();
+    scoped.use(express.json());
+    scoped.use((req, _res, next) => {
+      (req as any).actor = {
+        type: "board",
+        userId: "limited-board",
+        companyIds: [randomUUID()],
+        source: "session",
+        isInstanceAdmin: false,
+      };
+      next();
+    });
+    scoped.use("/api", orionRoutes(db));
+    scoped.use(errorHandler);
+
+    const response = await request(scoped).get(`/api/orion/companies/${companyId}/preflight`).send();
+    expect(response.status).toBe(403);
+  });
 
   async function seedNotionBinding() {
     const secret = await secretService(db).create(companyId, {
@@ -1570,6 +1713,308 @@ describeEmbeddedPostgres("Orion routes", () => {
     expect(legacyAdvance.status, JSON.stringify(legacyAdvance.body)).toBe(422);
     const [legacyTask] = await db.select().from(tasks).where(eq(tasks.id, noBindingTaskId)).limit(1);
     expect(legacyTask.assigneeAgentId).toBeNull();
+  });
+
+  describe("Round Table routing", () => {
+    async function seedRoundTableRoutingFixture(options: {
+      bindPlanner?: boolean;
+      bindArchitect?: boolean;
+      bindImplementer?: boolean;
+      bindVerifier?: boolean;
+      bindKnowledgeSteward?: boolean;
+      bindRecoveryRouter?: boolean;
+      currentNodeKey?: string;
+      reportsToLegacyExecutive?: boolean;
+      notionPageId?: string;
+    } = {}) {
+      await seedCompanyAndAgent();
+      const plannerAgentId = await seedAgent({ name: "Round Table Planner", role: "planner" });
+      const architectAgentId = await seedAgent({ name: "Round Table Architect", role: "architect" });
+      const verifierAgentId = await seedAgent({ name: "Round Table Verifier", role: "verifier" });
+      const knowledgeStewardAgentId = await seedAgent({ name: "Round Table Knowledge Steward", role: "knowledge_steward" });
+      const recoveryRouterAgentId = await seedAgent({ name: "Round Table Recovery Router", role: "recovery_router" });
+      const legacyExecutiveId = options.reportsToLegacyExecutive
+        ? await seedAgent({ name: "Legacy CEO", role: "ceo" })
+        : null;
+      if (legacyExecutiveId) {
+        await db.update(agents).set({ reportsTo: legacyExecutiveId }).where(eq(agents.id, agentId));
+      }
+
+      const agentBindings: Record<string, string> = {};
+      if (options.bindPlanner !== false) agentBindings.planner = plannerAgentId;
+      if (options.bindArchitect !== false) agentBindings.architect = architectAgentId;
+      if (options.bindImplementer !== false) agentBindings.implementer = agentId;
+      if (options.bindVerifier !== false) agentBindings.verifier = verifierAgentId;
+      if (options.bindKnowledgeSteward !== false) agentBindings.knowledge_steward = knowledgeStewardAgentId;
+      if (options.bindRecoveryRouter !== false) agentBindings.recovery_router = recoveryRouterAgentId;
+
+      const workflow = await request(app)
+        .post(`/api/orion/companies/${companyId}/workflows/presets`)
+        .send({
+          presetId: "orion_round_table",
+          makeDefault: true,
+          agentBindings,
+        });
+      expect(workflow.status, JSON.stringify(workflow.body)).toBe(201);
+
+      const sync = await request(app)
+        .post(`/api/orion/companies/${companyId}/notion/sync`)
+        .send({
+          tasks: [{
+            notionPageId: options.notionPageId ?? `notion-round-table-${randomUUID()}`,
+            title: "Round Table routing task",
+          }],
+        });
+      expect(sync.status, JSON.stringify(sync.body)).toBe(200);
+      const taskId = sync.body.results[0].taskId as string;
+
+      if (options.currentNodeKey) {
+        const binding = await request(app)
+          .post(`/api/orion/tasks/${taskId}/workflow-binding`)
+          .send({ workflowId: workflow.body.id, currentNodeKey: options.currentNodeKey });
+        expect(binding.status, JSON.stringify(binding.body)).toBe(201);
+      }
+
+      return {
+        workflowId: workflow.body.id as string,
+        taskId,
+        plannerAgentId,
+        architectAgentId,
+        implementerAgentId: agentId,
+        verifierAgentId,
+        knowledgeStewardAgentId,
+        recoveryRouterAgentId,
+        legacyExecutiveId,
+      };
+    }
+
+    async function expectAdvance(input: {
+      taskId: string;
+      edgeType?: string;
+      expectedNodeKey: string;
+      expectedAgentId: string | null;
+      expectedStatus: string;
+      expectedActionKind: string;
+    }) {
+      const advance = await request(app)
+        .post(`/api/orion/tasks/${input.taskId}/workflow/advance`)
+        .send(input.edgeType ? { edgeType: input.edgeType } : {});
+      expect(advance.status, JSON.stringify(advance.body)).toBe(200);
+      expect(advance.body.resolution.actionKind).toBe(input.expectedActionKind);
+      expect(advance.body.binding.currentNodeKey).toBe(input.expectedNodeKey);
+
+      const [task] = await db.select().from(tasks).where(eq(tasks.id, input.taskId)).limit(1);
+      expect(task.assigneeAgentId).toBe(input.expectedAgentId);
+      expect(task.status).toBe(input.expectedStatus);
+
+      const actions = await db
+        .select()
+        .from(activityLog)
+        .where(eq(activityLog.action, "orion.workflow_advanced"));
+      expect(actions.at(-1)?.details).toMatchObject({
+        actionKind: input.expectedActionKind,
+        toNodeKey: input.expectedNodeKey,
+      });
+    }
+
+    it("advances the canonical council path through explicit Round Table node bindings", async () => {
+      const fixture = await seedRoundTableRoutingFixture({ currentNodeKey: "task_intake" });
+
+      const intakeResolution = await request(app).get(`/api/orion/tasks/${fixture.taskId}/workflow-resolution`);
+      expect(intakeResolution.status, JSON.stringify(intakeResolution.body)).toBe(200);
+      expect(intakeResolution.body.actionKind).toBe("assignable_agent");
+      expect(intakeResolution.body.currentNode.nodeKey).toBe("task_intake");
+      expect(intakeResolution.body.targetNode.nodeKey).toBe("planner");
+      expect(intakeResolution.body.targetRoleProfile.roleId).toBe("planner");
+      expect(intakeResolution.body.targetAgent.id).toBe(fixture.plannerAgentId);
+
+      await expectAdvance({
+        taskId: fixture.taskId,
+        expectedNodeKey: "planner",
+        expectedAgentId: fixture.plannerAgentId,
+        expectedStatus: "in_progress",
+        expectedActionKind: "assignable_agent",
+      });
+      await expectAdvance({
+        taskId: fixture.taskId,
+        edgeType: "hands_off_to",
+        expectedNodeKey: "architect",
+        expectedAgentId: fixture.architectAgentId,
+        expectedStatus: "in_progress",
+        expectedActionKind: "assignable_agent",
+      });
+      await expectAdvance({
+        taskId: fixture.taskId,
+        expectedNodeKey: "implementer",
+        expectedAgentId: fixture.implementerAgentId,
+        expectedStatus: "in_progress",
+        expectedActionKind: "assignable_agent",
+      });
+      await expectAdvance({
+        taskId: fixture.taskId,
+        edgeType: "hands_off_to",
+        expectedNodeKey: "verifier",
+        expectedAgentId: fixture.verifierAgentId,
+        expectedStatus: "in_progress",
+        expectedActionKind: "assignable_agent",
+      });
+    });
+
+    it("keeps PR creation and human review as operator-required, then routes knowledge capture to its bound role", async () => {
+      const fixture = await seedRoundTableRoutingFixture({ currentNodeKey: "verifier" });
+
+      const prResolution = await request(app).get(`/api/orion/tasks/${fixture.taskId}/workflow-resolution?edgeType=hands_off_to`);
+      expect(prResolution.status, JSON.stringify(prResolution.body)).toBe(200);
+      expect(prResolution.body.actionKind).toBe("operator_required");
+      expect(prResolution.body.targetNode.nodeKey).toBe("github_pr");
+      expect(prResolution.body.targetAgent).toBeNull();
+
+      await expectAdvance({
+        taskId: fixture.taskId,
+        edgeType: "hands_off_to",
+        expectedNodeKey: "github_pr",
+        expectedAgentId: null,
+        expectedStatus: "in_review",
+        expectedActionKind: "operator_required",
+      });
+
+      const reviewResolution = await request(app).get(`/api/orion/tasks/${fixture.taskId}/workflow-resolution?edgeType=requires_approval`);
+      expect(reviewResolution.status, JSON.stringify(reviewResolution.body)).toBe(200);
+      expect(reviewResolution.body.actionKind).toBe("operator_required");
+      expect(reviewResolution.body.targetNode.nodeKey).toBe("human_review");
+      expect(reviewResolution.body.targetAgent).toBeNull();
+
+      await expectAdvance({
+        taskId: fixture.taskId,
+        edgeType: "requires_approval",
+        expectedNodeKey: "human_review",
+        expectedAgentId: null,
+        expectedStatus: "in_review",
+        expectedActionKind: "operator_required",
+      });
+
+      const knowledgeResolution = await request(app).get(`/api/orion/tasks/${fixture.taskId}/workflow-resolution?edgeType=hands_off_to`);
+      expect(knowledgeResolution.status, JSON.stringify(knowledgeResolution.body)).toBe(200);
+      expect(knowledgeResolution.body.actionKind).toBe("assignable_agent");
+      expect(knowledgeResolution.body.targetNode.nodeKey).toBe("knowledge_steward");
+      expect(knowledgeResolution.body.targetAgent.id).toBe(fixture.knowledgeStewardAgentId);
+
+      await expectAdvance({
+        taskId: fixture.taskId,
+        edgeType: "hands_off_to",
+        expectedNodeKey: "knowledge_steward",
+        expectedAgentId: fixture.knowledgeStewardAgentId,
+        expectedStatus: "in_progress",
+        expectedActionKind: "assignable_agent",
+      });
+    });
+
+    it("routes fallback to Recovery Router without reportsTo, CEO, or CTO fallback", async () => {
+      const fixture = await seedRoundTableRoutingFixture({
+        currentNodeKey: "implementer",
+        reportsToLegacyExecutive: true,
+      });
+
+      const resolution = await request(app).get(`/api/orion/tasks/${fixture.taskId}/workflow-resolution?edgeType=fallback_to`);
+      expect(resolution.status, JSON.stringify(resolution.body)).toBe(200);
+      expect(resolution.body.actionKind).toBe("assignable_agent");
+      expect(resolution.body.targetNode.nodeKey).toBe("recovery_router");
+      expect(resolution.body.targetAgent.id).toBe(fixture.recoveryRouterAgentId);
+      expect(resolution.body.targetAgent.id).not.toBe(fixture.legacyExecutiveId);
+
+      await expectAdvance({
+        taskId: fixture.taskId,
+        edgeType: "fallback_to",
+        expectedNodeKey: "recovery_router",
+        expectedAgentId: fixture.recoveryRouterAgentId,
+        expectedStatus: "in_progress",
+        expectedActionKind: "assignable_agent",
+      });
+    });
+
+    it("blocks unbound executable roles and missing edges without mutating task or binding", async () => {
+      const unbound = await seedRoundTableRoutingFixture({
+        currentNodeKey: "task_intake",
+        bindPlanner: false,
+        reportsToLegacyExecutive: true,
+        notionPageId: "notion-round-table-unbound",
+      });
+      const [unboundBefore] = await db.select().from(tasks).where(eq(tasks.id, unbound.taskId)).limit(1);
+
+      const unboundResolution = await request(app).get(`/api/orion/tasks/${unbound.taskId}/workflow-resolution`);
+      expect(unboundResolution.status, JSON.stringify(unboundResolution.body)).toBe(200);
+      expect(unboundResolution.body.actionKind).toBe("blocked_missing_binding");
+      expect(unboundResolution.body.targetNode.nodeKey).toBe("planner");
+      expect(unboundResolution.body.targetAgent).toBeNull();
+
+      const unboundAdvance = await request(app).post(`/api/orion/tasks/${unbound.taskId}/workflow/advance`).send({});
+      expect(unboundAdvance.status, JSON.stringify(unboundAdvance.body)).toBe(422);
+      expect(unboundAdvance.body.details.actionKind).toBe("blocked_missing_binding");
+      const [unboundAfter] = await db.select().from(tasks).where(eq(tasks.id, unbound.taskId)).limit(1);
+      const [unboundBinding] = await db.select().from(orionTaskWorkflowBindings).where(eq(orionTaskWorkflowBindings.taskId, unbound.taskId)).limit(1);
+      expect(unboundAfter.assigneeAgentId).toBe(unboundBefore.assigneeAgentId);
+      expect(unboundAfter.assigneeAgentId).not.toBe(unbound.legacyExecutiveId);
+      expect(unboundBinding.currentNodeKey).toBe("task_intake");
+
+      let blockedActions = await db.select().from(activityLog).where(eq(activityLog.action, "orion.workflow_advance_blocked"));
+      expect(blockedActions.map((action) => (action.details as { actionKind?: string }).actionKind)).toEqual([
+        "blocked_missing_binding",
+      ]);
+
+      await db.execute(sql.raw(`TRUNCATE TABLE "companies" CASCADE`));
+
+      const missingEdge = await seedRoundTableRoutingFixture({
+        currentNodeKey: "knowledge_steward",
+        notionPageId: "notion-round-table-missing-edge",
+      });
+      const [missingBefore] = await db.select().from(tasks).where(eq(tasks.id, missingEdge.taskId)).limit(1);
+
+      const missingResolution = await request(app).get(`/api/orion/tasks/${missingEdge.taskId}/workflow-resolution`);
+      expect(missingResolution.status, JSON.stringify(missingResolution.body)).toBe(200);
+      expect(missingResolution.body.actionKind).toBe("blocked_missing_edge");
+      expect(missingResolution.body.targetNode).toBeNull();
+
+      const missingAdvance = await request(app).post(`/api/orion/tasks/${missingEdge.taskId}/workflow/advance`).send({});
+      expect(missingAdvance.status, JSON.stringify(missingAdvance.body)).toBe(422);
+      expect(missingAdvance.body.details.actionKind).toBe("blocked_missing_edge");
+      const [missingAfter] = await db.select().from(tasks).where(eq(tasks.id, missingEdge.taskId)).limit(1);
+      const [missingBinding] = await db.select().from(orionTaskWorkflowBindings).where(eq(orionTaskWorkflowBindings.taskId, missingEdge.taskId)).limit(1);
+      expect(missingAfter.assigneeAgentId).toBe(missingBefore.assigneeAgentId);
+      expect(missingBinding.currentNodeKey).toBe("knowledge_steward");
+
+      blockedActions = await db.select().from(activityLog).where(eq(activityLog.action, "orion.workflow_advance_blocked"));
+      expect(blockedActions.map((action) => (action.details as { actionKind?: string }).actionKind)).toEqual([
+        "blocked_missing_edge",
+      ]);
+    });
+
+    it("keeps tasks without workflow bindings in legacy compatibility mode", async () => {
+      const fixture = await seedRoundTableRoutingFixture();
+      const [legacyTask] = await db
+        .insert(tasks)
+        .values({
+          companyId,
+          title: "No binding task",
+          status: "backlog",
+          priority: "medium",
+        })
+        .returning();
+      const legacyTaskId = legacyTask!.id;
+
+      const resolution = await request(app).get(`/api/orion/tasks/${legacyTaskId}/workflow-resolution`);
+      expect(resolution.status, JSON.stringify(resolution.body)).toBe(200);
+      expect(resolution.body.actionKind).toBe("legacy_compatibility");
+      expect(resolution.body.workflowId).toBeNull();
+      expect(resolution.body.targetAgent).toBeNull();
+
+      const advance = await request(app).post(`/api/orion/tasks/${legacyTaskId}/workflow/advance`).send({});
+      expect(advance.status, JSON.stringify(advance.body)).toBe(422);
+      expect(advance.body.details.actionKind).toBe("legacy_compatibility");
+
+      const [task] = await db.select().from(tasks).where(eq(tasks.id, legacyTaskId)).limit(1);
+      expect(task.assigneeAgentId).toBeNull();
+      expect(task.id).not.toBe(fixture.taskId);
+    });
   });
 
   it("exposes Lean Seven role profile metadata", async () => {

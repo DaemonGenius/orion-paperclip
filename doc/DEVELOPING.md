@@ -136,11 +136,20 @@ pnpm paperclipai run
 For day-to-day code changes in Docker, prefer the fast dev compose loop:
 
 ```sh
-docker build -t paperclip-local:main .
 pnpm docker:dev
 ```
 
-After the first image build, source changes are bind-mounted into the container and picked up by `pnpm dev`; rebuild only when dependencies or Docker tooling change. Use `pnpm docker:dev:down` to stop it.
+Source changes are bind-mounted into the container and picked up by `pnpm dev`; rebuild only when dependencies, Docker tooling, Dockerfile contents, or package manifests change.
+
+For a clean checkout, or whenever the dev image might be missing or stale, use the rebuild command:
+
+```sh
+pnpm docker:dev:rebuild
+curl http://localhost:3100/api/health
+pnpm docker:dev:logs
+```
+
+Use `pnpm docker:dev:down` to stop it. Dev compose provides a local default `BETTER_AUTH_SECRET`; quickstart and full-stack compose intentionally require you to set one. Docker warnings about unreadable host config files are host setup warnings unless startup or `/api/health` fails.
 
 Build and run Paperclip in Docker:
 

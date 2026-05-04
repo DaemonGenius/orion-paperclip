@@ -59,6 +59,7 @@ export const tasksApi = {
       prState?: string;
       agentConfidence?: string;
       agentConfidenceLevel?: string;
+      orionIntake?: boolean;
       descendantOf?: string;
       includeRoutineExecutions?: boolean;
       includeBlockedBy?: boolean;
@@ -97,6 +98,7 @@ export const tasksApi = {
     if (filters?.prState) params.set("prState", filters.prState);
     if (filters?.agentConfidence) params.set("agentConfidence", filters.agentConfidence);
     if (filters?.agentConfidenceLevel) params.set("agentConfidenceLevel", filters.agentConfidenceLevel);
+    if (filters?.orionIntake) params.set("orionIntake", "true");
     if (filters?.descendantOf) params.set("descendantOf", filters.descendantOf);
     if (filters?.includeRoutineExecutions) params.set("includeRoutineExecutions", "true");
     if (filters?.includeBlockedBy) params.set("includeBlockedBy", "true");

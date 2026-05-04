@@ -4,15 +4,27 @@ import {
   ORION_LEAN_SEVEN_ROLE_PROFILES,
   ORION_WORKFLOW_PRESETS,
   approveOrionLedgerPlanSchema,
+  createOrionPlannerDraftSchema,
   orionAutonomyEnvelopeSchema,
+  orionPlannerDraftResultSchema,
   orionRoleProfileSchema,
+  orionRoundTableBulkQueueResultSchema,
+  orionRoundTableIntakeStateSchema,
+  orionRoundTableQueueResultSchema,
+  orionRoundTableRouteResultSchema,
   orionWorkflowDefinitionSchema,
   openOrionPrSchema,
+  publishOrionPlannerDraftSchema,
+  queueExistingOrionRoundTableIntakeSchema,
+  queueOrionRoundTableIntakeSchema,
   orionTaskWorkflowAdvanceResultSchema,
   orionTaskWorkflowResolutionSchema,
   recordOrionLedgerEvidenceSchema,
   recordOrionLedgerVerificationSchema,
   recordOrionPrSchema,
+  routeOrionRoundTableIntakeSchema,
+  runOrionPreflightSchema,
+  orionPreflightResultSchema,
   orionRoundTableSetupResultSchema,
   resolveOrionTaskWorkflowSchema,
   resolveOrionRoleProfileForAgentRole,
@@ -335,6 +347,90 @@ describe("Orion validators", () => {
     ).toThrow();
   });
 
+  it("validates Round Table intake and planner draft contracts", () => {
+    expect(queueOrionRoundTableIntakeSchema.parse({})).toEqual({ source: "manual" });
+    expect(queueOrionRoundTableIntakeSchema.parse({
+      workflowId: "00000000-0000-4000-8000-000000000040",
+      source: "notion_sync",
+    }).source).toBe("notion_sync");
+    expect(queueExistingOrionRoundTableIntakeSchema.parse({})).toEqual({ limit: 200 });
+    expect(queueExistingOrionRoundTableIntakeSchema.parse({ limit: 500 }).limit).toBe(500);
+    expect(() => queueExistingOrionRoundTableIntakeSchema.parse({ limit: 501 })).toThrow();
+    expect(routeOrionRoundTableIntakeSchema.parse({
+      targetRoleProfileId: "verifier",
+      note: "PR work.",
+    }).targetRoleProfileId).toBe("verifier");
+    expect(() => routeOrionRoundTableIntakeSchema.parse({ targetRoleProfileId: "cto" })).toThrow();
+
+    const now = new Date("2026-05-04T00:00:00.000Z");
+    const binding = {
+      id: "00000000-0000-4000-8000-000000000041",
+      companyId: "00000000-0000-4000-8000-000000000042",
+      taskId: "00000000-0000-4000-8000-000000000043",
+      workflowId: "00000000-0000-4000-8000-000000000044",
+      currentNodeKey: "task_intake",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    };
+    const intake = {
+      taskId: binding.taskId,
+      companyId: binding.companyId,
+      queued: true,
+      source: "manual",
+      workflowId: binding.workflowId,
+      currentNodeKey: "planner",
+      binding,
+      suggestedTarget: {
+        nodeKey: "planner",
+        roleProfileId: "planner",
+        displayName: "Planner",
+        reason: "Feature and implementation work starts with Planner.",
+        agent: {
+          id: "00000000-0000-4000-8000-000000000045",
+          name: "Round Table Planner",
+          role: "planner",
+          status: "idle",
+          adapterType: "codex_local",
+        },
+      },
+      routedTarget: null,
+      actionKind: "assignable_agent",
+      blockedReasons: [],
+      activeRun: null,
+      updatedAt: now,
+    };
+    expect(orionRoundTableIntakeStateSchema.parse(intake).suggestedTarget?.roleProfileId).toBe("planner");
+    expect(orionRoundTableQueueResultSchema.parse({ intake, createdBinding: true }).createdBinding).toBe(true);
+    expect(orionRoundTableRouteResultSchema.parse({ intake, binding }).binding.currentNodeKey).toBe("task_intake");
+    expect(orionRoundTableBulkQueueResultSchema.parse({
+      companyId: binding.companyId,
+      workflowId: binding.workflowId,
+      queued: 1,
+      skipped: 1,
+      results: [
+        { taskId: binding.taskId, status: "queued", reason: null },
+        { taskId: "00000000-0000-4000-8000-000000000046", status: "skipped", reason: "active_run" },
+      ],
+    }).queued).toBe(1);
+
+    expect(createOrionPlannerDraftSchema.parse({ title: "Plan a feature" })).toMatchObject({
+      title: "Plan a feature",
+      priority: "medium",
+    });
+    expect(() => createOrionPlannerDraftSchema.parse({ title: "" })).toThrow();
+    expect(publishOrionPlannerDraftSchema.parse({ idempotencyKey: "publish-1" }).idempotencyKey).toBe("publish-1");
+    expect(() => publishOrionPlannerDraftSchema.parse({ idempotencyKey: "" })).toThrow();
+    expect(orionPlannerDraftResultSchema.parse({
+      taskId: binding.taskId,
+      companyId: binding.companyId,
+      status: "published",
+      notionPageId: "notion-page-id",
+      notionUrl: "https://www.notion.so/notion-page-id",
+      intake,
+    }).status).toBe("published");
+  });
+
   it("requires an agent, mode, and valid envelope shape for run creation", () => {
     const parsed = createOrionRunSchema.parse({
       agentId: "00000000-0000-4000-8000-000000000001",
@@ -393,6 +489,37 @@ describe("Orion validators", () => {
     expect(() => syncbackOrionNotionSchema.parse({ taskId: "not-a-uuid" })).toThrow();
     expect(() => syncbackOrionNotionSchema.parse({ runId: "not-a-uuid" })).toThrow();
     expect(() => syncbackOrionNotionSchema.parse({ idempotencyKey: "" })).toThrow();
+  });
+
+  it("validates Orion preflight request and result contracts", () => {
+    expect(runOrionPreflightSchema.parse({}).testMode).toBe(false);
+    expect(runOrionPreflightSchema.parse({ testMode: true }).testMode).toBe(true);
+
+    const parsed = orionPreflightResultSchema.parse({
+      companyId: "00000000-0000-4000-8000-000000000001",
+      checkedAt: "2026-05-04T00:00:00.000Z",
+      testMode: false,
+      ready: false,
+      overallStatus: "fail",
+      summary: { passed: 1, warned: 1, failed: 1 },
+      checks: [
+        {
+          id: "integrations.notion",
+          subsystem: "integrations",
+          status: "fail",
+          title: "Notion binding",
+          message: "Notion is not configured.",
+          action: "Configure Notion.",
+          evidence: { provider: "notion" },
+        },
+      ],
+    });
+    expect(parsed.checks[0].subsystem).toBe("integrations");
+    expect(() => orionPreflightResultSchema.parse({
+      ...parsed,
+      overallStatus: "unknown",
+    })).toThrow();
+    expect(() => runOrionPreflightSchema.parse({ testMode: "yes" })).toThrow();
   });
 
   it("validates REQ ledger lifecycle payloads", () => {

@@ -53,6 +53,7 @@ Paperclip now treats **bind** as a separate concern from auth:
 - low-friction URL handling (`auto` base URL mode)
 - private-host trust policy required
 - bind can be `loopback`, `lan`, `tailnet`, or `custom`
+- Orion V3 homelab deployments use this mode with a private LAN/VPN/tailnet URL and the Docker Compose profile documented in `doc/orion-v3-homelab-deployment.md`
 
 ## `authenticated + public`
 
@@ -100,6 +101,14 @@ pnpm paperclipai doctor
 
 Doctor reads configured mode/exposure and applies mode-aware checks. Optional override flags are secondary.
 
+For Orion V3 homelab readiness, use the company-scoped Orion preflight after the app is running:
+
+```sh
+pnpm paperclipai orion preflight --company-id <company-id>
+```
+
+Generic doctor validates local instance setup. Orion preflight validates the running company's Notion, GitHub, Obsidian, Codex, workflow, and REQ ledger readiness.
+
 ## 6. Board/User Integration Contract
 
 Board identity must be represented by a real DB user principal for user-based features to work consistently.
@@ -141,5 +150,6 @@ This prevents lockout when a user migrates from long-running local trusted usage
 
 - implementation plan: `doc/plans/deployment-auth-mode-consolidation.md`
 - V1 contract: `doc/SPEC-implementation.md`
+- Orion V3 homelab deployment: `doc/orion-v3-homelab-deployment.md`
 - operator workflows: `doc/DEVELOPING.md` and `doc/CLI.md`
 - invite/join state map: `doc/spec/invite-flow.md`

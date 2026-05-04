@@ -45,6 +45,7 @@ import { notFound, unprocessable } from "../errors.js";
 import { taskService } from "./tasks.js";
 import { projectService } from "./projects.js";
 import { secretService } from "./secrets.js";
+import { orionService } from "./orion.js";
 
 function sha256(value: string | Buffer) {
   return createHash("sha256").update(value).digest("hex");
@@ -1181,6 +1182,12 @@ export function knowledgeService(db: Db) {
         value: rawRouteMode,
         message: "Unknown Notion Route Mode option for task routing.",
       });
+    }
+    try {
+      await orionService(db).queueRoundTableIntake(saved.id, { source: "notion_sync" });
+    } catch {
+      // Notion task import should remain durable even when the Round Table workflow
+      // has not been explicitly set up for this company yet.
     }
     return saved;
   }

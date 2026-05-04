@@ -35,18 +35,32 @@ import type {
   CreateOrionWorkflowFromPreset,
   CreateOrionWorkflowNode,
   CreateOrionRun,
+  CreateOrionPlannerDraft,
   OrionAutonomyEnvelope,
   OrionBootstrapNotion,
   OpenOrionPr,
+  OrionPlannerDraftResult,
+  OrionRoleProfileId,
+  OrionRoundTableBulkQueueResult,
+  OrionRoundTableIntakeState,
+  OrionRoundTableIntakeTarget,
+  OrionRoundTableQueueResult,
+  OrionRoundTableRouteResult,
   OrionTaskWorkflowAdvanceResult,
   OrionTaskWorkflowResolution,
   OrionRunReadiness,
   OrionRoundTableSetupResult,
   OrionWorkflowDefinition,
+  OrionWorkflowEdge,
+  OrionWorkflowNode,
   OrionWorkflowPresetId,
   ResolveOrionTaskWorkflow,
+  RouteOrionRoundTableIntake,
   SetupOrionRoundTable,
   OrionSyncNotion,
+  PublishOrionPlannerDraft,
+  QueueExistingOrionRoundTableIntake,
+  QueueOrionRoundTableIntake,
   ApproveOrionLedgerPlan,
   RecordOrionLedgerEvidence,
   RecordOrionLedgerVerification,
@@ -69,6 +83,7 @@ import { resolveShell, sanitizeRuntimeServiceBaseEnv } from "./workspace-runtime
 import { assertProviderHost, cleanGitError, parseRepoUrl, resolveGitAuth, runGitWithAuth } from "./git-repositories.js";
 import { ghFetch, gitHubApiBase } from "./github-fetch.js";
 import { secretService } from "./secrets.js";
+import { taskService } from "./tasks.js";
 
 const ORION_OPERATOR_FIELDS = ["title", "description", "priority", "projectId", "requestedMode", "humanNotes"];
 const NOTION_VERSION = "2022-06-28";
@@ -117,6 +132,14 @@ function readConfigString(config: unknown, key: string): string | null {
   if (!config || typeof config !== "object" || Array.isArray(config)) return null;
   const value = (config as Record<string, unknown>)[key];
   return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function toOrionWorkflowNode(row: typeof orionWorkflowNodes.$inferSelect | null): OrionWorkflowNode | null {
+  return row ? { ...row, type: row.type as OrionWorkflowNode["type"] } : null;
+}
+
+function toOrionWorkflowEdge(row: typeof orionWorkflowEdges.$inferSelect | null): OrionWorkflowEdge | null {
+  return row ? { ...row, type: row.type as OrionWorkflowEdge["type"] } : null;
 }
 
 function setupRoleProfileIdForNodeKey(nodeKey: RoundTableExecutableNodeKey) {
@@ -218,6 +241,48 @@ function prTemplateTitle(task: { identifier: string | null; taskKey: string | nu
   return key ? `${key}: ${task.title}` : task.title;
 }
 
+function readRoleProfileIdFromNode(node: { type: string; config: unknown; nodeKey: string }): OrionRoleProfileId | null {
+  const explicit = resolveOrionRoleProfile(readConfigString(node.config, "roleProfileId"));
+  if (explicit) return explicit.roleId;
+  if (node.nodeKey === "verifier" || node.type === "verification") return "verifier";
+  if (node.nodeKey === "recovery_router" || node.type === "fallback") return "recovery_router";
+  return null;
+}
+
+function nodeRequiresRoundTableAgent(node: { nodeKey: string; type: string; config: unknown }) {
+  const roleProfileId = readRoleProfileIdFromNode(node);
+  return roleProfileId
+    ? ["planner", "architect", "implementer", "verifier", "knowledge_steward", "recovery_router"].includes(roleProfileId)
+    : node.type === "agent";
+}
+
+function nodeIsOperatorRequired(node: { type: string }) {
+  return ["human_gate", "decision", "github_pr", "task_intake"].includes(node.type);
+}
+
+function notionPriorityFromTaskPriority(priority: string) {
+  switch (priority) {
+    case "critical": return "P0 Critical";
+    case "high": return "P1 High";
+    case "low": return "P3 Low";
+    case "medium":
+    default:
+      return "P2 Medium";
+  }
+}
+
+function notionRouteModeLabel(routeMode: string | null | undefined) {
+  switch (routeMode) {
+    case "auto_to_pr": return "Auto-to-PR";
+    case "manual_review": return "Manual Review";
+    case "blocked": return "Blocked";
+    case "replan": return "Replan";
+    case "pair":
+    default:
+      return "Pair";
+  }
+}
+
 function normalizeRepositoryKey(input: { host: string; owner: string; repo: string }) {
   return `${input.host}/${input.owner}/${input.repo}`;
 }
@@ -316,6 +381,14 @@ function readRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+function writeRecord(value: unknown): Record<string, unknown> {
+  return { ...readRecord(value) };
+}
+
+function titleProperty(value: string) {
+  return { title: [{ text: { content: value } }] };
 }
 
 function notionStatusFromTaskStatus(status: string) {
@@ -1441,6 +1514,579 @@ export function orionService(db: Db) {
     }
   }
 
+  async function getActiveOrionRunForTask(task: Pick<typeof tasks.$inferSelect, "id" | "companyId" | "executionRunId">) {
+    const activeRunScope = task.executionRunId
+      ? or(eq(heartbeatRuns.id, task.executionRunId), taskContextFilter(task.id))
+      : taskContextFilter(task.id);
+    return db
+      .select({ runId: heartbeatRuns.id, status: heartbeatRuns.status })
+      .from(heartbeatRuns)
+      .where(and(
+        eq(heartbeatRuns.companyId, task.companyId),
+        inArray(heartbeatRuns.status, [...ACTIVE_ORION_RUN_STATUSES]),
+        activeRunScope,
+      ))
+      .orderBy(desc(heartbeatRuns.createdAt))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+  }
+
+  async function getRoundTableWorkflow(companyId: string, workflowId?: string | null, createIfMissing = false) {
+    if (workflowId) {
+      const workflow = await db
+        .select()
+        .from(orionWorkflows)
+        .where(and(eq(orionWorkflows.companyId, companyId), eq(orionWorkflows.id, workflowId)))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      if (!workflow) throw notFound("Workflow not found");
+      if (workflow.presetId !== "orion_round_table") {
+        throw unprocessable("Round Table intake requires an orion_round_table workflow");
+      }
+      return workflow;
+    }
+
+    const workflow = await db
+      .select()
+      .from(orionWorkflows)
+      .where(and(
+        eq(orionWorkflows.companyId, companyId),
+        eq(orionWorkflows.presetId, "orion_round_table"),
+      ))
+      .orderBy(desc(orionWorkflows.defaultForCompany), desc(orionWorkflows.createdAt))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    if (workflow) return workflow;
+    return createIfMissing
+      ? createWorkflowFromPreset(companyId, { presetId: "orion_round_table", makeDefault: true, agentBindings: {} })
+      : null;
+  }
+
+  function suggestRoundTableRoleForTask(task: typeof tasks.$inferSelect): { roleProfileId: OrionRoleProfileId; reason: string } {
+    const title = task.title.toLowerCase();
+    const type = (task.taskType ?? "").toLowerCase();
+    const module = (task.module ?? "").toLowerCase();
+    const layer = (task.layer ?? "").toLowerCase();
+    const routeMode = (task.routeMode ?? "").toLowerCase();
+    const prState = (task.prState ?? "").toLowerCase();
+
+    if (task.status === "blocked" || routeMode === "blocked" || type.includes("recovery")) {
+      return { roleProfileId: "recovery_router", reason: "Blocked or recovery-oriented work starts with Recovery Router." };
+    }
+    if (task.prUrl || prState || type.includes("review") || title.includes("pr ")) {
+      return { roleProfileId: "verifier", reason: "Review or PR-linked work starts with Verifier." };
+    }
+    if (
+      type.includes("doc")
+      || type.includes("sync")
+      || type.includes("evidence")
+      || module.includes("doc")
+      || layer.includes("doc")
+      || title.includes("sync")
+      || title.includes("receipt")
+      || title.includes("knowledge")
+    ) {
+      return { roleProfileId: "knowledge_steward", reason: "Docs, sync, and evidence work starts with Knowledge Steward." };
+    }
+    return { roleProfileId: "planner", reason: "Feature and implementation work starts with Planner." };
+  }
+
+  async function getRoundTableNodeByRole(workflowId: string, roleProfileId: OrionRoleProfileId) {
+    const rows = await db
+      .select()
+      .from(orionWorkflowNodes)
+      .where(eq(orionWorkflowNodes.workflowId, workflowId))
+      .orderBy(orionWorkflowNodes.position);
+    return rows.find((node) => readRoleProfileIdFromNode(node) === roleProfileId) ?? null;
+  }
+
+  async function getRoundTableNode(workflowId: string, input: { roleProfileId?: OrionRoleProfileId | null; nodeKey?: string | null }) {
+    if (input.nodeKey) {
+      return db
+        .select()
+        .from(orionWorkflowNodes)
+        .where(and(eq(orionWorkflowNodes.workflowId, workflowId), eq(orionWorkflowNodes.nodeKey, input.nodeKey)))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+    }
+    return input.roleProfileId ? getRoundTableNodeByRole(workflowId, input.roleProfileId) : null;
+  }
+
+  async function buildRoundTableTarget(
+    companyId: string,
+    node: typeof orionWorkflowNodes.$inferSelect | null,
+    reason: string,
+  ): Promise<OrionRoundTableIntakeTarget | null> {
+    if (!node) return null;
+    const roleProfileId = readRoleProfileIdFromNode(node);
+    if (!roleProfileId) return null;
+    const profile = resolveOrionRoleProfile(roleProfileId);
+    const agent = node.agentId
+      ? await db
+        .select({
+          id: agents.id,
+          name: agents.name,
+          role: agents.role,
+          status: agents.status,
+          adapterType: agents.adapterType,
+        })
+        .from(agents)
+        .where(and(eq(agents.companyId, companyId), eq(agents.id, node.agentId)))
+        .limit(1)
+        .then((rows) => rows[0] ?? null)
+      : null;
+    return {
+      nodeKey: node.nodeKey,
+      roleProfileId,
+      displayName: profile?.displayName ?? node.label,
+      reason,
+      agent,
+    };
+  }
+
+  async function getRoundTableIntake(taskId: string): Promise<OrionRoundTableIntakeState> {
+    const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).then((rows) => rows[0] ?? null);
+    if (!task) throw notFound("Task not found");
+    const [binding, activeRun] = await Promise.all([
+      db
+        .select()
+        .from(orionTaskWorkflowBindings)
+        .where(eq(orionTaskWorkflowBindings.taskId, task.id))
+        .limit(1)
+        .then((rows) => rows[0] ?? null),
+      getActiveOrionRunForTask(task),
+    ]);
+    const intakeRecord = readRecord(readRecord(task.executionState).orionIntake);
+    const workflow = binding
+      ? await db.select().from(orionWorkflows).where(eq(orionWorkflows.id, binding.workflowId)).limit(1).then((rows) => rows[0] ?? null)
+      : await getRoundTableWorkflow(task.companyId, null, false);
+    const suggestion = suggestRoundTableRoleForTask(task);
+    const suggestedNode = workflow ? await getRoundTableNodeByRole(workflow.id, suggestion.roleProfileId) : null;
+    const currentNode = binding?.currentNodeKey
+      ? await db
+        .select()
+        .from(orionWorkflowNodes)
+        .where(and(eq(orionWorkflowNodes.workflowId, binding.workflowId), eq(orionWorkflowNodes.nodeKey, binding.currentNodeKey)))
+        .limit(1)
+        .then((rows) => rows[0] ?? null)
+      : null;
+    const suggestedTarget = workflow ? await buildRoundTableTarget(task.companyId, suggestedNode, suggestion.reason) : null;
+    const routedTarget = await buildRoundTableTarget(task.companyId, currentNode, "Current Round Table owner.");
+    const blockedReasons: string[] = [];
+    if (activeRun) blockedReasons.push(`Task already has active run ${activeRun.runId.slice(0, 8)} (${activeRun.status}).`);
+    if (!workflow) blockedReasons.push("No Orion Round Table workflow exists for this company.");
+    const targetForBinding = routedTarget ?? suggestedTarget;
+    const targetNode = currentNode ?? suggestedNode;
+    if (workflow && targetNode && nodeRequiresRoundTableAgent(targetNode) && !targetForBinding?.agent) {
+      blockedReasons.push(`${targetNode.label} is not bound to an executable agent.`);
+    }
+
+    const queued = Boolean(binding?.currentNodeKey && workflow?.presetId === "orion_round_table");
+    const source = readString(intakeRecord.source) ?? null;
+    let actionKind: OrionRoundTableIntakeState["actionKind"] = queued ? "ready_to_route" : "blocked_missing_workflow";
+    if (activeRun) actionKind = "blocked_active_run";
+    else if (!workflow) actionKind = "blocked_missing_workflow";
+    else if (routedTarget?.agent) actionKind = "assignable_agent";
+    else if (targetNode && nodeIsOperatorRequired(targetNode)) actionKind = "operator_required";
+    else if (targetNode && nodeRequiresRoundTableAgent(targetNode) && !targetForBinding?.agent) actionKind = "blocked_missing_binding";
+    else actionKind = "ready_to_route";
+
+    return {
+      taskId: task.id,
+      companyId: task.companyId,
+      queued,
+      source,
+      workflowId: workflow?.id ?? binding?.workflowId ?? null,
+      currentNodeKey: binding?.currentNodeKey ?? null,
+      binding,
+      suggestedTarget,
+      routedTarget,
+      actionKind,
+      blockedReasons,
+      activeRun,
+      updatedAt: readString(intakeRecord.updatedAt) ?? binding?.updatedAt ?? null,
+    };
+  }
+
+  async function queueRoundTableIntake(
+    taskId: string,
+    input: QueueOrionRoundTableIntake,
+    options: { createWorkflowIfMissing?: boolean } = {},
+  ): Promise<OrionRoundTableQueueResult> {
+    const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).then((rows) => rows[0] ?? null);
+    if (!task) throw notFound("Task not found");
+    if (task.hiddenAt || task.status === "done" || task.status === "cancelled") {
+      throw unprocessable("Only visible non-terminal tasks can enter Orion intake");
+    }
+    const activeRun = await getActiveOrionRunForTask(task);
+    if (activeRun) throw conflict("Task already has an active run", activeRun);
+
+    const workflow = await getRoundTableWorkflow(task.companyId, input.workflowId, options.createWorkflowIfMissing ?? false);
+    if (!workflow) throw unprocessable("No Orion Round Table workflow exists for this company");
+    const currentBinding = await db
+      .select()
+      .from(orionTaskWorkflowBindings)
+      .where(eq(orionTaskWorkflowBindings.taskId, task.id))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    const currentNodeKey = currentBinding?.currentNodeKey
+      ?? readString(readRecord(workflow.definitionJson).defaultStartNodeKey)
+      ?? "task_intake";
+    const now = new Date();
+    const [binding] = await db
+      .insert(orionTaskWorkflowBindings)
+      .values({
+        companyId: task.companyId,
+        taskId: task.id,
+        workflowId: workflow.id,
+        currentNodeKey,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: orionTaskWorkflowBindings.taskId,
+        set: {
+          workflowId: workflow.id,
+          currentNodeKey,
+          status: "active",
+          updatedAt: now,
+        },
+      })
+      .returning();
+    const suggestion = suggestRoundTableRoleForTask(task);
+    const suggestedNode = await getRoundTableNodeByRole(workflow.id, suggestion.roleProfileId);
+    const executionState = writeRecord(task.executionState);
+    executionState.orionIntake = {
+      ...readRecord(executionState.orionIntake),
+      version: 1,
+      state: "queued",
+      source: input.source ?? "manual",
+      workflowId: workflow.id,
+      queuedAt: readString(readRecord(executionState.orionIntake).queuedAt) ?? now.toISOString(),
+      suggestedRoleProfileId: suggestion.roleProfileId,
+      suggestedNodeKey: suggestedNode?.nodeKey ?? null,
+      suggestedReason: suggestion.reason,
+      updatedAt: now.toISOString(),
+    };
+    await db
+      .update(tasks)
+      .set({ executionState, updatedAt: now })
+      .where(eq(tasks.id, task.id));
+
+    return {
+      intake: await getRoundTableIntake(task.id),
+      createdBinding: !currentBinding,
+    };
+  }
+
+  async function queueExistingRoundTableIntake(
+    companyId: string,
+    input: QueueExistingOrionRoundTableIntake,
+  ): Promise<OrionRoundTableBulkQueueResult> {
+    const workflow = await getRoundTableWorkflow(companyId, null, true);
+    const taskRows = await db
+      .select()
+      .from(tasks)
+      .where(eq(tasks.companyId, companyId))
+      .orderBy(desc(tasks.updatedAt))
+      .limit(input.limit);
+    const results: OrionRoundTableBulkQueueResult["results"] = [];
+    for (const task of taskRows) {
+      if (task.hiddenAt || task.status === "done" || task.status === "cancelled") {
+        results.push({ taskId: task.id, status: "skipped", reason: "terminal_or_hidden" });
+        continue;
+      }
+      if (await getActiveOrionRunForTask(task)) {
+        results.push({ taskId: task.id, status: "skipped", reason: "active_run" });
+        continue;
+      }
+      const existingBinding = await db
+        .select({ id: orionTaskWorkflowBindings.id })
+        .from(orionTaskWorkflowBindings)
+        .where(eq(orionTaskWorkflowBindings.taskId, task.id))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      if (existingBinding) {
+        results.push({ taskId: task.id, status: "skipped", reason: "already_queued" });
+        continue;
+      }
+      await queueRoundTableIntake(task.id, { workflowId: workflow.id, source: "bulk_existing" });
+      results.push({ taskId: task.id, status: "queued", reason: null });
+    }
+    return {
+      companyId,
+      workflowId: workflow.id,
+      queued: results.filter((result) => result.status === "queued").length,
+      skipped: results.filter((result) => result.status === "skipped").length,
+      results,
+    };
+  }
+
+  async function routeRoundTableIntake(
+    taskId: string,
+    input: RouteOrionRoundTableIntake,
+  ): Promise<OrionRoundTableRouteResult> {
+    const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).then((rows) => rows[0] ?? null);
+    if (!task) throw notFound("Task not found");
+    let intake = await getRoundTableIntake(task.id);
+    if (!intake.queued) {
+      await queueRoundTableIntake(task.id, { source: "manual" }, { createWorkflowIfMissing: true });
+      intake = await getRoundTableIntake(task.id);
+    }
+    if (intake.activeRun) throw conflict("Task already has an active run", intake.activeRun);
+    if (!intake.workflowId) throw unprocessable("Task is not queued into a Round Table workflow", intake);
+
+    const suggestedRole = suggestRoundTableRoleForTask(task);
+    const targetNode = await getRoundTableNode(intake.workflowId, {
+      nodeKey: input.targetNodeKey ?? null,
+      roleProfileId: input.targetRoleProfileId ?? suggestedRole.roleProfileId,
+    });
+    if (!targetNode) throw unprocessable("Selected Round Table target does not exist", intake);
+    const target = await buildRoundTableTarget(
+      task.companyId,
+      targetNode,
+      input.targetRoleProfileId || input.targetNodeKey ? "Operator-selected Round Table target." : suggestedRole.reason,
+    );
+    if (!target) throw unprocessable("Selected Round Table target has no role profile", intake);
+    if (nodeRequiresRoundTableAgent(targetNode) && !target.agent) {
+      throw unprocessable(`${target.displayName} is not bound to an executable agent`, {
+        ...intake,
+        blockedReasons: [`${target.displayName} is not bound to an executable agent.`],
+      });
+    }
+    if (!target.agent && !nodeIsOperatorRequired(targetNode)) {
+      throw unprocessable(`Workflow node ${targetNode.nodeKey} cannot be routed`, intake);
+    }
+
+    const now = new Date();
+    const [binding] = await db
+      .update(orionTaskWorkflowBindings)
+      .set({ currentNodeKey: targetNode.nodeKey, status: "active", updatedAt: now })
+      .where(eq(orionTaskWorkflowBindings.id, intake.binding!.id))
+      .returning();
+    const executionState = writeRecord(task.executionState);
+    executionState.orionIntake = {
+      ...readRecord(executionState.orionIntake),
+      version: 1,
+      state: "routed",
+      workflowId: intake.workflowId,
+      routedAt: now.toISOString(),
+      routedRoleProfileId: target.roleProfileId,
+      routedNodeKey: target.nodeKey,
+      routedAgentId: target.agent?.id ?? null,
+      routeNote: input.note ?? null,
+      updatedAt: now.toISOString(),
+    };
+    await db
+      .update(tasks)
+      .set({
+        assigneeAgentId: target.agent?.id ?? null,
+        assigneeUserId: null,
+        status: target.agent ? "in_progress" : "in_review",
+        executionState,
+        updatedAt: now,
+      })
+      .where(eq(tasks.id, task.id));
+
+    return {
+      intake: await getRoundTableIntake(task.id),
+      binding: binding!,
+    };
+  }
+
+  async function createPlannerDraft(companyId: string, input: CreateOrionPlannerDraft): Promise<OrionPlannerDraftResult> {
+    const now = new Date();
+    const created = await taskService(db).create(companyId, {
+      title: input.title,
+      description: input.description ?? null,
+      acceptanceCriteria: input.acceptanceCriteria ?? null,
+      priority: input.priority,
+      projectId: input.projectId ?? null,
+      taskType: input.taskType ?? "Feature",
+      routeMode: input.routeMode ?? "pair",
+      layer: input.layer ?? null,
+      module: input.module ?? null,
+      repoPath: input.repoPath ?? null,
+      riskLevel: input.riskLevel ?? null,
+      status: "backlog",
+      originKind: "orion_planner_draft",
+      originFingerprint: sha256(`planner-draft:${companyId}:${input.title}:${now.toISOString()}`),
+      executionState: {
+        orionPlannerDraft: {
+          version: 1,
+          status: "draft",
+          createdAt: now.toISOString(),
+        },
+      },
+    });
+    if (!created) throw unprocessable("Unable to create planner draft");
+    return {
+      taskId: created.id,
+      companyId,
+      status: "draft",
+      notionPageId: null,
+      notionUrl: null,
+      intake: null,
+    };
+  }
+
+  async function publishPlannerDraftToNotion(
+    taskId: string,
+    _input: PublishOrionPlannerDraft,
+  ): Promise<OrionPlannerDraftResult> {
+    const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).then((rows) => rows[0] ?? null);
+    if (!task) throw notFound("Task not found");
+    if (task.originKind === "notion_task" && task.originId) {
+      const intake = await queueRoundTableIntake(task.id, { source: "planner_draft" }, { createWorkflowIfMissing: true });
+      return {
+        taskId: task.id,
+        companyId: task.companyId,
+        status: "published",
+        notionPageId: task.originId,
+        notionUrl: notionPageUrl(task.originId),
+        intake: intake.intake,
+      };
+    }
+    if (task.originKind !== "orion_planner_draft") {
+      throw unprocessable("Only Orion planner draft tasks can be published to Notion");
+    }
+
+    const binding = await db
+      .select()
+      .from(companyNotionBindings)
+      .where(eq(companyNotionBindings.companyId, task.companyId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    const taskDataSourceId = readString(readRecord(binding?.dataSourceIds).tasks);
+    if (!binding || !taskDataSourceId) {
+      throw unprocessable("Notion task data source is not configured for this company");
+    }
+    const token = await resolveNotionToken(task.companyId);
+    const body = {
+      parent: { data_source_id: taskDataSourceId },
+      properties: {
+        [NOTION_TASK_PROPERTY_NAMES.task]: titleProperty(task.title),
+        [NOTION_TASK_PROPERTY_NAMES.status]: { status: { name: notionStatusFromTaskStatus(task.status) } },
+        [NOTION_TASK_PROPERTY_NAMES.priority]: { select: { name: notionPriorityFromTaskPriority(task.priority) } },
+        [NOTION_TASK_PROPERTY_NAMES.acceptanceCriteria]: richTextProperty(task.acceptanceCriteria),
+        [NOTION_TASK_PROPERTY_NAMES.type]: { select: task.taskType ? { name: task.taskType } : null },
+        [NOTION_TASK_PROPERTY_NAMES.routeMode]: { select: { name: notionRouteModeLabel(task.routeMode) } },
+        [NOTION_TASK_PROPERTY_NAMES.layer]: richTextProperty(task.layer),
+        [NOTION_TASK_PROPERTY_NAMES.module]: richTextProperty(task.module),
+        [NOTION_TASK_PROPERTY_NAMES.repoPath]: richTextProperty(task.repoPath),
+        [NOTION_TASK_PROPERTY_NAMES.riskLevel]: richTextProperty(task.riskLevel),
+      },
+      children: task.description ? [
+        {
+          object: "block",
+          type: "paragraph",
+          paragraph: {
+            rich_text: [{ type: "text", text: { content: task.description.slice(0, 2000) } }],
+          },
+        },
+      ] : [],
+    };
+    const page = await notionApi(token, "/pages", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    const notionPageId = readString(page.id);
+    if (!notionPageId) throw unprocessable("Notion did not return a page id for the planner draft");
+    const notionUrl = readString(page.url) ?? notionPageUrl(notionPageId);
+    const now = new Date();
+    const executionState = writeRecord(task.executionState);
+    executionState.orionPlannerDraft = {
+      ...readRecord(executionState.orionPlannerDraft),
+      status: "published",
+      notionPageId,
+      notionUrl,
+      publishedAt: now.toISOString(),
+    };
+    await db
+      .update(tasks)
+      .set({
+        originKind: "notion_task",
+        originId: notionPageId,
+        originFingerprint: sha256(`${taskDataSourceId}:${notionPageId}`),
+        executionState,
+        updatedAt: now,
+      })
+      .where(eq(tasks.id, task.id));
+    await db
+      .insert(notionSyncState)
+      .values({
+        companyId: task.companyId,
+        objectType: "task",
+        objectId: task.id,
+        notionPageId,
+        orionUpdatedAt: now,
+        checksum: sha256(stableJson({ title: task.title, description: task.description, acceptanceCriteria: task.acceptanceCriteria })),
+        direction: "orion_to_notion",
+        status: "synced",
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [notionSyncState.companyId, notionSyncState.objectType, notionSyncState.objectId],
+        set: {
+          notionPageId,
+          orionUpdatedAt: now,
+          checksum: sha256(stableJson({ title: task.title, description: task.description, acceptanceCriteria: task.acceptanceCriteria })),
+          direction: "orion_to_notion",
+          status: "synced",
+          conflictJson: null,
+          updatedAt: now,
+        },
+      });
+    await db
+      .insert(externalObjectRefs)
+      .values({
+        companyId: task.companyId,
+        provider: "notion",
+        localObjectType: "task",
+        localObjectId: task.id,
+        externalObjectId: notionPageId,
+        externalUrl: notionUrl,
+        ownerClass: "operator_owned",
+        checksum: sha256(stableJson({ title: task.title, description: task.description })),
+        metadata: {
+          source: "orion_planner_draft",
+          dataSourceId: taskDataSourceId,
+        },
+        lastOrionEditedAt: now,
+        syncStatus: "synced",
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [
+          externalObjectRefs.companyId,
+          externalObjectRefs.provider,
+          externalObjectRefs.localObjectType,
+          externalObjectRefs.localObjectId,
+        ],
+        set: {
+          externalObjectId: notionPageId,
+          externalUrl: notionUrl,
+          ownerClass: "operator_owned",
+          checksum: sha256(stableJson({ title: task.title, description: task.description })),
+          metadata: {
+            source: "orion_planner_draft",
+            dataSourceId: taskDataSourceId,
+          },
+          lastOrionEditedAt: now,
+          syncStatus: "synced",
+          updatedAt: now,
+        },
+      });
+    const intake = await queueRoundTableIntake(task.id, { source: "planner_draft" }, { createWorkflowIfMissing: true });
+    return {
+      taskId: task.id,
+      companyId: task.companyId,
+      status: "published",
+      notionPageId,
+      notionUrl,
+      intake: intake.intake,
+    };
+  }
+
   return {
     validateChangedPathsAgainstEnvelope,
     workflowPresets: () => Object.values(ORION_WORKFLOW_PRESETS),
@@ -1467,6 +2113,12 @@ export function orionService(db: Db) {
     createWorkflowFromPreset,
     getRoundTableSetupReadiness,
     setupRoundTable,
+    getRoundTableIntake,
+    queueRoundTableIntake,
+    queueExistingRoundTableIntake,
+    routeRoundTableIntake,
+    createPlannerDraft,
+    publishPlannerDraftToNotion,
 
     getTaskPolicy: async (taskId: string) => {
       const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).then((rows) => rows[0] ?? null);
@@ -1718,7 +2370,7 @@ export function orionService(db: Db) {
           eq(orionWorkflowNodes.nodeKey, binding.currentNodeKey),
         ))
         .limit(1)
-        .then((rows) => rows[0] ?? null);
+        .then((rows) => toOrionWorkflowNode(rows[0] ?? null));
 
       const edge = await db
         .select()
@@ -1730,7 +2382,7 @@ export function orionService(db: Db) {
         ))
         .orderBy(orionWorkflowEdges.position)
         .limit(1)
-        .then((rows) => rows[0] ?? null);
+        .then((rows) => toOrionWorkflowEdge(rows[0] ?? null));
       if (!edge) {
         return {
           taskId: task.id,
@@ -1752,7 +2404,7 @@ export function orionService(db: Db) {
         .from(orionWorkflowNodes)
         .where(and(eq(orionWorkflowNodes.workflowId, binding.workflowId), eq(orionWorkflowNodes.nodeKey, edge.toNodeKey)))
         .limit(1)
-        .then((rows) => rows[0] ?? null);
+        .then((rows) => toOrionWorkflowNode(rows[0] ?? null));
       if (!targetNode) {
         return {
           taskId: task.id,
@@ -2245,6 +2897,13 @@ export function orionService(db: Db) {
             },
           })
           .returning();
+
+        try {
+          await queueRoundTableIntake(taskRow.id, { source: "notion_sync" });
+        } catch {
+          // Import remains durable even when the Round Table workflow is not set
+          // up yet or the task is otherwise not intake-eligible.
+        }
 
         results.push({
           notionPageId: task.notionPageId,

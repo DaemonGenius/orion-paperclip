@@ -72,7 +72,7 @@ function TextListField({
   placeholder?: string;
 }) {
   return (
-    <div className="space-y-1.5">
+    <div className="min-w-0 space-y-1.5">
       <FieldLabel>{label}</FieldLabel>
       <Textarea
         value={value}
@@ -150,13 +150,13 @@ export function AutonomyEnvelopeEditor({ taskId }: { taskId: string }) {
         ) : null}
       </div>
 
-      <div className="grid grid-cols-2 gap-1 rounded-md border border-border bg-muted/20 p-1">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(130px,1fr))] gap-1 rounded-md border border-border bg-muted/20 p-1">
         {(["pair", "auto_to_pr"] as const).map((option) => (
           <button
             key={option}
             type="button"
             className={cn(
-              "rounded px-2 py-1.5 text-xs font-medium transition-colors",
+              "min-w-0 truncate rounded px-2 py-1.5 text-xs font-medium transition-colors",
               mode === option ? "bg-background shadow-sm" : "text-muted-foreground hover:bg-background/60",
             )}
             onClick={() => {
@@ -169,7 +169,7 @@ export function AutonomyEnvelopeEditor({ taskId }: { taskId: string }) {
         ))}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-3">
         <TextListField
           label="Allowed repos"
           value={allowedRepos}
@@ -196,8 +196,8 @@ export function AutonomyEnvelopeEditor({ taskId }: { taskId: string }) {
         />
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1.5">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
+        <div className="min-w-0 space-y-1.5">
           <FieldLabel>Max runtime minutes</FieldLabel>
           <Input
             type="number"
@@ -207,7 +207,7 @@ export function AutonomyEnvelopeEditor({ taskId }: { taskId: string }) {
             onChange={(event) => setMaxRuntimeMinutes(event.target.value)}
           />
         </div>
-        <div className="space-y-1.5">
+        <div className="min-w-0 space-y-1.5">
           <FieldLabel>Max cost USD</FieldLabel>
           <Input
             type="number"
@@ -220,17 +220,17 @@ export function AutonomyEnvelopeEditor({ taskId }: { taskId: string }) {
         </div>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-3">
-        <label className="flex items-center justify-between gap-3 rounded-md border border-border px-2 py-1.5 text-xs">
-          <span>Tests</span>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-2">
+        <label className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-border px-2 py-1.5 text-xs">
+          <span className="min-w-0 truncate">Tests</span>
           <ToggleSwitch checked={requiresTests} onCheckedChange={setRequiresTests} />
         </label>
-        <label className="flex items-center justify-between gap-3 rounded-md border border-border px-2 py-1.5 text-xs">
-          <span>PR</span>
+        <label className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-border px-2 py-1.5 text-xs">
+          <span className="min-w-0 truncate">PR</span>
           <ToggleSwitch checked={effectiveOpensPr} onCheckedChange={setOpensPr} disabled={mode === "auto_to_pr"} />
         </label>
-        <label className="flex items-center justify-between gap-3 rounded-md border border-border px-2 py-1.5 text-xs text-muted-foreground">
-          <span>Auto merge</span>
+        <label className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-border px-2 py-1.5 text-xs text-muted-foreground">
+          <span className="min-w-0 truncate">Auto merge</span>
           <ToggleSwitch checked={false} onCheckedChange={() => undefined} disabled />
         </label>
       </div>

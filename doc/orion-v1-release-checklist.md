@@ -6,6 +6,8 @@ Use this document as the release decision surface. Notion tracks task status and
 
 The step-by-step execution companion for this checklist is `doc/orion-v1-end-to-end-test-plan.md`.
 
+The V3 homelab usability boundary that builds on this V1 execution spine is `doc/orion-v3-homelab-release-boundary.md`.
+
 ## Release Boundary
 
 Orion V1 is the first releasable control plane for the path:

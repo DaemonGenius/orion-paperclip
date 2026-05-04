@@ -262,6 +262,7 @@ function taskListFiltersFromViewState(state: TaskFilterState): TaskListRequestFi
     routeMode: join(state.routeModes),
     prState: join(state.prStates),
     agentConfidence: join(state.agentConfidenceLevels),
+    orionIntake: state.orionIntake || undefined,
   };
 }
 
@@ -281,7 +282,8 @@ function hasServerTaskFilters(state: TaskFilterState): boolean {
     state.taskTypes.length ||
     state.routeModes.length ||
     state.prStates.length ||
-    state.agentConfidenceLevels.length
+    state.agentConfidenceLevels.length ||
+    state.orionIntake
   );
 }
 
