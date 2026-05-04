@@ -1783,6 +1783,7 @@ export function orionService(db: Db) {
     input: QueueExistingOrionRoundTableIntake,
   ): Promise<OrionRoundTableBulkQueueResult> {
     const workflow = await getRoundTableWorkflow(companyId, null, true);
+    if (!workflow) throw unprocessable("Unable to create Orion Round Table workflow for intake");
     const taskRows = await db
       .select()
       .from(tasks)

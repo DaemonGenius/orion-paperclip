@@ -843,6 +843,7 @@ const TaskDetailChatTab = memo(function TaskDetailChatTab({
 });
 
 type TaskDetailActivityTabProps = {
+  task: Task;
   taskId: string;
   companyId: string;
   taskStatus: Task["status"];
@@ -857,6 +858,7 @@ type TaskDetailActivityTabProps = {
 };
 
 function TaskDetailActivityTab({
+  task,
   taskId,
   companyId,
   taskStatus,
@@ -3444,6 +3446,7 @@ export function TaskDetail() {
         <TabsContent value="activity">
           {detailTab === "activity" ? (
             <TaskDetailActivityTab
+              task={task}
               taskId={task.id}
               companyId={task.companyId}
               taskStatus={task.status}

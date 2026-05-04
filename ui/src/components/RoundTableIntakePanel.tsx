@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { GitBranch, Send, UsersRound } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { OrionRoleProfileId, Task } from "@paperclipai/shared";
+import type { OrionRoleProfileId } from "@paperclipai/shared";
 import { ApiError } from "../api/client";
 import { orionApi } from "../api/orion";
 import { queryKeys } from "../lib/queryKeys";
@@ -35,7 +35,7 @@ export function RoundTableIntakePanel({
 }: {
   taskId: string;
   companyId: string;
-  task?: Pick<Task, "originKind" | "executionState" | "originId"> | null;
+  task?: { originKind?: string | null; executionState?: unknown; originId?: string | null } | null;
 }) {
   const queryClient = useQueryClient();
   const { data: intake, isLoading } = useQuery({

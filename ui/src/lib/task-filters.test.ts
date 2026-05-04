@@ -164,6 +164,40 @@ describe("task filters", () => {
     expect(filtered.map((task) => task.id)).toEqual(["live-task"]);
   });
 
+  it("filters and round-trips Orion intake tasks", () => {
+    const intakeTask = makeTask({
+      id: "intake-task",
+      executionState: { orionIntake: { state: "queued" } } as unknown as Task["executionState"],
+    });
+    const routedTask = makeTask({
+      id: "routed-task",
+      executionState: { orionIntake: { state: "routed" } } as unknown as Task["executionState"],
+    });
+    const runTask = makeTask({
+      id: "run-task",
+      executionRunId: "run-1",
+      executionState: { orionIntake: { state: "queued" } } as unknown as Task["executionState"],
+    });
+    const draftTask = makeTask({
+      id: "draft-task",
+      executionState: { orionIntake: { state: "draft" } } as unknown as Task["executionState"],
+    });
+
+    const filtered = applyTaskFilters([intakeTask, routedTask, runTask, draftTask], {
+      ...defaultTaskFilterState,
+      orionIntake: true,
+    });
+
+    expect(filtered.map((task) => task.id)).toEqual(["intake-task", "routed-task"]);
+    expect(countActiveTaskFilters({ ...defaultTaskFilterState, orionIntake: true })).toBe(1);
+    const written = writeTaskFiltersToSearchParams(new URLSearchParams(), {
+      ...defaultTaskFilterState,
+      orionIntake: true,
+    });
+    expect(written.get("orionIntake")).toBe("true");
+    expect(taskFiltersFromSearchParams(written).orionIntake).toBe(true);
+  });
+
   it("counts the live-only filter as an active filter group", () => {
     expect(countActiveTaskFilters({
       ...defaultTaskFilterState,

@@ -1682,11 +1682,19 @@ describeEmbeddedPostgres("Orion routes", () => {
       .send({
         tasks: [
           { notionPageId: "notion-task-operator-node", title: "Operator node task" },
-          { notionPageId: "notion-task-no-binding", title: "No binding task" },
         ],
       });
     const operatorTaskId = sync.body.results[0].taskId;
-    const noBindingTaskId = sync.body.results[1].taskId;
+    const [noBindingTask] = await db
+      .insert(tasks)
+      .values({
+        companyId,
+        title: "No binding task",
+        status: "backlog",
+        priority: "medium",
+      })
+      .returning();
+    const noBindingTaskId = noBindingTask!.id;
     await request(app)
       .post(`/api/orion/tasks/${operatorTaskId}/workflow-binding`)
       .send({ workflowId: workflow.body.id, currentNodeKey: "recovery_router" });
@@ -1816,6 +1824,196 @@ describeEmbeddedPostgres("Orion routes", () => {
         toNodeKey: input.expectedNodeKey,
       });
     }
+
+    it("queues Notion imports into Orion intake without creating runs or ledgers", async () => {
+      const fixture = await seedRoundTableRoutingFixture({
+        notionPageId: "notion-round-table-intake-import",
+      });
+
+      const intake = await request(app).get(`/api/orion/tasks/${fixture.taskId}/round-table/intake`);
+      expect(intake.status, JSON.stringify(intake.body)).toBe(200);
+      expect(intake.body.queued).toBe(true);
+      expect(intake.body.source).toBe("notion_sync");
+      expect(intake.body.currentNodeKey).toBe("task_intake");
+      expect(intake.body.suggestedTarget.roleProfileId).toBe("planner");
+      expect(intake.body.suggestedTarget.agent.id).toBe(fixture.plannerAgentId);
+
+      const [runCount] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(heartbeatRuns)
+        .where(sql`${heartbeatRuns.contextSnapshot} ->> 'taskId' = ${fixture.taskId}`);
+      const [ledgerCount] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(orionReqLedgers)
+        .where(eq(orionReqLedgers.taskId, fixture.taskId));
+      expect(runCount?.count).toBe(0);
+      expect(ledgerCount?.count).toBe(0);
+
+      const route = await request(app)
+        .post(`/api/orion/tasks/${fixture.taskId}/round-table/route`)
+        .send({});
+      expect(route.status, JSON.stringify(route.body)).toBe(200);
+      expect(route.body.intake.routedTarget.roleProfileId).toBe("planner");
+      expect(route.body.intake.routedTarget.agent.id).toBe(fixture.plannerAgentId);
+
+      const [task] = await db.select().from(tasks).where(eq(tasks.id, fixture.taskId)).limit(1);
+      expect(task.assigneeAgentId).toBe(fixture.plannerAgentId);
+      expect(task.status).toBe("in_progress");
+    });
+
+    it("suggests Round Table owners by task shape and blocks unbound target roles", async () => {
+      const verifier = await seedRoundTableRoutingFixture({
+        notionPageId: "notion-round-table-pr-intake",
+      });
+      await db
+        .update(tasks)
+        .set({ title: "PR #76 Pending PR", taskType: "Review", prUrl: "https://github.com/acme/app/pull/76" })
+        .where(eq(tasks.id, verifier.taskId));
+      await request(app).post(`/api/orion/tasks/${verifier.taskId}/round-table/queue`).send({ source: "manual" }).expect(200);
+      const verifierIntake = await request(app).get(`/api/orion/tasks/${verifier.taskId}/round-table/intake`);
+      expect(verifierIntake.body.suggestedTarget.roleProfileId).toBe("verifier");
+
+      await db.execute(sql.raw(`TRUNCATE TABLE "companies" CASCADE`));
+      const knowledge = await seedRoundTableRoutingFixture({
+        notionPageId: "notion-round-table-docs-intake",
+      });
+      await db
+        .update(tasks)
+        .set({ title: "Sync receipt evidence", taskType: "Docs", module: "Docs", layer: "Docs" })
+        .where(eq(tasks.id, knowledge.taskId));
+      await request(app).post(`/api/orion/tasks/${knowledge.taskId}/round-table/queue`).send({ source: "manual" }).expect(200);
+      const knowledgeIntake = await request(app).get(`/api/orion/tasks/${knowledge.taskId}/round-table/intake`);
+      expect(knowledgeIntake.body.suggestedTarget.roleProfileId).toBe("knowledge_steward");
+
+      await db.execute(sql.raw(`TRUNCATE TABLE "companies" CASCADE`));
+      const recovery = await seedRoundTableRoutingFixture({
+        notionPageId: "notion-round-table-recovery-intake",
+      });
+      await db
+        .update(tasks)
+        .set({ title: "Recover blocked task", status: "blocked", taskType: "Recovery" })
+        .where(eq(tasks.id, recovery.taskId));
+      await request(app).post(`/api/orion/tasks/${recovery.taskId}/round-table/queue`).send({ source: "manual" }).expect(200);
+      const recoveryIntake = await request(app).get(`/api/orion/tasks/${recovery.taskId}/round-table/intake`);
+      expect(recoveryIntake.body.suggestedTarget.roleProfileId).toBe("recovery_router");
+
+      await db.execute(sql.raw(`TRUNCATE TABLE "companies" CASCADE`));
+      const unbound = await seedRoundTableRoutingFixture({
+        bindPlanner: false,
+        notionPageId: "notion-round-table-intake-unbound",
+      });
+      const route = await request(app)
+        .post(`/api/orion/tasks/${unbound.taskId}/round-table/route`)
+        .send({ targetRoleProfileId: "planner" });
+      expect(route.status, JSON.stringify(route.body)).toBe(422);
+      const [taskAfterBlockedRoute] = await db.select().from(tasks).where(eq(tasks.id, unbound.taskId)).limit(1);
+      expect(taskAfterBlockedRoute.assigneeAgentId).toBeNull();
+    });
+
+    it("bulk queues eligible existing tasks idempotently and skips active or terminal work", async () => {
+      await seedCompanyAndAgent();
+      const workflow = await request(app)
+        .post(`/api/orion/companies/${companyId}/workflows/presets`)
+        .send({
+          presetId: "orion_round_table",
+          makeDefault: true,
+          agentBindings: { implementer: agentId },
+        });
+      expect(workflow.status, JSON.stringify(workflow.body)).toBe(201);
+
+      const [eligible] = await db.insert(tasks).values({
+        companyId,
+        title: "Plan a homelab feature",
+        status: "backlog",
+        priority: "medium",
+      }).returning();
+      const [terminal] = await db.insert(tasks).values({
+        companyId,
+        title: "Already done",
+        status: "done",
+        priority: "medium",
+      }).returning();
+      const [active] = await db.insert(tasks).values({
+        companyId,
+        title: "Already running",
+        status: "backlog",
+        priority: "medium",
+      }).returning();
+      const run = await request(app)
+        .post(`/api/orion/tasks/${active!.id}/runs`)
+        .send({ agentId, mode: "pair", planMarkdown: "Already queued." });
+      expect(run.status, JSON.stringify(run.body)).toBe(201);
+
+      const first = await request(app)
+        .post(`/api/orion/companies/${companyId}/round-table/queue-existing`)
+        .send({ limit: 20 });
+      expect(first.status, JSON.stringify(first.body)).toBe(200);
+      expect(first.body.results.find((result: { taskId: string }) => result.taskId === eligible!.id)).toMatchObject({ status: "queued" });
+      expect(first.body.results.find((result: { taskId: string }) => result.taskId === terminal!.id)).toMatchObject({
+        status: "skipped",
+        reason: "terminal_or_hidden",
+      });
+      expect(first.body.results.find((result: { taskId: string }) => result.taskId === active!.id)).toMatchObject({
+        status: "skipped",
+        reason: "active_run",
+      });
+
+      const second = await request(app)
+        .post(`/api/orion/companies/${companyId}/round-table/queue-existing`)
+        .send({ limit: 20 });
+      expect(second.status, JSON.stringify(second.body)).toBe(200);
+      expect(second.body.results.find((result: { taskId: string }) => result.taskId === eligible!.id)).toMatchObject({
+        status: "skipped",
+        reason: "already_queued",
+      });
+    });
+
+    it("creates local planner drafts and publishes approved drafts to Notion intake", async () => {
+      await seedCompanyAndAgent();
+      await seedNotionBinding();
+      await request(app)
+        .post(`/api/orion/companies/${companyId}/notion/bootstrap`)
+        .send({ rootPageId: "notion-root-genesis" })
+        .expect(201);
+
+      const draft = await request(app)
+        .post(`/api/orion/companies/${companyId}/planner-drafts`)
+        .send({
+          title: "Design live Shooter sync",
+          description: "Planner should turn this into a bounded task.",
+          acceptanceCriteria: "Spec is clear enough to run.",
+        });
+      expect(draft.status, JSON.stringify(draft.body)).toBe(201);
+      expect(draft.body.status).toBe("draft");
+
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: "notion-planner-draft-page",
+          url: "https://www.notion.so/notion-planner-draft-page",
+        }),
+      } as Response);
+
+      const publish = await request(app)
+        .post(`/api/orion/tasks/${draft.body.taskId}/planner-draft/publish-to-notion`)
+        .send({ idempotencyKey: "publish-planner-draft" });
+      expect(publish.status, JSON.stringify(publish.body)).toBe(200);
+      expect(publish.body.status).toBe("published");
+      expect(publish.body.notionPageId).toBe("notion-planner-draft-page");
+      expect(publish.body.intake.queued).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      const [task] = await db.select().from(tasks).where(eq(tasks.id, draft.body.taskId)).limit(1);
+      expect(task.originKind).toBe("notion_task");
+      expect(task.originId).toBe("notion-planner-draft-page");
+      const [binding] = await db
+        .select()
+        .from(orionTaskWorkflowBindings)
+        .where(eq(orionTaskWorkflowBindings.taskId, draft.body.taskId))
+        .limit(1);
+      expect(binding.currentNodeKey).toBe("task_intake");
+    });
 
     it("advances the canonical council path through explicit Round Table node bindings", async () => {
       const fixture = await seedRoundTableRoutingFixture({ currentNodeKey: "task_intake" });

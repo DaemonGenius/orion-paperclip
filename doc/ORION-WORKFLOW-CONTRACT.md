@@ -106,6 +106,39 @@ POST /api/orion/tasks/:taskId/workflow/advance
 
 Advancing a task updates the task binding and active workflow run node. Bound agent targets assign the task to that agent and keep it active; operator-required targets clear the agent assignee and move the task to review/operator attention.
 
+## Round Table Intake
+
+Round Table intake is a pre-run queue. It is represented by `orion_task_workflow_bindings` plus `tasks.executionState.orionIntake`; it is not the heartbeat run queue and must not create a heartbeat run or REQ ledger.
+
+Supported intake sources are:
+
+- Notion sync: eligible imported tasks bind to the company default `orion_round_table` workflow at `task_intake` when that workflow exists.
+- Manual task detail action: an operator can queue one task into intake.
+- Bulk existing-task action: an operator can queue eligible visible, non-terminal tasks without active runs.
+- Planner draft publish: an approved local Planner draft is written to Notion and then queued like a Notion task.
+
+The intake APIs are:
+
+```text
+GET  /api/orion/tasks/:taskId/round-table/intake
+POST /api/orion/tasks/:taskId/round-table/queue
+POST /api/orion/companies/:companyId/round-table/queue-existing
+POST /api/orion/tasks/:taskId/round-table/route
+POST /api/orion/companies/:companyId/planner-drafts
+POST /api/orion/tasks/:taskId/planner-draft/publish-to-notion
+```
+
+Smart intake routing suggests the first council owner from task shape:
+
+- Feature, implementation, and default tasks suggest Planner.
+- Review and PR-linked tasks suggest Verifier.
+- Docs, sync, receipt, evidence, and knowledge tasks suggest Knowledge Steward.
+- Blocked and recovery tasks suggest Recovery Router.
+
+The operator can override the suggested role before routing. Routing assigns the selected bound council agent or returns an actionable missing-binding/operator-required state. Routing does not launch a run, start Codex, create a REQ ledger, publish a PR, or wake an adapter. Execution remains a separate operator-triggered step through the existing run launcher and Codex start flow.
+
+Planner drafts are Orion-local until approval. Publishing a draft creates a Notion task row through the configured Notion task data source, stores the Notion page reference, and queues the resulting task into intake. Missing Notion setup blocks publication; it does not silently create local-only Notion authority.
+
 ## Guided Round Table Setup
 
 ORN-V2-011 adds an explicit operator-triggered setup path for existing Orion companies. No company is migrated on app load, deploy, or `/org` render.

@@ -178,7 +178,13 @@ export const TASK_THREAD_INTERACTION_CONTINUATION_POLICIES = [
 export type TaskThreadInteractionContinuationPolicy =
   (typeof TASK_THREAD_INTERACTION_CONTINUATION_POLICIES)[number];
 
-export const TASK_ORIGIN_KINDS = ["manual", "notion_task", "routine_execution", "stale_active_run_evaluation"] as const;
+export const TASK_ORIGIN_KINDS = [
+  "manual",
+  "notion_task",
+  "orion_planner_draft",
+  "routine_execution",
+  "stale_active_run_evaluation",
+] as const;
 export type BuiltInTaskOriginKind = (typeof TASK_ORIGIN_KINDS)[number];
 export type PluginTaskOriginKind = `plugin:${string}`;
 export type TaskOriginKind = BuiltInTaskOriginKind | PluginTaskOriginKind;
