@@ -1,13 +1,41 @@
 export type OrionAutonomyMode = "pair" | "auto_to_pr";
 export type OrionWorkflowPresetId = "paperclip_company" | "orion_operator_auto_to_pr" | "orion_round_table";
+export type OrionCouncilRoleId =
+  | "architect"
+  | "ux_ui_designer"
+  | "qa_tester"
+  | "infrastructure_engineer"
+  | "security_expert"
+  | "implementer";
+export type OrionPlannerImpactFlag =
+  | "frontend"
+  | "backend"
+  | "data_model"
+  | "infrastructure"
+  | "security"
+  | "testing";
+export type OrionCouncilSessionStatus =
+  | "planning"
+  | "awaiting_plan_approval"
+  | "approved"
+  | "executing"
+  | "awaiting_review"
+  | "iteration_required"
+  | "review_passed"
+  | "escalated"
+  | "draft_pr_opened";
+export type OrionCouncilDecisionPhase = "planning" | "implementation_review";
+export type OrionCouncilDecisionValue = "approved" | "changes_requested" | "blocked";
+export type OrionCouncilReviewStatus = "passed" | "failed" | "blocked";
 export type OrionRoleProfileId =
   | "operator"
   | "planner"
   | "architect"
-  | "implementer"
-  | "verifier"
-  | "knowledge_steward"
-  | "recovery_router";
+  | "ux_ui_designer"
+  | "qa_tester"
+  | "infrastructure_engineer"
+  | "security_expert"
+  | "implementer";
 export type OrionRoleProfileAction =
   | "approve_policy"
   | "configure_integrations"
@@ -96,6 +124,107 @@ export interface OrionTaskPolicy {
   approvedAt: Date | string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
+}
+
+export interface OrionCouncilParticipant {
+  id: string;
+  companyId: string;
+  sessionId: string;
+  roleId: OrionCouncilRoleId | string;
+  agentId: string | null;
+  required: boolean;
+  status: string;
+  domainNotes: string | null;
+  planApprovedAt: Date | string | null;
+  reviewStatus: OrionCouncilReviewStatus | string | null;
+  reviewNotes: string | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+export interface OrionCouncilDecision {
+  id: string;
+  companyId: string;
+  sessionId: string;
+  participantId: string | null;
+  phase: OrionCouncilDecisionPhase | string;
+  decision: OrionCouncilDecisionValue | string;
+  notes: string | null;
+  planSha256: string | null;
+  createdByAgentId: string | null;
+  createdByUserId: string | null;
+  createdAt: Date | string;
+}
+
+export interface OrionCouncilReview {
+  id: string;
+  companyId: string;
+  sessionId: string;
+  participantId: string;
+  iteration: number;
+  status: OrionCouncilReviewStatus | string;
+  notes: string | null;
+  blockingReason: string | null;
+  requiredFixSummary: string | null;
+  createdAt: Date | string;
+}
+
+export interface OrionCouncilIteration {
+  id: string;
+  companyId: string;
+  sessionId: string;
+  iteration: number;
+  status: string;
+  reason: string | null;
+  requiredFixSummary: string | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+export interface OrionCouncilPlan {
+  sessionId: string;
+  finalPlanMarkdown: string | null;
+  finalPlanSha256: string | null;
+  approvedPlanSha256: string | null;
+}
+
+export interface OrionCouncilSession {
+  id: string;
+  companyId: string;
+  taskId: string;
+  runId: string | null;
+  status: OrionCouncilSessionStatus | string;
+  phase: string;
+  baseBranch: string;
+  maxIterations: number;
+  currentIteration: number;
+  impactFlags: Partial<Record<OrionPlannerImpactFlag | string, boolean>>;
+  plannerNotes: string | null;
+  finalPlanMarkdown: string | null;
+  finalPlanSha256: string | null;
+  approvedPlanSha256: string | null;
+  createdByUserId: string | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+  participants?: OrionCouncilParticipant[];
+  decisions?: OrionCouncilDecision[];
+  reviews?: OrionCouncilReview[];
+  iterations?: OrionCouncilIteration[];
+}
+
+export interface OrionAutoTeamAgent {
+  id: string;
+  name: string;
+  role: "planner" | OrionCouncilRoleId | string;
+  title: string | null;
+  adapterType: string;
+}
+
+export interface OrionAutoTeamResetResult {
+  companyId: string;
+  deletedWorkflowCount: number;
+  deletedAgentCount: number;
+  createdAgents: OrionAutoTeamAgent[];
 }
 
 export interface OrionRunReadinessAgent {

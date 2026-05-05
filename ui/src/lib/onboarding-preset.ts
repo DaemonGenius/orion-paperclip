@@ -41,8 +41,7 @@ export const PAPERCLIP_DEFAULT_TASK_DESCRIPTION = `You are the CEO. You set the 
 
 export function defaultAgentNameForPreset(presetId: OrionWorkflowPresetId) {
   if (presetId === "paperclip_company") return "CEO";
-  if (presetId === "orion_round_table") return "Codex Implementer 01";
-  return "Codex Engineer 01";
+  return "Orion Implementer";
 }
 
 export function defaultTaskTitleForPreset(presetId: OrionWorkflowPresetId) {
@@ -54,21 +53,10 @@ export function defaultTaskDescriptionForPreset(presetId: OrionWorkflowPresetId)
 }
 
 export function agentRoleForPreset(presetId: OrionWorkflowPresetId) {
-  return presetId === "paperclip_company" ? "ceo" : "implementation_worker";
+  return presetId === "paperclip_company" ? "ceo" : "implementer";
 }
 
 export function agentTitleForPreset(presetId: OrionWorkflowPresetId) {
   if (presetId === "paperclip_company") return "CEO";
-  if (presetId === "orion_round_table") return "Implementer";
-  return "Implementation Worker";
-}
-
-export function agentBindingKeyForPreset(presetId: OrionWorkflowPresetId) {
-  if (presetId === "paperclip_company") return "ceo";
-  if (presetId === "orion_round_table") return "implementer";
-  return "codex_worker";
-}
-
-export function startNodeForPreset(presetId: OrionWorkflowPresetId) {
-  return presetId === "paperclip_company" ? "board" : presetId === "orion_round_table" ? "task_intake" : "notion_task";
+  return "Implementer";
 }

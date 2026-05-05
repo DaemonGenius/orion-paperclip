@@ -16,6 +16,11 @@ import {
   tasks,
   notionSyncState,
   orionDecisions,
+  orionCouncilDecisions,
+  orionCouncilIterations,
+  orionCouncilParticipants,
+  orionCouncilReviews,
+  orionCouncilSessions,
   orionPrReceipts,
   orionReqLedgerArtifacts,
   orionReqLedgerEvents,
@@ -38,7 +43,11 @@ import type {
   CreateOrionPlannerDraft,
   OrionAutonomyEnvelope,
   OrionBootstrapNotion,
+  AdvanceOrionCouncilIteration,
+  ApproveOrionCouncilPlan,
   OpenOrionPr,
+  OrionCouncilRoleId,
+  OrionCouncilSession,
   OrionPlannerDraftResult,
   OrionRoleProfileId,
   OrionRoundTableBulkQueueResult,
@@ -67,8 +76,13 @@ import type {
   RecordOrionPr,
   RunOrionVerification,
   SaveOrionLedgerPlan,
+  SaveOrionCouncilPlan,
   StartOrionCodexRun,
+  StartOrionCouncilExecution,
   StartOrionLedgerExecution,
+  RecordOrionCouncilReview,
+  ResetOrionAutoTeam,
+  ValidateOrionPlannerSpec,
   UpsertOrionTaskPolicy,
   SyncbackOrionNotion,
 } from "@paperclipai/shared";
@@ -82,6 +96,7 @@ import { conflict, notFound, unprocessable } from "../errors.js";
 import { resolveShell, sanitizeRuntimeServiceBaseEnv } from "./workspace-runtime.js";
 import { assertProviderHost, cleanGitError, parseRepoUrl, resolveGitAuth, runGitWithAuth } from "./git-repositories.js";
 import { ghFetch, gitHubApiBase } from "./github-fetch.js";
+import { agentInstructionsService } from "./agent-instructions.js";
 import { secretService } from "./secrets.js";
 import { taskService } from "./tasks.js";
 
@@ -123,9 +138,120 @@ const ROUND_TABLE_AGENT_DEFAULTS: Record<(typeof ROUND_TABLE_EXECUTABLE_NODE_KEY
 };
 const VERIFICATION_OUTPUT_MAX_CHARS = 12_000;
 type RoundTableExecutableNodeKey = (typeof ROUND_TABLE_EXECUTABLE_NODE_KEYS)[number];
+const ORION_COUNCIL_ROLE_IDS = [
+  "architect",
+  "ux_ui_designer",
+  "qa_tester",
+  "infrastructure_engineer",
+  "security_expert",
+  "implementer",
+] as const;
+const REQUIRED_BASE_COUNCIL_ROLES: OrionCouncilRoleId[] = ["architect", "qa_tester", "implementer"];
+const COUNCIL_AGENT_ROLE_CANDIDATES: Record<OrionCouncilRoleId, string[]> = {
+  architect: ["architect"],
+  ux_ui_designer: ["ux_ui_designer", "designer", "product_designer"],
+  qa_tester: ["qa_tester", "qa", "verifier"],
+  infrastructure_engineer: ["infrastructure_engineer", "devops", "platform_engineer"],
+  security_expert: ["security_expert", "security"],
+  implementer: ["implementation_worker", "implementer", "engineer"],
+};
+const COUNCIL_ROLE_LABELS: Record<OrionCouncilRoleId, string> = {
+  architect: "Architect",
+  ux_ui_designer: "UX/UI Designer",
+  qa_tester: "QA Tester",
+  infrastructure_engineer: "Infrastructure Engineer",
+  security_expert: "Security Expert",
+  implementer: "Implementer",
+};
+const ORION_AUTO_AGENT_DEFINITIONS = [
+  {
+    role: "planner",
+    name: "Orion Planner",
+    title: "Planner",
+    adapterType: "codex_local",
+    capabilities: "Creates and validates task specifications before Auto Round Table handoff.",
+    instructions: "You are Orion Planner. Help the operator turn intent into a complete task specification with acceptance criteria, autonomy envelope, impact flags, and proposed Auto Round Table participants. You do not vote in council approvals or implementation reviews.",
+  },
+  {
+    role: "architect",
+    name: "Orion Architect",
+    title: "Architect",
+    adapterType: "codex_local",
+    capabilities: "Reviews system boundaries, contracts, data authority, and implementation plan risks.",
+    instructions: "You are Orion Architect. Review implementation plans and completed work for architecture, contracts, data ownership, and system boundary risks. Approve only when the plan or implementation is coherent and bounded.",
+  },
+  {
+    role: "ux_ui_designer",
+    name: "Orion UX/UI Designer",
+    title: "UX/UI Designer",
+    adapterType: "codex_local",
+    capabilities: "Reviews user experience, interface flows, visual quality, and frontend acceptance criteria.",
+    instructions: "You are Orion UX/UI Designer. Join council work only when frontend or experience impact is selected. Review plans and implementations for interaction quality, visual consistency, accessibility, and user workflow fit.",
+  },
+  {
+    role: "qa_tester",
+    name: "Orion QA Tester",
+    title: "QA Tester",
+    adapterType: "codex_local",
+    capabilities: "Defines and reviews verification evidence, regression risk, and acceptance coverage.",
+    instructions: "You are Orion QA Tester. Review plans and implementations for testability, acceptance criteria coverage, verification evidence, and regression risk. QA review must pass before Auto can open a draft PR.",
+  },
+  {
+    role: "infrastructure_engineer",
+    name: "Orion Infrastructure Engineer",
+    title: "Infrastructure Engineer",
+    adapterType: "codex_local",
+    capabilities: "Reviews runtime, deployment, environment, CI, and infrastructure impacts.",
+    instructions: "You are Orion Infrastructure Engineer. Join council work only when infrastructure impact is selected. Review plans and implementations for environment, CI, deployment, runtime, and operational risks.",
+  },
+  {
+    role: "security_expert",
+    name: "Orion Security Expert",
+    title: "Security Expert",
+    adapterType: "codex_local",
+    capabilities: "Reviews secret handling, authorization, data exposure, and security risk.",
+    instructions: "You are Orion Security Expert. Join council work only when security impact is selected. Review plans and implementations for auth, data exposure, dependency, secret-handling, and abuse risks.",
+  },
+  {
+    role: "implementer",
+    name: "Orion Implementer",
+    title: "Implementer",
+    adapterType: "codex_local",
+    capabilities: "Executes approved Auto plans inside isolated git worktrees from master.",
+    instructions: "You are Orion Implementer. Execute only the final approved Auto Round Table plan in the isolated git worktree branch from master. Do not open PRs, approve PRs, merge, read secrets, or write Orion authority state.",
+  },
+] as const;
+const OLD_ORION_AUTO_AGENT_ROLES = new Set(["planner", "architect", "verifier", "knowledge_steward", "recovery_router", "implementation_worker", "ux_ui_designer", "qa_tester", "infrastructure_engineer", "security_expert", "implementer"]);
 
 function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function normalizeCouncilImpactFlags(flags: Record<string, boolean> | null | undefined) {
+  return {
+    frontend: Boolean(flags?.frontend),
+    backend: Boolean(flags?.backend),
+    data_model: Boolean(flags?.data_model),
+    infrastructure: Boolean(flags?.infrastructure),
+    security: Boolean(flags?.security),
+    testing: Boolean(flags?.testing),
+  };
+}
+
+function selectCouncilRoles(
+  impactFlags: Record<string, boolean> | null | undefined,
+  proposedRoleIds: OrionCouncilRoleId[] = [],
+): OrionCouncilRoleId[] {
+  const flags = normalizeCouncilImpactFlags(impactFlags);
+  const selected = new Set<OrionCouncilRoleId>(REQUIRED_BASE_COUNCIL_ROLES);
+  for (const roleId of proposedRoleIds) selected.add(roleId);
+  if (flags.frontend) selected.add("ux_ui_designer");
+  if (flags.infrastructure) selected.add("infrastructure_engineer");
+  if (flags.security) selected.add("security_expert");
+  if (flags.data_model || flags.backend) selected.add("architect");
+  if (flags.testing) selected.add("qa_tester");
+  selected.add("implementer");
+  return ORION_COUNCIL_ROLE_IDS.filter((roleId) => selected.has(roleId));
 }
 
 function readConfigString(config: unknown, key: string): string | null {
@@ -143,14 +269,22 @@ function toOrionWorkflowEdge(row: typeof orionWorkflowEdges.$inferSelect | null)
 }
 
 function setupRoleProfileIdForNodeKey(nodeKey: RoundTableExecutableNodeKey) {
-  return nodeKey;
+  const legacyNodeRoleMap: Record<RoundTableExecutableNodeKey, OrionRoleProfileId> = {
+    planner: "planner",
+    architect: "architect",
+    implementer: "implementer",
+    verifier: "qa_tester",
+    knowledge_steward: "architect",
+    recovery_router: "architect",
+  };
+  return legacyNodeRoleMap[nodeKey];
 }
 
 function setupRoleProfileIdForWorkflowNode(node: { nodeKey: string; config: unknown; type: string }) {
   const explicit = readConfigString(node.config, "roleProfileId");
   const profile = resolveOrionRoleProfile(explicit);
   if (profile) return profile.roleId;
-  if (node.type === "verification") return "verifier";
+  if (node.type === "verification") return "qa_tester";
   return "operator";
 }
 
@@ -244,15 +378,15 @@ function prTemplateTitle(task: { identifier: string | null; taskKey: string | nu
 function readRoleProfileIdFromNode(node: { type: string; config: unknown; nodeKey: string }): OrionRoleProfileId | null {
   const explicit = resolveOrionRoleProfile(readConfigString(node.config, "roleProfileId"));
   if (explicit) return explicit.roleId;
-  if (node.nodeKey === "verifier" || node.type === "verification") return "verifier";
-  if (node.nodeKey === "recovery_router" || node.type === "fallback") return "recovery_router";
+  if (node.nodeKey === "verifier" || node.type === "verification") return "qa_tester";
+  if (node.nodeKey === "recovery_router" || node.type === "fallback") return "architect";
   return null;
 }
 
 function nodeRequiresRoundTableAgent(node: { nodeKey: string; type: string; config: unknown }) {
   const roleProfileId = readRoleProfileIdFromNode(node);
   return roleProfileId
-    ? ["planner", "architect", "implementer", "verifier", "knowledge_steward", "recovery_router"].includes(roleProfileId)
+    ? ["planner", "architect", "implementer", "qa_tester", "ux_ui_designer", "infrastructure_engineer", "security_expert"].includes(roleProfileId)
     : node.type === "agent";
 }
 
@@ -361,10 +495,10 @@ function requireAutoEnvelope(input: {
 }) {
   if (input.mode !== "auto_to_pr") return;
   if (!input.autonomyEnvelope) {
-    throw unprocessable("Auto-to-PR runs require an autonomy envelope");
+    throw unprocessable("Auto runs require execution guardrails");
   }
   if (input.autonomyEnvelope.mode !== "auto_to_pr") {
-    throw unprocessable("Auto-to-PR runs require an auto_to_pr autonomy envelope");
+    throw unprocessable("Auto runs require Auto execution guardrails");
   }
 }
 
@@ -589,6 +723,104 @@ export function orionService(db: Db) {
       })
       .returning();
     return event!;
+  }
+
+  async function findCouncilAgent(companyId: string, roleId: OrionCouncilRoleId) {
+    const candidates = COUNCIL_AGENT_ROLE_CANDIDATES[roleId];
+    return await db
+      .select()
+      .from(agents)
+      .where(and(
+        eq(agents.companyId, companyId),
+        inArray(agents.role, candidates),
+      ))
+      .orderBy(desc(agents.updatedAt))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+  }
+
+  async function getCouncilSessionDetail(sessionId: string): Promise<OrionCouncilSession> {
+    const session = await db
+      .select()
+      .from(orionCouncilSessions)
+      .where(eq(orionCouncilSessions.id, sessionId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    if (!session) throw notFound("Orion council session not found");
+    const [participants, decisions, reviews, iterations] = await Promise.all([
+      db
+        .select()
+        .from(orionCouncilParticipants)
+        .where(eq(orionCouncilParticipants.sessionId, session.id))
+        .orderBy(orionCouncilParticipants.createdAt),
+      db
+        .select()
+        .from(orionCouncilDecisions)
+        .where(eq(orionCouncilDecisions.sessionId, session.id))
+        .orderBy(orionCouncilDecisions.createdAt),
+      db
+        .select()
+        .from(orionCouncilReviews)
+        .where(eq(orionCouncilReviews.sessionId, session.id))
+        .orderBy(orionCouncilReviews.createdAt),
+      db
+        .select()
+        .from(orionCouncilIterations)
+        .where(eq(orionCouncilIterations.sessionId, session.id))
+        .orderBy(orionCouncilIterations.iteration),
+    ]);
+    return {
+      ...session,
+      impactFlags: normalizeCouncilImpactFlags(session.impactFlags as Record<string, boolean> | null),
+      participants,
+      decisions,
+      reviews,
+      iterations,
+    };
+  }
+
+  async function getCouncilSessionForTask(taskId: string): Promise<OrionCouncilSession | null> {
+    const session = await db
+      .select({ id: orionCouncilSessions.id })
+      .from(orionCouncilSessions)
+      .where(eq(orionCouncilSessions.taskId, taskId))
+      .orderBy(desc(orionCouncilSessions.createdAt))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    return session ? getCouncilSessionDetail(session.id) : null;
+  }
+
+  async function upsertCouncilParticipants(
+    companyId: string,
+    sessionId: string,
+    roleIds: OrionCouncilRoleId[],
+    implementerAgentId?: string | null,
+  ) {
+    for (const roleId of roleIds) {
+      const agent = roleId === "implementer" && implementerAgentId
+        ? await db.select().from(agents).where(and(eq(agents.id, implementerAgentId), eq(agents.companyId, companyId))).limit(1).then((rows) => rows[0] ?? null)
+        : await findCouncilAgent(companyId, roleId);
+      await db
+        .insert(orionCouncilParticipants)
+        .values({
+          companyId,
+          sessionId,
+          roleId,
+          agentId: agent?.id ?? null,
+          required: true,
+          status: "pending_plan",
+          domainNotes: `${COUNCIL_ROLE_LABELS[roleId]} selected for Auto Round Table planning.`,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [orionCouncilParticipants.sessionId, orionCouncilParticipants.roleId],
+          set: {
+            agentId: agent?.id ?? null,
+            required: true,
+            updatedAt: new Date(),
+          },
+        });
+    }
   }
 
   async function getRoundTableSetupReadiness(companyId: string): Promise<OrionRoundTableSetupResult> {
@@ -1031,10 +1263,22 @@ export function orionService(db: Db) {
     if (!ledger.approvedPlanSha256 || ledger.approvedPlanSha256 !== ledger.planSha256) {
       throw conflict("PR receipt requires an approved current plan hash");
     }
+    const councilSession = await db
+      .select()
+      .from(orionCouncilSessions)
+      .where(eq(orionCouncilSessions.runId, runId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    if (councilSession && councilSession.status !== "review_passed" && councilSession.status !== "draft_pr_opened") {
+      throw conflict("PR receipt requires passed Auto Round Table council review", {
+        councilSessionId: councilSession.id,
+        status: councilSession.status,
+      });
+    }
     const policy = await db.select().from(orionTaskPolicies).where(eq(orionTaskPolicies.taskId, ledger.taskId)).limit(1).then((rows) => rows[0] ?? null);
     const envelope = policy?.autonomyEnvelope as OrionAutonomyEnvelope | null | undefined;
     if (envelope) {
-      if (!envelope.allowedRepos.includes(input.repository)) {
+      if (envelope.allowedRepos.length > 0 && !envelope.allowedRepos.includes(input.repository)) {
         throw unprocessable("PR repository is outside the autonomy envelope", {
           repository: input.repository,
           allowedRepos: envelope.allowedRepos,
@@ -1125,6 +1369,13 @@ export function orionService(db: Db) {
           updatedAt: new Date(),
         })
         .where(eq(orionReqLedgers.id, ledger.id));
+
+      if (councilSession) {
+        await tx
+          .update(orionCouncilSessions)
+          .set({ status: "draft_pr_opened", phase: "draft_pr", updatedAt: new Date() })
+          .where(eq(orionCouncilSessions.id, councilSession.id));
+      }
 
       await appendLedgerEvent({
         client: tx,
@@ -1514,6 +1765,85 @@ export function orionService(db: Db) {
     }
   }
 
+  async function hardDeleteAgentForAutoReset(client: typeof db, agentId: string) {
+    await client.execute(sql`update agents set reports_to = null where reports_to = ${agentId}`);
+    await client.execute(sql`update tasks set assignee_agent_id = null where assignee_agent_id = ${agentId}`);
+    await client.execute(sql`update tasks set created_by_agent_id = null where created_by_agent_id = ${agentId}`);
+    await client.execute(sql`update approvals set requested_by_agent_id = null where requested_by_agent_id = ${agentId}`);
+    await client.execute(sql`update activity_log set agent_id = null where agent_id = ${agentId}`);
+    await client.execute(sql`update assets set created_by_agent_id = null where created_by_agent_id = ${agentId}`);
+    await client.execute(sql`update goals set owner_agent_id = null where owner_agent_id = ${agentId}`);
+    await client.execute(sql`update projects set lead_agent_id = null where lead_agent_id = ${agentId}`);
+    await client.execute(sql`update routines set assignee_agent_id = null where assignee_agent_id = ${agentId}`);
+    await client.execute(sql`update routines set created_by_agent_id = null where created_by_agent_id = ${agentId}`);
+    await client.execute(sql`update routines set updated_by_agent_id = null where updated_by_agent_id = ${agentId}`);
+    await client.execute(sql`update routine_triggers set created_by_agent_id = null where created_by_agent_id = ${agentId}`);
+    await client.execute(sql`update routine_triggers set updated_by_agent_id = null where updated_by_agent_id = ${agentId}`);
+    await client.execute(sql`update task_comments set author_agent_id = null where author_agent_id = ${agentId}`);
+    await client.execute(sql`update task_execution_decisions set actor_agent_id = null where actor_agent_id = ${agentId}`);
+    await client.execute(sql`update approval_comments set author_agent_id = null where author_agent_id = ${agentId}`);
+    await client.execute(sql`update task_relations set created_by_agent_id = null where created_by_agent_id = ${agentId}`);
+    await client.execute(sql`update task_thread_interactions set created_by_agent_id = null where created_by_agent_id = ${agentId}`);
+    await client.execute(sql`update task_thread_interactions set resolved_by_agent_id = null where resolved_by_agent_id = ${agentId}`);
+    await client.execute(sql`update orion_council_participants set agent_id = null where agent_id = ${agentId}`);
+    await client.execute(sql`update orion_council_decisions set created_by_agent_id = null where created_by_agent_id = ${agentId}`);
+    await client.execute(sql`update orion_workflow_nodes set agent_id = null where agent_id = ${agentId}`);
+    await client.execute(sql`update company_secrets set created_by_agent_id = null where created_by_agent_id = ${agentId}`);
+    await client.execute(sql`update company_secret_versions set created_by_agent_id = null where created_by_agent_id = ${agentId}`);
+    await client.execute(sql`update documents set created_by_agent_id = null where created_by_agent_id = ${agentId}`);
+    await client.execute(sql`update documents set updated_by_agent_id = null where updated_by_agent_id = ${agentId}`);
+    await client.execute(sql`update document_revisions set created_by_agent_id = null where created_by_agent_id = ${agentId}`);
+    await client.execute(sql`update finance_events set agent_id = null where agent_id = ${agentId}`);
+    await client.execute(sql`update join_requests set created_agent_id = null where created_agent_id = ${agentId}`);
+    await client.execute(sql`update workspace_runtime_services set owner_agent_id = null where owner_agent_id = ${agentId}`);
+    await client.execute(sql`update task_tree_hold_members set assignee_agent_id = null where assignee_agent_id = ${agentId}`);
+    await client.execute(sql`update task_tree_holds set created_by_agent_id = null where created_by_agent_id = ${agentId}`);
+    await client.execute(sql`update task_tree_holds set released_by_agent_id = null where released_by_agent_id = ${agentId}`);
+    await client.execute(sql`update task_approvals set linked_by_agent_id = null where linked_by_agent_id = ${agentId}`);
+    await client.execute(sql`update heartbeat_run_watchdog_decisions set created_by_agent_id = null where created_by_agent_id = ${agentId}`);
+    await client.execute(sql`update finance_events set cost_event_id = null where cost_event_id in (select id from cost_events where agent_id = ${agentId})`);
+    await client.execute(sql`delete from cost_events where agent_id = ${agentId}`);
+    await client.execute(sql`delete from heartbeat_run_events where agent_id = ${agentId}`);
+    await client.execute(sql`update heartbeat_runs set retry_of_run_id = null where retry_of_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`update tasks set checkout_run_id = null where checkout_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`update tasks set execution_run_id = null where execution_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`update agent_task_sessions set last_run_id = null where last_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`update document_revisions set created_by_run_id = null where created_by_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`update environment_leases set heartbeat_run_id = null where heartbeat_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`update finance_events set heartbeat_run_id = null where heartbeat_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`update heartbeat_run_watchdog_decisions set created_by_run_id = null where created_by_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`update task_comments set created_by_run_id = null where created_by_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`update task_execution_decisions set created_by_run_id = null where created_by_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`update task_tree_holds set created_by_run_id = null where created_by_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`update task_tree_holds set released_by_run_id = null where released_by_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`update task_thread_interactions set source_run_id = null where source_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`update task_work_products set created_by_run_id = null where created_by_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`update workspace_runtime_services set started_by_run_id = null where started_by_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`update workspace_operations set heartbeat_run_id = null where heartbeat_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`update task_tree_hold_members set active_run_id = null where active_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`update finance_events set cost_event_id = null where cost_event_id in (select id from cost_events where heartbeat_run_id in (select id from heartbeat_runs where agent_id = ${agentId}))`);
+    await client.execute(sql`delete from cost_events where heartbeat_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`delete from activity_log where run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`delete from heartbeat_run_events where run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`delete from agent_task_sessions where agent_id = ${agentId}`);
+    await client.execute(sql`update heartbeat_runs set wakeup_request_id = null where wakeup_request_id in (select id from agent_wakeup_requests where agent_id = ${agentId})`);
+    await client.execute(sql`delete from agent_wakeup_requests where agent_id = ${agentId}`);
+    await client.execute(sql`delete from agent_api_keys where agent_id = ${agentId}`);
+    await client.execute(sql`delete from agent_runtime_state where agent_id = ${agentId}`);
+    await client.execute(sql`delete from agent_config_revisions where agent_id = ${agentId}`);
+    await client.execute(sql`delete from heartbeat_runs where agent_id = ${agentId}`);
+    await client.execute(sql`delete from agents where id = ${agentId}`);
+  }
+
+  async function writeAutoAgentInstructions(agent: typeof agents.$inferSelect, body: string) {
+    const instructions = agentInstructionsService();
+    const result = await instructions.writeFile(agent, "AGENTS.md", body, { clearLegacyPromptTemplate: true });
+    await db
+      .update(agents)
+      .set({ adapterConfig: result.adapterConfig, updatedAt: new Date() })
+      .where(eq(agents.id, agent.id));
+  }
+
   async function getActiveOrionRunForTask(task: Pick<typeof tasks.$inferSelect, "id" | "companyId" | "executionRunId">) {
     const activeRunScope = task.executionRunId
       ? or(eq(heartbeatRuns.id, task.executionRunId), taskContextFilter(task.id))
@@ -1571,10 +1901,10 @@ export function orionService(db: Db) {
     const prState = (task.prState ?? "").toLowerCase();
 
     if (task.status === "blocked" || routeMode === "blocked" || type.includes("recovery")) {
-      return { roleProfileId: "recovery_router", reason: "Blocked or recovery-oriented work starts with Recovery Router." };
+      return { roleProfileId: "architect", reason: "Blocked or recovery-oriented work starts with Architect review." };
     }
     if (task.prUrl || prState || type.includes("review") || title.includes("pr ")) {
-      return { roleProfileId: "verifier", reason: "Review or PR-linked work starts with Verifier." };
+      return { roleProfileId: "qa_tester", reason: "Review or PR-linked work starts with QA Tester." };
     }
     if (
       type.includes("doc")
@@ -1586,7 +1916,7 @@ export function orionService(db: Db) {
       || title.includes("receipt")
       || title.includes("knowledge")
     ) {
-      return { roleProfileId: "knowledge_steward", reason: "Docs, sync, and evidence work starts with Knowledge Steward." };
+      return { roleProfileId: "architect", reason: "Docs, sync, and evidence work starts with Architect review." };
     }
     return { roleProfileId: "planner", reason: "Feature and implementation work starts with Planner." };
   }
@@ -1937,14 +2267,13 @@ export function orionService(db: Db) {
     const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).then((rows) => rows[0] ?? null);
     if (!task) throw notFound("Task not found");
     if (task.originKind === "notion_task" && task.originId) {
-      const intake = await queueRoundTableIntake(task.id, { source: "planner_draft" }, { createWorkflowIfMissing: true });
       return {
         taskId: task.id,
         companyId: task.companyId,
         status: "published",
         notionPageId: task.originId,
         notionUrl: notionPageUrl(task.originId),
-        intake: intake.intake,
+        intake: null,
       };
     }
     if (task.originKind !== "orion_planner_draft") {
@@ -2077,14 +2406,13 @@ export function orionService(db: Db) {
           updatedAt: now,
         },
       });
-    const intake = await queueRoundTableIntake(task.id, { source: "planner_draft" }, { createWorkflowIfMissing: true });
     return {
       taskId: task.id,
       companyId: task.companyId,
       status: "published",
       notionPageId,
       notionUrl,
-      intake: intake.intake,
+      intake: null,
     };
   }
 
@@ -2120,6 +2448,431 @@ export function orionService(db: Db) {
     routeRoundTableIntake,
     createPlannerDraft,
     publishPlannerDraftToNotion,
+    getCouncilSessionForTask,
+    getCouncilSession: getCouncilSessionDetail,
+
+    resetAutoTeam: async (companyId: string, input: ResetOrionAutoTeam) => {
+      const existingAgents = await db
+        .select()
+        .from(agents)
+        .where(eq(agents.companyId, companyId));
+      const resetCandidates = existingAgents.filter((agent) => {
+        const metadata = readRecord(agent.metadata);
+        return metadata.orionAutoTeam === true ||
+          agent.name.startsWith("Round Table ") ||
+          agent.name.startsWith("Orion ") ||
+          OLD_ORION_AUTO_AGENT_ROLES.has(agent.role);
+      });
+      const workflows = await db
+        .select()
+        .from(orionWorkflows)
+        .where(and(
+          eq(orionWorkflows.companyId, companyId),
+          inArray(orionWorkflows.presetId, ["orion_round_table", "orion_operator_auto_to_pr"]),
+        ));
+
+      if (input.dryRun) {
+        return {
+          companyId,
+          deletedWorkflowCount: workflows.length,
+          deletedAgentCount: resetCandidates.length,
+          createdAgents: [],
+        };
+      }
+
+      const createdAgents = await db.transaction(async (tx) => {
+        for (const workflow of workflows) {
+          await tx.delete(orionWorkflowRuns).where(eq(orionWorkflowRuns.workflowId, workflow.id));
+          await tx.delete(orionTaskWorkflowBindings).where(eq(orionTaskWorkflowBindings.workflowId, workflow.id));
+          await tx.delete(orionWorkflows).where(eq(orionWorkflows.id, workflow.id));
+        }
+        for (const agent of resetCandidates) {
+          await hardDeleteAgentForAutoReset(tx as unknown as typeof db, agent.id);
+        }
+
+        const sourceConfig = existingAgents.find((agent) => agent.adapterType === "codex_local")?.adapterConfig ?? {};
+        const sourceRuntime = existingAgents.find((agent) => agent.adapterType === "codex_local")?.runtimeConfig ?? {};
+        const rows: Array<typeof agents.$inferSelect> = [];
+        for (const definition of ORION_AUTO_AGENT_DEFINITIONS) {
+          const [created] = await tx
+            .insert(agents)
+            .values({
+              companyId,
+              name: definition.name,
+              role: definition.role,
+              title: definition.title,
+              status: "idle",
+              adapterType: definition.adapterType,
+              adapterConfig: sourceConfig,
+              runtimeConfig: sourceRuntime,
+              capabilities: definition.capabilities,
+              permissions: definition.role === "implementer"
+                ? { canCreateAgents: false, canAssignTasks: true }
+                : { canCreateAgents: false, canAssignTasks: false },
+              metadata: {
+                orionAutoTeam: true,
+                canonicalRole: definition.role,
+                resetAt: new Date().toISOString(),
+              },
+              updatedAt: new Date(),
+            })
+            .returning();
+          rows.push(created!);
+        }
+        return rows;
+      });
+
+      for (const agent of createdAgents) {
+        const definition = ORION_AUTO_AGENT_DEFINITIONS.find((entry) => entry.role === agent.role);
+        if (definition) await writeAutoAgentInstructions(agent, definition.instructions);
+      }
+
+      return {
+        companyId,
+        deletedWorkflowCount: workflows.length,
+        deletedAgentCount: resetCandidates.length,
+        createdAgents: createdAgents.map((agent) => ({
+          id: agent.id,
+          name: agent.name,
+          role: agent.role,
+          title: agent.title,
+          adapterType: agent.adapterType,
+        })),
+      };
+    },
+
+    validatePlannerSpec: async (
+      taskId: string,
+      input: ValidateOrionPlannerSpec,
+      createdByUserId?: string | null,
+    ) => {
+      const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).then((rows) => rows[0] ?? null);
+      if (!task) throw notFound("Task not found");
+      const impactFlags = normalizeCouncilImpactFlags(input.impactFlags);
+      const roleIds = selectCouncilRoles(impactFlags, input.proposedParticipantRoleIds);
+      const now = new Date();
+      const finalPlanSha256 = input.finalPlanMarkdown ? sha256(input.finalPlanMarkdown) : null;
+
+      await db
+        .insert(orionTaskPolicies)
+        .values({
+          companyId: task.companyId,
+          taskId: task.id,
+          mode: "auto_to_pr",
+          autonomyEnvelope: input.autonomyEnvelope,
+          approvedByUserId: createdByUserId ?? null,
+          approvedAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: orionTaskPolicies.taskId,
+          set: {
+            mode: "auto_to_pr",
+            autonomyEnvelope: input.autonomyEnvelope,
+            approvedByUserId: createdByUserId ?? null,
+            approvedAt: now,
+            updatedAt: now,
+          },
+        });
+
+      const existing = await db
+        .select()
+        .from(orionCouncilSessions)
+        .where(eq(orionCouncilSessions.taskId, task.id))
+        .orderBy(desc(orionCouncilSessions.createdAt))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      const values = {
+        companyId: task.companyId,
+        taskId: task.id,
+        status: finalPlanSha256 ? "awaiting_plan_approval" : "planning",
+        phase: finalPlanSha256 ? "plan_approval" : "spec",
+        baseBranch: input.baseBranch,
+        maxIterations: input.maxIterations,
+        impactFlags,
+        plannerNotes: input.plannerNotes ?? null,
+        finalPlanMarkdown: input.finalPlanMarkdown ?? null,
+        finalPlanSha256,
+        approvedPlanSha256: null,
+        createdByUserId: createdByUserId ?? null,
+        updatedAt: now,
+      };
+      const [session] = existing
+        ? await db
+          .update(orionCouncilSessions)
+          .set(values)
+          .where(eq(orionCouncilSessions.id, existing.id))
+          .returning()
+        : await db
+          .insert(orionCouncilSessions)
+          .values(values)
+          .returning();
+
+      await upsertCouncilParticipants(task.companyId, session!.id, roleIds, input.implementerAgentId);
+      if (finalPlanSha256) {
+        await db
+          .update(orionCouncilParticipants)
+          .set({ planApprovedAt: null, status: "pending_plan", updatedAt: now })
+          .where(eq(orionCouncilParticipants.sessionId, session!.id));
+      }
+      return getCouncilSessionDetail(session!.id);
+    },
+
+    startCouncilSession: async (
+      taskId: string,
+      input: ValidateOrionPlannerSpec,
+      createdByUserId?: string | null,
+    ) => {
+      return await (orionService(db)).validatePlannerSpec(taskId, input, createdByUserId);
+    },
+
+    saveCouncilPlan: async (sessionId: string, input: SaveOrionCouncilPlan) => {
+      const session = await getCouncilSessionDetail(sessionId);
+      const planSha256 = sha256(input.finalPlanMarkdown);
+      const [updated] = await db
+        .update(orionCouncilSessions)
+        .set({
+          status: "awaiting_plan_approval",
+          phase: "plan_approval",
+          finalPlanMarkdown: input.finalPlanMarkdown,
+          finalPlanSha256: planSha256,
+          approvedPlanSha256: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(orionCouncilSessions.id, session.id))
+        .returning();
+      await db
+        .update(orionCouncilParticipants)
+        .set({ planApprovedAt: null, status: "pending_plan", updatedAt: new Date() })
+        .where(eq(orionCouncilParticipants.sessionId, session.id));
+      return getCouncilSessionDetail(updated!.id);
+    },
+
+    approveCouncilPlan: async (
+      sessionId: string,
+      input: ApproveOrionCouncilPlan,
+      createdByUserId?: string | null,
+    ) => {
+      const session = await getCouncilSessionDetail(sessionId);
+      if (!session.finalPlanSha256) throw unprocessable("Council plan approval requires a saved final implementation plan");
+      const participant = session.participants?.find((entry) => entry.roleId === input.roleId) ?? null;
+      if (!participant || !participant.required) throw unprocessable("Only selected council participants can approve this plan");
+      const now = new Date();
+      await db
+        .update(orionCouncilParticipants)
+        .set({
+          agentId: input.agentId ?? participant.agentId,
+          status: "plan_approved",
+          planApprovedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(orionCouncilParticipants.id, participant.id));
+      await db.insert(orionCouncilDecisions).values({
+        companyId: session.companyId,
+        sessionId: session.id,
+        participantId: participant.id,
+        phase: "planning",
+        decision: "approved",
+        notes: input.notes ?? null,
+        planSha256: session.finalPlanSha256,
+        createdByAgentId: input.agentId ?? null,
+        createdByUserId: createdByUserId ?? null,
+      });
+      const refreshed = await getCouncilSessionDetail(session.id);
+      const required = refreshed.participants?.filter((entry) => entry.required) ?? [];
+      const allApproved = required.length > 0 && required.every((entry) => Boolean(entry.planApprovedAt));
+      if (allApproved) {
+        await db
+          .update(orionCouncilSessions)
+          .set({
+            status: "approved",
+            phase: "ready_for_execution",
+            approvedPlanSha256: refreshed.finalPlanSha256,
+            updatedAt: new Date(),
+          })
+          .where(eq(orionCouncilSessions.id, session.id));
+      }
+      return getCouncilSessionDetail(session.id);
+    },
+
+    startCouncilExecution: async (sessionId: string, input: StartOrionCouncilExecution) => {
+      const session = await getCouncilSessionDetail(sessionId);
+      if (session.status !== "approved" || !session.approvedPlanSha256 || session.approvedPlanSha256 !== session.finalPlanSha256) {
+        throw conflict("Auto execution is blocked until every selected expert and the Implementer approve the final plan");
+      }
+      const required = session.participants?.filter((entry) => entry.required) ?? [];
+      if (!required.every((entry) => Boolean(entry.planApprovedAt))) {
+        throw conflict("Auto execution is blocked until all selected council approvals exist");
+      }
+      const implementer = required.find((entry) => entry.roleId === "implementer") ?? null;
+      const implementerAgentId = input.implementerAgentId ?? implementer?.agentId ?? null;
+      if (!implementerAgentId) throw unprocessable("Auto execution requires an Implementer agent");
+      const policy = await db
+        .select()
+        .from(orionTaskPolicies)
+        .where(eq(orionTaskPolicies.taskId, session.taskId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      const envelope = policy?.autonomyEnvelope as OrionAutonomyEnvelope | null | undefined;
+      if (!envelope || policy?.mode !== "auto_to_pr") throw unprocessable("Auto execution requires a saved auto_to_pr autonomy envelope");
+      const runResult = await orionService(db).createRun(session.taskId, {
+        agentId: implementerAgentId,
+        mode: "auto_to_pr",
+        autonomyEnvelope: envelope,
+        planMarkdown: session.finalPlanMarkdown,
+        approvedPlanSha256: session.approvedPlanSha256,
+        summary: "Auto Round Table approved implementation plan.",
+      });
+      const startResult = await orionService(db).startCodexRun(runResult.run.id, {
+        planSha256: session.approvedPlanSha256,
+        note: input.note ?? "Auto Round Table approved execution.",
+        idempotencyKey: input.idempotencyKey,
+        verification: input.verification ?? null,
+      });
+      await db
+        .update(orionCouncilSessions)
+        .set({
+          runId: runResult.run.id,
+          status: "executing",
+          phase: "execution",
+          updatedAt: new Date(),
+        })
+        .where(eq(orionCouncilSessions.id, session.id));
+      return { session: await getCouncilSessionDetail(session.id), run: startResult.run, ledger: startResult.ledger };
+    },
+
+    recordCouncilReview: async (
+      sessionId: string,
+      input: RecordOrionCouncilReview,
+      createdByUserId?: string | null,
+    ) => {
+      const session = await getCouncilSessionDetail(sessionId);
+      if (!session.runId) throw conflict("Council review requires an executed Orion run");
+      const ledger = await db
+        .select()
+        .from(orionReqLedgers)
+        .where(eq(orionReqLedgers.runId, session.runId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      if (!ledger || ledger.status !== "verified" || ledger.verificationStatus !== "passed") {
+        throw conflict("Council review requires passed Orion verification evidence");
+      }
+      const participant = session.participants?.find((entry) => entry.roleId === input.roleId) ?? null;
+      if (!participant || !participant.required) throw unprocessable("Only selected council participants can review this implementation");
+      await db.insert(orionCouncilReviews).values({
+        companyId: session.companyId,
+        sessionId: session.id,
+        participantId: participant.id,
+        iteration: session.currentIteration,
+        status: input.status,
+        notes: input.notes ?? null,
+        blockingReason: input.blockingReason ?? null,
+        requiredFixSummary: input.requiredFixSummary ?? null,
+      });
+      await db.insert(orionCouncilDecisions).values({
+        companyId: session.companyId,
+        sessionId: session.id,
+        participantId: participant.id,
+        phase: "implementation_review",
+        decision: input.status === "passed" ? "approved" : input.status === "failed" ? "changes_requested" : "blocked",
+        notes: input.notes ?? input.requiredFixSummary ?? null,
+        planSha256: session.approvedPlanSha256,
+        createdByAgentId: participant.agentId,
+        createdByUserId: createdByUserId ?? null,
+      });
+      await db
+        .update(orionCouncilParticipants)
+        .set({
+          reviewStatus: input.status,
+          reviewNotes: input.notes ?? input.requiredFixSummary ?? null,
+          status: input.status === "passed" ? "review_passed" : "review_failed",
+          updatedAt: new Date(),
+        })
+        .where(eq(orionCouncilParticipants.id, participant.id));
+
+      if (input.status !== "passed") {
+        if (session.currentIteration >= session.maxIterations) {
+          await db
+            .update(orionCouncilSessions)
+            .set({ status: "escalated", phase: "operator_required", updatedAt: new Date() })
+            .where(eq(orionCouncilSessions.id, session.id));
+        } else {
+          const nextIteration = session.currentIteration + 1;
+          await db
+            .insert(orionCouncilIterations)
+            .values({
+              companyId: session.companyId,
+              sessionId: session.id,
+              iteration: nextIteration,
+              status: "open",
+              reason: input.blockingReason ?? "Council review requested fixes.",
+              requiredFixSummary: input.requiredFixSummary ?? null,
+              updatedAt: new Date(),
+            })
+            .onConflictDoNothing();
+          await db
+            .update(orionCouncilSessions)
+            .set({
+              status: "iteration_required",
+              phase: "fix_iteration",
+              currentIteration: nextIteration,
+              updatedAt: new Date(),
+            })
+            .where(eq(orionCouncilSessions.id, session.id));
+        }
+        return getCouncilSessionDetail(session.id);
+      }
+
+      const refreshed = await getCouncilSessionDetail(session.id);
+      const required = refreshed.participants?.filter((entry) => entry.required) ?? [];
+      const allPassed = required.length > 0 && required.every((entry) => entry.reviewStatus === "passed");
+      if (allPassed) {
+        await db
+          .update(orionCouncilSessions)
+          .set({ status: "review_passed", phase: "ready_for_pr", updatedAt: new Date() })
+          .where(eq(orionCouncilSessions.id, session.id));
+      } else if (session.status === "executing") {
+        await db
+          .update(orionCouncilSessions)
+          .set({ status: "awaiting_review", phase: "council_review", updatedAt: new Date() })
+          .where(eq(orionCouncilSessions.id, session.id));
+      }
+      return getCouncilSessionDetail(session.id);
+    },
+
+    advanceCouncilIteration: async (sessionId: string, input: AdvanceOrionCouncilIteration) => {
+      const session = await getCouncilSessionDetail(sessionId);
+      if (session.currentIteration >= session.maxIterations) {
+        await db
+          .update(orionCouncilSessions)
+          .set({ status: "escalated", phase: "operator_required", updatedAt: new Date() })
+          .where(eq(orionCouncilSessions.id, session.id));
+        return getCouncilSessionDetail(session.id);
+      }
+      const nextIteration = session.currentIteration + 1;
+      await db
+        .insert(orionCouncilIterations)
+        .values({
+          companyId: session.companyId,
+          sessionId: session.id,
+          iteration: nextIteration,
+          status: "open",
+          reason: input.reason,
+          requiredFixSummary: input.requiredFixSummary,
+          updatedAt: new Date(),
+        })
+        .onConflictDoNothing();
+      await db
+        .update(orionCouncilSessions)
+        .set({
+          status: "iteration_required",
+          phase: "fix_iteration",
+          currentIteration: nextIteration,
+          updatedAt: new Date(),
+        })
+        .where(eq(orionCouncilSessions.id, session.id));
+      return getCouncilSessionDetail(session.id);
+    },
 
     getTaskPolicy: async (taskId: string) => {
       const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).then((rows) => rows[0] ?? null);
@@ -2899,13 +3652,6 @@ export function orionService(db: Db) {
           })
           .returning();
 
-        try {
-          await queueRoundTableIntake(taskRow.id, { source: "notion_sync" });
-        } catch {
-          // Import remains durable even when the Round Table workflow is not set
-          // up yet or the task is otherwise not intake-eligible.
-        }
-
         results.push({
           notionPageId: task.notionPageId,
           status: existingTask ? "updated" : "created",
@@ -3329,6 +4075,7 @@ export function orionService(db: Db) {
           workspaceStrategy: {
             type: "git_worktree",
             branchTemplate: "orion/{{task.identifier}}-{{slug}}",
+            baseBranch: "master",
           },
         };
         const [updatedRun] = await tx
@@ -3868,6 +4615,18 @@ export function orionService(db: Db) {
       if (input.planSha256 && input.planSha256 !== ledger.approvedPlanSha256) {
         throw conflict("PR creation plan hash does not match the approved ledger plan hash");
       }
+      const councilSession = await db
+        .select()
+        .from(orionCouncilSessions)
+        .where(eq(orionCouncilSessions.runId, runId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      if (councilSession && councilSession.status !== "review_passed" && councilSession.status !== "draft_pr_opened") {
+        throw conflict("Orion PR creation requires passed Auto Round Table council review", {
+          councilSessionId: councilSession.id,
+          status: councilSession.status,
+        });
+      }
 
       const policy = await db
         .select()
@@ -3881,7 +4640,7 @@ export function orionService(db: Db) {
         throw unprocessable("Saved autonomy envelope mode must match the Orion run mode");
       }
       if (!envelope.opensPr) {
-        throw unprocessable("Saved autonomy envelope does not allow PR creation");
+        throw unprocessable("Saved execution guardrails do not allow PR creation");
       }
 
       const workspace = await resolveRunWorkspace(run);
@@ -3894,7 +4653,7 @@ export function orionService(db: Db) {
         configuredHost: auth.host,
       });
       const repository = normalizeRepositoryKey({ host: parsed.host, owner: parsed.owner, repo: parsed.repoName });
-      if (!envelope.allowedRepos.includes(repository)) {
+      if (envelope.allowedRepos.length > 0 && !envelope.allowedRepos.includes(repository)) {
         throw unprocessable("PR repository is outside the autonomy envelope", {
           repository,
           allowedRepos: envelope.allowedRepos,
@@ -4011,6 +4770,12 @@ export function orionService(db: Db) {
         changedPaths,
         idempotencyKey: input.idempotencyKey,
       });
+      if (councilSession) {
+        await db
+          .update(orionCouncilSessions)
+          .set({ status: "draft_pr_opened", phase: "draft_pr", updatedAt: new Date() })
+          .where(eq(orionCouncilSessions.id, councilSession.id));
+      }
       await maybeSyncbackNotionTask(ledger.companyId, ledger.taskId, runId);
       return receipt;
     },

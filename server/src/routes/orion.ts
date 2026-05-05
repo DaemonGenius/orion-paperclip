@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { eq } from "drizzle-orm";
 import { heartbeatRuns, tasks, orionReqLedgers, type Db } from "@paperclipai/db";
 import {
@@ -17,9 +17,12 @@ import {
   orionBootstrapNotionSchema,
   orionSyncNotionSchema,
   approveOrionLedgerPlanSchema,
+  advanceOrionCouncilIterationSchema,
   recordOrionPrSchema,
   recordOrionLedgerEvidenceSchema,
   recordOrionLedgerVerificationSchema,
+  approveOrionCouncilPlanSchema,
+  recordOrionCouncilReviewSchema,
   publishOrionPlannerDraftSchema,
   queueExistingOrionRoundTableIntakeSchema,
   queueOrionRoundTableIntakeSchema,
@@ -27,13 +30,18 @@ import {
   routeOrionRoundTableIntakeSchema,
   runOrionVerificationSchema,
   runOrionPreflightSchema,
+  resetOrionAutoTeamSchema,
   saveOrionLedgerPlanSchema,
+  saveOrionCouncilPlanSchema,
   setupOrionRoundTableSchema,
+  startOrionCouncilExecutionSchema,
+  startOrionCouncilSessionSchema,
   startOrionCodexRunSchema,
   startOrionLedgerExecutionSchema,
   syncbackOrionNotionSchema,
   syncNotionKnowledgeSchema,
   upsertOrionTaskPolicySchema,
+  validateOrionPlannerSpecSchema,
 } from "@paperclipai/shared";
 import type { DeploymentExposure, DeploymentMode } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
@@ -56,6 +64,49 @@ export function orionRoutes(db: Db, opts: {
   const preflight = orionPreflightService(db, opts);
   const heartbeat = heartbeatService(db);
   const knowledge = knowledgeService(db);
+  const legacyWorkflowGone = (_req: Request, res: Response) => {
+    res.status(410).json({
+      error: "The Orion workflow graph and old Round Table routing surface has been removed. Use Orion Auto council sessions instead.",
+    });
+  };
+
+  router.post(
+    "/orion/companies/:companyId/auto-team/reset",
+    validate(resetOrionAutoTeamSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      const result = await svc.resetAutoTeam(companyId, req.body);
+      const actor = getActorInfo(req);
+      await logActivity(db, {
+        companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        action: req.body.dryRun ? "orion.auto_team_reset.previewed" : "orion.auto_team_reset",
+        entityType: "company",
+        entityId: companyId,
+        details: result,
+      });
+      res.status(req.body.dryRun ? 200 : 201).json(result);
+    },
+  );
+
+  router.all("/orion/workflow-presets", legacyWorkflowGone);
+  router.all("/orion/companies/:companyId/workflows", legacyWorkflowGone);
+  router.all("/orion/companies/:companyId/round-table/setup-readiness", legacyWorkflowGone);
+  router.all("/orion/companies/:companyId/round-table/setup", legacyWorkflowGone);
+  router.all("/orion/companies/:companyId/round-table/queue-existing", legacyWorkflowGone);
+  router.all("/orion/companies/:companyId/workflows/presets", legacyWorkflowGone);
+  router.all("/orion/workflows/:workflowId", legacyWorkflowGone);
+  router.all("/orion/workflows/:workflowId/nodes", legacyWorkflowGone);
+  router.all("/orion/workflows/:workflowId/edges", legacyWorkflowGone);
+  router.all("/orion/tasks/:taskId/workflow-binding", legacyWorkflowGone);
+  router.all("/orion/tasks/:taskId/round-table/intake", legacyWorkflowGone);
+  router.all("/orion/tasks/:taskId/round-table/queue", legacyWorkflowGone);
+  router.all("/orion/tasks/:taskId/round-table/route", legacyWorkflowGone);
+  router.all("/orion/tasks/:taskId/workflow-resolution", legacyWorkflowGone);
+  router.all("/orion/tasks/:taskId/workflow/advance", legacyWorkflowGone);
 
   router.get("/orion/workflow-presets", async (_req, res) => {
     res.json(svc.workflowPresets());
@@ -379,6 +430,142 @@ export function orionRoutes(db: Db, opts: {
     const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
     if (task) assertCompanyAccess(req, task.companyId);
     res.json(await svc.getRunReadiness(req.params.taskId as string));
+  });
+
+  router.get("/orion/tasks/:taskId/council/session", async (req, res) => {
+    assertBoard(req);
+    const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
+    if (task) assertCompanyAccess(req, task.companyId);
+    res.json(await svc.getCouncilSessionForTask(req.params.taskId as string));
+  });
+
+  router.post(
+    "/orion/tasks/:taskId/planner/validate",
+    validate(validateOrionPlannerSpecSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
+      if (task) assertCompanyAccess(req, task.companyId);
+      const actor = getActorInfo(req);
+      const session = await svc.validatePlannerSpec(
+        req.params.taskId as string,
+        req.body,
+        req.actor.type === "board" ? req.actor.userId ?? null : null,
+      );
+      await logActivity(db, {
+        companyId: session.companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        action: "orion.planner_spec.validated",
+        entityType: "task",
+        entityId: req.params.taskId as string,
+        details: {
+          councilSessionId: session.id,
+          impactFlags: session.impactFlags,
+          participantRoleIds: session.participants?.map((participant) => participant.roleId) ?? [],
+        },
+      });
+      res.status(201).json(session);
+    },
+  );
+
+  router.post(
+    "/orion/tasks/:taskId/council/sessions",
+    validate(startOrionCouncilSessionSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
+      if (task) assertCompanyAccess(req, task.companyId);
+      const session = await svc.startCouncilSession(
+        req.params.taskId as string,
+        req.body,
+        req.actor.type === "board" ? req.actor.userId ?? null : null,
+      );
+      res.status(201).json(session);
+    },
+  );
+
+  router.get("/orion/council/sessions/:sessionId", async (req, res) => {
+    const session = await svc.getCouncilSession(req.params.sessionId as string);
+    assertCompanyAccess(req, session.companyId);
+    res.json(session);
+  });
+
+  router.post("/orion/council/sessions/:sessionId/plan", validate(saveOrionCouncilPlanSchema), async (req, res) => {
+    assertBoard(req);
+    const session = await svc.getCouncilSession(req.params.sessionId as string);
+    assertCompanyAccess(req, session.companyId);
+    res.json(await svc.saveCouncilPlan(session.id, req.body));
+  });
+
+  router.post("/orion/council/sessions/:sessionId/plan/approval", validate(approveOrionCouncilPlanSchema), async (req, res) => {
+    assertBoard(req);
+    const session = await svc.getCouncilSession(req.params.sessionId as string);
+    assertCompanyAccess(req, session.companyId);
+    res.json(await svc.approveCouncilPlan(
+      session.id,
+      req.body,
+      req.actor.type === "board" ? req.actor.userId ?? null : null,
+    ));
+  });
+
+  router.post("/orion/council/sessions/:sessionId/execute", validate(startOrionCouncilExecutionSchema), async (req, res) => {
+    assertBoard(req);
+    const session = await svc.getCouncilSession(req.params.sessionId as string);
+    assertCompanyAccess(req, session.companyId);
+    const result = await svc.startCouncilExecution(session.id, req.body);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: result.session.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      action: "orion.council_execution_started",
+      entityType: "task",
+      entityId: result.session.taskId,
+      runId: result.run.id,
+      agentId: result.run.agentId,
+      details: {
+        councilSessionId: result.session.id,
+        baseBranch: result.session.baseBranch,
+        approvedPlanSha256: result.session.approvedPlanSha256,
+      },
+    });
+    void heartbeat.executeQueuedRun(result.run.id).catch((err) => {
+      console.error("Orion council Codex execution failed", err);
+    });
+    res.status(202).json(result);
+  });
+
+  router.post("/orion/council/sessions/:sessionId/reviews", validate(recordOrionCouncilReviewSchema), async (req, res) => {
+    assertBoard(req);
+    const session = await svc.getCouncilSession(req.params.sessionId as string);
+    assertCompanyAccess(req, session.companyId);
+    res.json(await svc.recordCouncilReview(
+      session.id,
+      req.body,
+      req.actor.type === "board" ? req.actor.userId ?? null : null,
+    ));
+  });
+
+  router.post("/orion/council/sessions/:sessionId/iterations", validate(advanceOrionCouncilIterationSchema), async (req, res) => {
+    assertBoard(req);
+    const session = await svc.getCouncilSession(req.params.sessionId as string);
+    assertCompanyAccess(req, session.companyId);
+    res.json(await svc.advanceCouncilIteration(session.id, req.body));
+  });
+
+  router.post("/orion/council/sessions/:sessionId/pr/open", validate(openOrionPrSchema), async (req, res) => {
+    assertBoard(req);
+    const session = await svc.getCouncilSession(req.params.sessionId as string);
+    assertCompanyAccess(req, session.companyId);
+    if (!session.runId) throw unprocessable("Council session has no executed run");
+    if (session.status !== "review_passed" && session.status !== "draft_pr_opened") {
+      throw unprocessable("Draft PR creation is blocked until council review passes", {
+        status: session.status,
+      });
+    }
+    const receipt = await svc.openPr(session.runId, { ...req.body, draft: req.body.draft ?? true });
+    res.status(201).json(receipt);
   });
 
   router.post(

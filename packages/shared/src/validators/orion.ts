@@ -31,10 +31,11 @@ export const ORION_ROLE_PROFILE_IDS = [
   "operator",
   "planner",
   "architect",
+  "ux_ui_designer",
+  "qa_tester",
+  "infrastructure_engineer",
+  "security_expert",
   "implementer",
-  "verifier",
-  "knowledge_steward",
-  "recovery_router",
 ] as const;
 
 export const ORION_ROLE_PROFILE_ACTIONS = [
@@ -231,6 +232,74 @@ export const ORION_LEAN_SEVEN_ROLE_PROFILES: OrionRoleProfile[] = [
     healthSignals: ["authority ambiguity", "contract drift", "unreviewed blast radius"],
   }),
   roleProfile({
+    roleId: "ux_ui_designer",
+    displayName: "UX/UI Designer",
+    purpose: "Reviews user flows, interface states, copy, accessibility, and visual fit for UI-impacting tasks.",
+    traits: ["user-centered", "precise", "interaction-aware"],
+    skills: ["workflow design", "accessibility review", "interface critique"],
+    inputs: ["task spec", "screenshots", "component contracts", "acceptance criteria"],
+    outputs: ["UX notes", "UI risk summary", "interaction acceptance checks"],
+    allowedActions: ["plan_work", "review_architecture"],
+    deniedActions: ["merge_pr", "read_secrets", "delete_source_content", "change_public_exposure", "change_schema"],
+    permissions: ["tasks.plan", "architecture.review"],
+    evidenceDuty: ["Record UI assumptions, expected states, accessibility risks, and screenshot evidence when applicable."],
+    defaultAutonomyLevel: "doc_only",
+    compatibleNodeTypes: ["decision", "agent"],
+    escalationRules: ["Escalate unclear user intent, missing design constraints, or accessibility-impacting ambiguity."],
+    healthSignals: ["unreviewed UI changes", "missing responsive states", "unclear user workflow"],
+  }),
+  roleProfile({
+    roleId: "qa_tester",
+    displayName: "QA Tester",
+    purpose: "Defines and reviews verification evidence before Auto work can publish a draft PR.",
+    traits: ["skeptical", "repeatable", "evidence-first"],
+    skills: ["test planning", "regression analysis", "verification reporting"],
+    inputs: ["approved plan", "changed paths", "verification commands", "run evidence"],
+    outputs: ["QA verdict", "required verification evidence", "failure summary"],
+    allowedActions: ["run_verification"],
+    deniedActions: ["merge_pr", "read_secrets", "delete_source_content", "change_public_exposure", "change_schema"],
+    permissions: ["verification.run"],
+    evidenceDuty: ["Record required checks, command verdicts, failures, and residual test gaps."],
+    defaultAutonomyLevel: "pair",
+    compatibleNodeTypes: ["decision", "agent"],
+    escalationRules: ["Block review on missing required checks, ambiguous failures, or unverified acceptance criteria."],
+    healthSignals: ["flaky checks", "missing required tests", "verification blocked states"],
+  }),
+  roleProfile({
+    roleId: "infrastructure_engineer",
+    displayName: "Infrastructure Engineer",
+    purpose: "Reviews deployment, environment, CI, data migration, and operational-impacting changes.",
+    traits: ["operational", "risk-aware", "systems-minded"],
+    skills: ["CI review", "environment analysis", "migration planning"],
+    inputs: ["task spec", "deployment context", "config changes", "migration notes"],
+    outputs: ["infrastructure notes", "operational risk summary", "required environment checks"],
+    allowedActions: ["review_architecture", "run_verification"],
+    deniedActions: ["merge_pr", "read_secrets", "delete_source_content", "change_public_exposure"],
+    permissions: ["architecture.review", "verification.run"],
+    evidenceDuty: ["Record operational risks, migration expectations, CI/deployment assumptions, and rollback concerns."],
+    defaultAutonomyLevel: "doc_only",
+    compatibleNodeTypes: ["decision", "agent"],
+    escalationRules: ["Escalate public exposure, production data, secret, or deployment authority changes to the operator."],
+    healthSignals: ["unreviewed env changes", "migration uncertainty", "deployment risk"],
+  }),
+  roleProfile({
+    roleId: "security_expert",
+    displayName: "Security Expert",
+    purpose: "Reviews auth, authorization, secrets, data exposure, dependency, and trust-boundary risks.",
+    traits: ["threat-minded", "conservative", "boundary-focused"],
+    skills: ["threat modeling", "auth review", "sensitive data analysis"],
+    inputs: ["task spec", "changed paths", "auth boundaries", "dependency changes"],
+    outputs: ["security notes", "blocking risks", "required mitigations"],
+    allowedActions: ["review_architecture"],
+    deniedActions: ["merge_pr", "read_secrets", "delete_source_content", "change_public_exposure", "change_schema"],
+    permissions: ["architecture.review"],
+    evidenceDuty: ["Record reviewed trust boundaries, denied-secret handling, and any residual security risks."],
+    defaultAutonomyLevel: "doc_only",
+    compatibleNodeTypes: ["decision", "agent"],
+    escalationRules: ["Escalate secret access, public exposure, auth bypass risk, or destructive data operations to the operator."],
+    healthSignals: ["auth drift", "unreviewed sensitive paths", "dependency risk"],
+  }),
+  roleProfile({
     roleId: "implementer",
     displayName: "Implementer",
     purpose: "Changes code inside approved task and autonomy-envelope boundaries.",
@@ -247,57 +316,6 @@ export const ORION_LEAN_SEVEN_ROLE_PROFILES: OrionRoleProfile[] = [
     escalationRules: ["Stop on envelope conflicts, denied paths, missing dependencies, or unexpected authority changes."],
     healthSignals: ["path-guard failures", "test failures", "workspace setup failures"],
   }),
-  roleProfile({
-    roleId: "verifier",
-    displayName: "Verifier",
-    purpose: "Runs and records verification before publishing work for review.",
-    traits: ["skeptical", "repeatable", "evidence-first"],
-    skills: ["test execution", "path guard review", "verification reporting"],
-    inputs: ["changed paths", "approved plan hash", "verification commands"],
-    outputs: ["verification verdict", "test evidence", "failure summary"],
-    allowedActions: ["run_verification"],
-    deniedActions: ["merge_pr", "read_secrets", "delete_source_content", "change_public_exposure", "change_schema"],
-    permissions: ["verification.run"],
-    evidenceDuty: ["Record command verdicts, outputs, durations, and path-guard results."],
-    defaultAutonomyLevel: "pair",
-    compatibleNodeTypes: ["verification", "agent"],
-    escalationRules: ["Escalate ambiguous results, missing worktree state, or unsafe changed paths."],
-    healthSignals: ["flaky checks", "missing required tests", "verification blocked states"],
-  }),
-  roleProfile({
-    roleId: "knowledge_steward",
-    displayName: "Knowledge Steward",
-    purpose: "Maintains durable knowledge, sync evidence, and operator-facing documentation.",
-    traits: ["careful", "curatorial", "source-aware"],
-    skills: ["documentation", "knowledge indexing", "sync conflict triage"],
-    inputs: ["task evidence", "sync state", "docs needing updates"],
-    outputs: ["documentation updates", "sync conflict notes", "knowledge index summaries"],
-    allowedActions: ["update_knowledge"],
-    deniedActions: ["merge_pr", "read_secrets", "delete_source_content", "change_public_exposure", "change_schema"],
-    permissions: ["knowledge.update"],
-    evidenceDuty: ["Record source IDs, ownership class, and sync conflict decisions."],
-    defaultAutonomyLevel: "pair",
-    compatibleNodeTypes: ["agent", "fallback"],
-    escalationRules: ["Escalate when operator-owned Notion or Obsidian fields would be overwritten."],
-    healthSignals: ["sync conflicts", "stale documentation", "missing source references"],
-  }),
-  roleProfile({
-    roleId: "recovery_router",
-    displayName: "Recovery Router",
-    purpose: "Routes blocked or failed work to the next explicit recovery step.",
-    traits: ["diagnostic", "calm", "operator-aware"],
-    skills: ["failure classification", "fallback routing", "incident summarization"],
-    inputs: ["failed run state", "ledger evidence", "fallback graph"],
-    outputs: ["recovery route", "operator action request", "failure summary"],
-    allowedActions: ["route_recovery"],
-    deniedActions: ["merge_pr", "read_secrets", "delete_source_content", "change_public_exposure", "change_schema"],
-    permissions: ["recovery.route"],
-    evidenceDuty: ["Record failure cause, selected fallback, and operator-visible recovery action."],
-    defaultAutonomyLevel: "pair",
-    compatibleNodeTypes: ["fallback", "decision", "agent"],
-    escalationRules: ["Escalate if no explicit fallback edge or safe recovery action exists."],
-    healthSignals: ["unrouted failures", "repeated retries", "manual DB repair required"],
-  }),
 ];
 
 export const ORION_ROLE_PROFILE_BY_ID = ORION_LEAN_SEVEN_ROLE_PROFILES.reduce(
@@ -312,12 +330,14 @@ export const ORION_AGENT_ROLE_PROFILE_ID_BY_AGENT_ROLE: Partial<Record<string, O
   operator: "operator",
   planner: "planner",
   architect: "architect",
+  ux_ui_designer: "ux_ui_designer",
+  qa_tester: "qa_tester",
+  infrastructure_engineer: "infrastructure_engineer",
+  security_expert: "security_expert",
   implementation_worker: "implementer",
+  implementer: "implementer",
   engineer: "implementer",
-  verifier: "verifier",
-  qa: "verifier",
-  knowledge_steward: "knowledge_steward",
-  recovery_router: "recovery_router",
+  qa: "qa_tester",
 };
 
 export function resolveOrionRoleProfile(roleId: string | null | undefined): OrionRoleProfile | null {
@@ -623,7 +643,7 @@ export const createOrionWorkflowEdgeSchema = orionWorkflowEdgeSchema;
 export const orionAutonomyEnvelopeSchema = z
   .object({
     mode: orionAutonomyModeSchema,
-    allowedRepos: z.array(z.string().trim().min(1).max(300)).min(1),
+    allowedRepos: z.array(z.string().trim().min(1).max(300)).default([]),
     allowedPaths: z.array(z.string().trim().min(1).max(300)).min(1),
     deniedPaths: z.array(z.string().trim().min(1).max(300)).default([]),
     maxRuntimeMinutes: z.number().int().positive().max(24 * 60),
@@ -633,16 +653,7 @@ export const orionAutonomyEnvelopeSchema = z
     autoMerge: z.literal(false),
     stopIf: z.array(z.string().trim().min(1).max(120)).default([]),
   })
-  .strict()
-  .superRefine((value, ctx) => {
-    if (value.mode === "auto_to_pr" && !value.opensPr) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "auto_to_pr envelopes must open a PR",
-        path: ["opensPr"],
-      });
-    }
-  });
+  .strict();
 
 export const orionNotionDataSourceIdsSchema = z
   .object({
@@ -751,6 +762,133 @@ export const upsertOrionTaskPolicySchema = z
     }
   });
 
+export const ORION_COUNCIL_ROLE_IDS = [
+  "architect",
+  "ux_ui_designer",
+  "qa_tester",
+  "infrastructure_engineer",
+  "security_expert",
+  "implementer",
+] as const;
+
+export const ORION_PLANNER_IMPACT_FLAGS = [
+  "frontend",
+  "backend",
+  "data_model",
+  "infrastructure",
+  "security",
+  "testing",
+] as const;
+
+export const orionCouncilRoleIdSchema = z.enum(ORION_COUNCIL_ROLE_IDS);
+export const orionPlannerImpactFlagSchema = z.enum(ORION_PLANNER_IMPACT_FLAGS);
+export const orionCouncilSessionStatusSchema = z.enum([
+  "planning",
+  "awaiting_plan_approval",
+  "approved",
+  "executing",
+  "awaiting_review",
+  "iteration_required",
+  "review_passed",
+  "escalated",
+  "draft_pr_opened",
+]);
+export const orionCouncilDecisionPhaseSchema = z.enum(["planning", "implementation_review"]);
+export const orionCouncilDecisionValueSchema = z.enum(["approved", "changes_requested", "blocked"]);
+export const orionCouncilReviewStatusSchema = z.enum(["passed", "failed", "blocked"]);
+export const orionPlannerImpactFlagsSchema = z.object({
+  frontend: z.boolean().optional(),
+  backend: z.boolean().optional(),
+  data_model: z.boolean().optional(),
+  infrastructure: z.boolean().optional(),
+  security: z.boolean().optional(),
+  testing: z.boolean().optional(),
+}).default({});
+
+export const validateOrionPlannerSpecSchema = z.object({
+  autonomyEnvelope: orionAutonomyEnvelopeSchema,
+  plannerNotes: z.string().trim().max(20000).optional().nullable(),
+  impactFlags: orionPlannerImpactFlagsSchema,
+  proposedParticipantRoleIds: z.array(orionCouncilRoleIdSchema).optional().default([]),
+  finalPlanMarkdown: z.string().trim().min(1).max(200000).optional().nullable(),
+  implementerAgentId: z.string().uuid().optional().nullable(),
+  maxIterations: z.number().int().positive().max(10).optional().default(2),
+  baseBranch: z.string().trim().min(1).max(120).optional().default("master"),
+  idempotencyKey: z.string().trim().min(1).max(120).optional().nullable(),
+}).strict().superRefine((value, ctx) => {
+  if (value.autonomyEnvelope.mode !== "auto_to_pr") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Auto Round Table handoff requires Auto execution guardrails",
+      path: ["autonomyEnvelope", "mode"],
+    });
+  }
+  if (value.autonomyEnvelope.autoMerge !== false) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Orion Auto must never auto-merge",
+      path: ["autonomyEnvelope", "autoMerge"],
+    });
+  }
+});
+
+export const startOrionCouncilSessionSchema = validateOrionPlannerSpecSchema;
+
+export const saveOrionCouncilPlanSchema = z.object({
+  finalPlanMarkdown: z.string().trim().min(1).max(200000),
+  idempotencyKey: z.string().trim().min(1).max(120).optional().nullable(),
+}).strict();
+
+export const approveOrionCouncilPlanSchema = z.object({
+  roleId: orionCouncilRoleIdSchema,
+  agentId: z.string().uuid().optional().nullable(),
+  notes: z.string().trim().max(4000).optional().nullable(),
+  idempotencyKey: z.string().trim().min(1).max(120).optional().nullable(),
+}).strict();
+
+export const startOrionCouncilExecutionSchema = z.object({
+  implementerAgentId: z.string().uuid().optional().nullable(),
+  note: z.string().trim().max(4000).optional().nullable(),
+  idempotencyKey: z.string().trim().min(1).max(120).optional().nullable(),
+  verification: z.object({
+    autoRun: z.boolean().optional().default(false),
+    commands: z.array(z.object({
+      name: z.string().trim().min(1).max(120).optional().nullable(),
+      command: z.string().trim().min(1).max(2000),
+      cwd: z.string().trim().min(1).max(500).optional().nullable(),
+      timeoutSeconds: z.number().int().positive().max(60 * 60).optional().nullable(),
+      required: z.boolean().optional().default(true),
+    })).min(1).max(20),
+  }).optional().nullable(),
+}).strict();
+
+export const recordOrionCouncilReviewSchema = z.object({
+  roleId: orionCouncilRoleIdSchema,
+  status: orionCouncilReviewStatusSchema,
+  notes: z.string().trim().max(20000).optional().nullable(),
+  blockingReason: z.string().trim().max(4000).optional().nullable(),
+  requiredFixSummary: z.string().trim().max(20000).optional().nullable(),
+  idempotencyKey: z.string().trim().min(1).max(120).optional().nullable(),
+}).strict().superRefine((value, ctx) => {
+  if (value.status !== "passed" && !value.requiredFixSummary) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "failed or blocked reviews must include a required fix summary",
+      path: ["requiredFixSummary"],
+    });
+  }
+});
+
+export const advanceOrionCouncilIterationSchema = z.object({
+  reason: z.string().trim().min(1).max(4000),
+  requiredFixSummary: z.string().trim().min(1).max(20000),
+  idempotencyKey: z.string().trim().min(1).max(120).optional().nullable(),
+}).strict();
+
+export const resetOrionAutoTeamSchema = z.object({
+  dryRun: z.boolean().optional().default(false),
+}).strict();
+
 export const cancelOrionRunSchema = z.object({
   reason: z.string().trim().max(4000).optional().nullable(),
 });
@@ -845,6 +983,16 @@ export const openOrionPrSchema = z.object({
 
 export type OrionAutonomyMode = z.infer<typeof orionAutonomyModeSchema>;
 export type OrionAutonomyEnvelope = z.infer<typeof orionAutonomyEnvelopeSchema>;
+export type OrionCouncilRoleId = z.infer<typeof orionCouncilRoleIdSchema>;
+export type OrionPlannerImpactFlag = z.infer<typeof orionPlannerImpactFlagSchema>;
+export type ValidateOrionPlannerSpec = z.infer<typeof validateOrionPlannerSpecSchema>;
+export type StartOrionCouncilSession = z.infer<typeof startOrionCouncilSessionSchema>;
+export type SaveOrionCouncilPlan = z.infer<typeof saveOrionCouncilPlanSchema>;
+export type ApproveOrionCouncilPlan = z.infer<typeof approveOrionCouncilPlanSchema>;
+export type StartOrionCouncilExecution = z.infer<typeof startOrionCouncilExecutionSchema>;
+export type RecordOrionCouncilReview = z.infer<typeof recordOrionCouncilReviewSchema>;
+export type AdvanceOrionCouncilIteration = z.infer<typeof advanceOrionCouncilIterationSchema>;
+export type ResetOrionAutoTeam = z.infer<typeof resetOrionAutoTeamSchema>;
 export type OrionWorkflowPresetId = z.infer<typeof orionWorkflowPresetIdSchema>;
 export type OrionWorkflowNodeType = z.infer<typeof orionWorkflowNodeTypeSchema>;
 export type OrionWorkflowEdgeType = z.infer<typeof orionWorkflowEdgeTypeSchema>;

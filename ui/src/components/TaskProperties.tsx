@@ -29,7 +29,6 @@ import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
 import { Identity } from "./Identity";
 import { TaskReferencePill } from "./TaskReferencePill";
-import { AutonomyEnvelopeEditor } from "./AutonomyEnvelopeEditor";
 import { formatDate, cn, projectUrl } from "../lib/utils";
 import { timeAgo } from "../lib/timeAgo";
 import { Separator } from "@/components/ui/separator";
@@ -1385,8 +1384,6 @@ export function TaskProperties({
           </PropertyRow>
         )}
       </div>
-
-      <AutonomyEnvelopeEditor taskId={task.id} />
 
       {liveWorkspaceService || task.currentExecutionWorkspace?.branchName || task.currentExecutionWorkspace?.cwd || task.executionWorkspaceId ? (
         <>

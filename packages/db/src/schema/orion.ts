@@ -194,6 +194,116 @@ export const orionPrReceipts = pgTable(
   }),
 );
 
+export const orionCouncilSessions = pgTable(
+  "orion_council_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    taskId: uuid("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+    runId: uuid("run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),
+    status: text("status").notNull().default("planning"),
+    phase: text("phase").notNull().default("spec"),
+    baseBranch: text("base_branch").notNull().default("master"),
+    maxIterations: integer("max_iterations").notNull().default(2),
+    currentIteration: integer("current_iteration").notNull().default(0),
+    impactFlags: jsonb("impact_flags").$type<Record<string, boolean>>().notNull().default({}),
+    plannerNotes: text("planner_notes"),
+    finalPlanMarkdown: text("final_plan_markdown"),
+    finalPlanSha256: text("final_plan_sha256"),
+    approvedPlanSha256: text("approved_plan_sha256"),
+    createdByUserId: text("created_by_user_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    taskIdx: index("orion_council_sessions_task_idx").on(table.companyId, table.taskId),
+    runIdx: index("orion_council_sessions_run_idx").on(table.companyId, table.runId),
+    statusIdx: index("orion_council_sessions_company_status_idx").on(table.companyId, table.status),
+  }),
+);
+
+export const orionCouncilParticipants = pgTable(
+  "orion_council_participants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    sessionId: uuid("session_id").notNull().references(() => orionCouncilSessions.id, { onDelete: "cascade" }),
+    roleId: text("role_id").notNull(),
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: "set null" }),
+    required: boolean("required").notNull().default(true),
+    status: text("status").notNull().default("pending_plan"),
+    domainNotes: text("domain_notes"),
+    planApprovedAt: timestamp("plan_approved_at", { withTimezone: true }),
+    reviewStatus: text("review_status"),
+    reviewNotes: text("review_notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    sessionRoleIdx: uniqueIndex("orion_council_participants_session_role_uq").on(table.sessionId, table.roleId),
+    sessionIdx: index("orion_council_participants_session_idx").on(table.companyId, table.sessionId),
+    agentIdx: index("orion_council_participants_agent_idx").on(table.companyId, table.agentId),
+  }),
+);
+
+export const orionCouncilDecisions = pgTable(
+  "orion_council_decisions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    sessionId: uuid("session_id").notNull().references(() => orionCouncilSessions.id, { onDelete: "cascade" }),
+    participantId: uuid("participant_id").notNull().references(() => orionCouncilParticipants.id, { onDelete: "cascade" }),
+    phase: text("phase").notNull(),
+    decision: text("decision").notNull(),
+    notes: text("notes"),
+    planSha256: text("plan_sha256"),
+    createdByAgentId: uuid("created_by_agent_id").references(() => agents.id, { onDelete: "set null" }),
+    createdByUserId: text("created_by_user_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    sessionIdx: index("orion_council_decisions_session_idx").on(table.companyId, table.sessionId),
+  }),
+);
+
+export const orionCouncilReviews = pgTable(
+  "orion_council_reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    sessionId: uuid("session_id").notNull().references(() => orionCouncilSessions.id, { onDelete: "cascade" }),
+    participantId: uuid("participant_id").notNull().references(() => orionCouncilParticipants.id, { onDelete: "cascade" }),
+    iteration: integer("iteration").notNull().default(0),
+    status: text("status").notNull(),
+    notes: text("notes"),
+    blockingReason: text("blocking_reason"),
+    requiredFixSummary: text("required_fix_summary"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    sessionIdx: index("orion_council_reviews_session_idx").on(table.companyId, table.sessionId),
+  }),
+);
+
+export const orionCouncilIterations = pgTable(
+  "orion_council_iterations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    sessionId: uuid("session_id").notNull().references(() => orionCouncilSessions.id, { onDelete: "cascade" }),
+    iteration: integer("iteration").notNull(),
+    status: text("status").notNull().default("open"),
+    reason: text("reason"),
+    requiredFixSummary: text("required_fix_summary"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    sessionIterationIdx: uniqueIndex("orion_council_iterations_session_iteration_uq").on(table.sessionId, table.iteration),
+    sessionIdx: index("orion_council_iterations_session_idx").on(table.companyId, table.sessionId),
+  }),
+);
+
 export const orionWorkflows = pgTable(
   "orion_workflows",
   {

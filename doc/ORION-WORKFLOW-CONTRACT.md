@@ -1,177 +1,67 @@
-# Orion Workflow Graph Contract v0
+# Orion Auto Round Table Contract
 
-Orion treats the original Paperclip CEO hierarchy as one workflow preset, not as the required substrate.
+This document describes the current Orion Auto model. The old linear workflow graph product surface is retired for Orion Auto; `Planner -> Architect -> Implementer -> Verifier -> PR -> Human Review` is no longer the primary Round Table mechanism.
 
-The V2 release-readiness aggregation point for this workflow layer is `doc/orion-v2-release-checklist.md`. It maps the Round Table review gates, implementation evidence, and smoke results into the go/no-go checklist for enabling V2 Round Table behavior.
+## Roles
 
-## Authority Model
+Planner is a pre-handoff spec assistant. Planner creates new task specs or validates existing tasks for Auto readiness, but Planner is not a voting Round Table participant.
 
-- Board/operator remains the default authority for creating agents and changing workflow topology.
-- Agents can be workflow nodes, but a role string does not grant control-plane authority.
-- `agents.reportsTo` remains for legacy Paperclip org charts and imports.
-- Workflow edges are the preferred routing primitive for Orion task execution.
+The voting Auto council uses these canonical roles:
 
-## Core Objects
-
-- `Workflow`: company-scoped graph used to route work.
-- `WorkflowNode`: independent unit in the graph. MVP types are `agent`, `human_gate`, `task_intake`, `verification`, `github_pr`, `decision`, and `fallback`.
-- `WorkflowEdge`: typed link between nodes. MVP types are `assigns_to`, `hands_off_to`, `requires_approval`, `fallback_to`, `reports_to`, and `blocks_until`.
-- `TaskWorkflowBinding`: binds one task/task to a workflow and current node.
-- `WorkflowRun`: optional per-run graph state linked to a heartbeat run.
-
-## Built-In Presets
-
-`paperclip_company` preserves legacy behavior:
-
-```text
-Board -> CEO -> CTO -> Engineer
-```
-
-`orion_operator_auto_to_pr` is the lighter Orion operator-led preset:
-
-```text
-Notion Task -> Codex Worker -> Verification -> PR Creation -> Human Review
-                         \-> Operator Fallback
-```
-
-`orion_round_table` is the V2 Lean Seven preset:
-
-```text
-Task Intake -> Planner -> Architect -> Implementer -> Verifier -> PR Creation -> Human Review -> Knowledge Steward
-                  \            \             \            \             \                         \
-                   \            \             \            \             \                         -> Recovery Router -> Operator
-                    ----------------------------------------------------->
-```
-
-The Round Table preset stores `roleProfileId` in node config for `operator`, `planner`, `architect`, `implementer`, `verifier`, `knowledge_steward`, and `recovery_router`. The Implementer node also carries legacy `role=implementation_worker` so existing agents can bind without a migration.
-
-## V2 Role Profile Contract
-
-ORN-V2-004 adds Lean Seven role profiles as shared metadata, not database rows. The canonical profile ids are `operator`, `planner`, `architect`, `implementer`, `verifier`, `knowledge_steward`, and `recovery_router`.
-
-Profiles describe authority and evidence duties for future workflow routing. They include purpose, traits, skills, inputs, outputs, allowed and denied actions, permissions, evidence duty, autonomy level, compatible workflow node types, escalation rules, and health signals. They do not grant runtime permission by themselves; board and agent authorization still comes from the existing API/auth model and agent permission records.
-
-Default profiles live in `packages/shared` and are exposed read-only through:
-
-```text
-GET /api/orion/role-profiles
-GET /api/orion/role-profiles/:roleId
-```
-
-No database migration is required for V2 MVP profile metadata. Future workflow node config may reference `roleProfileId`, but ORN-V2-004 does not implement Round Table routing, node binding, or an Org page redesign.
-
-Compatibility rules:
-
-- Existing `agents.role` values remain readable.
-- `implementation_worker` maps to the Lean Seven `implementer` profile.
-- New V2 role labels may be used for metadata and future onboarding without removing CEO/CTO/Paperclip roles.
-- Unsafe defaults are denied: default profiles cannot allow secret reads, schema changes, source deletion, public exposure changes, or merge actions.
-- Any profile with mutating actions or permissions must declare evidence duties.
-
-## Legacy Hierarchy Compatibility
-
-Existing companies are not silently migrated by V2 workflow presets. The `/org` page chooses its default view from the company default workflow while preserving the hierarchy canvas as the legacy compatibility view.
-
-| Company workflow state | Default `/org` view | Compatibility rule |
-| --- | --- | --- |
-| `paperclip_company` | Hierarchy | `agents.reportsTo` remains the source of truth. CEO/CTO hierarchy semantics and Paperclip onboarding copy remain valid for this preset. |
-| `orion_round_table` | Round Table | Role-profile council cards are shown first. Hierarchy remains available through the view toggle as a legacy view. |
-| `orion_operator_auto_to_pr` | Round Table | Operator-led Orion companies use the council-style view first. Hierarchy remains available through the view toggle. |
-| No default workflow | Hierarchy | The UI shows a no-workflow notice and does not imply that the company has been migrated. |
-
-CEO/CTO text in Orion views must come from actual bound agents carrying those roles, not from Round Table defaults. Orion presets start from implementation-worker and role-profile metadata; Paperclip-specific CEO onboarding behavior stays isolated to `paperclip_company`.
-
-## Executable Node Resolution
-
-ORN-V2-008 makes task workflow bindings executable for V2 routing. When a task has an `orion_task_workflow_bindings` row, Orion resolves the next owner/action from the bound workflow graph before considering any legacy hierarchy behavior.
-
-- `currentNodeKey` identifies the active workflow node for the task.
-- Edges are selected from the current node by requested edge type and lowest `position`.
-- `node.agentId` is the only executable agent binding. Orion must not infer an assignee by matching `roleProfileId` to `agents.role`.
-- `node.config.roleProfileId` supplies role metadata, evidence duties, and UI/routing context.
-- Bound `agent` nodes can receive work.
-- Unbound `agent` nodes block with a missing-binding operator action.
-- Unbound `human_gate`, `fallback`, `decision`, `verification`, and `github_pr` nodes resolve to operator-required state rather than hidden CEO/CTO fallback.
-- If a task has no workflow binding, existing Paperclip/legacy behavior remains unchanged.
-- Recovery routing follows the same graph-first rule for workflow-bound tasks. Orion reads the task's `currentNodeKey`, selects the first `fallback_to` edge by `position`, and uses the fallback target's explicit `agentId` only when that agent is invokable and not budget-blocked.
-- Missing `fallback_to` edges, missing target nodes, unbound agent targets, and unavailable fallback agents surface operator-visible recovery details. They must not fall through to `reportsTo`, root-agent, CEO, CTO, or ordered invokable-agent lookup.
-- `reportsTo` and CEO/CTO recovery lookup are compatibility behavior for tasks with no workflow binding.
-
-The V2 resolver APIs are:
-
-```text
-GET /api/orion/tasks/:taskId/workflow-resolution?edgeType=assigns_to
-POST /api/orion/tasks/:taskId/workflow/advance
-```
-
-Advancing a task updates the task binding and active workflow run node. Bound agent targets assign the task to that agent and keep it active; operator-required targets clear the agent assignee and move the task to review/operator attention.
-
-## Round Table Intake
-
-Round Table intake is a pre-run queue. It is represented by `orion_task_workflow_bindings` plus `tasks.executionState.orionIntake`; it is not the heartbeat run queue and must not create a heartbeat run or REQ ledger.
-
-Supported intake sources are:
-
-- Notion sync: eligible imported tasks bind to the company default `orion_round_table` workflow at `task_intake` when that workflow exists.
-- Manual task detail action: an operator can queue one task into intake.
-- Bulk existing-task action: an operator can queue eligible visible, non-terminal tasks without active runs.
-- Planner draft publish: an approved local Planner draft is written to Notion and then queued like a Notion task.
-
-The intake APIs are:
-
-```text
-GET  /api/orion/tasks/:taskId/round-table/intake
-POST /api/orion/tasks/:taskId/round-table/queue
-POST /api/orion/companies/:companyId/round-table/queue-existing
-POST /api/orion/tasks/:taskId/round-table/route
-POST /api/orion/companies/:companyId/planner-drafts
-POST /api/orion/tasks/:taskId/planner-draft/publish-to-notion
-```
-
-Smart intake routing suggests the first council owner from task shape:
-
-- Feature, implementation, and default tasks suggest Planner.
-- Review and PR-linked tasks suggest Verifier.
-- Docs, sync, receipt, evidence, and knowledge tasks suggest Knowledge Steward.
-- Blocked and recovery tasks suggest Recovery Router.
-
-The operator can override the suggested role before routing. Routing assigns the selected bound council agent or returns an actionable missing-binding/operator-required state. Routing does not launch a run, start Codex, create a REQ ledger, publish a PR, or wake an adapter. Execution remains a separate operator-triggered step through the existing run launcher and Codex start flow.
-
-Planner drafts are Orion-local until approval. Publishing a draft creates a Notion task row through the configured Notion task data source, stores the Notion page reference, and queues the resulting task into intake. Missing Notion setup blocks publication; it does not silently create local-only Notion authority.
-
-## Guided Round Table Setup
-
-ORN-V2-011 adds an explicit operator-triggered setup path for existing Orion companies. No company is migrated on app load, deploy, or `/org` render.
-
-```text
-GET  /api/orion/companies/:companyId/round-table/setup-readiness
-POST /api/orion/companies/:companyId/round-table/setup
-```
-
-Setup creates or reuses the `orion_round_table` workflow only after the operator submits the action. It may make that workflow the company default, but it does not delete the prior workflow or rewrite `agents.reportsTo`.
-
-Executable council nodes are the only nodes setup can create agents for:
-
-- `planner`
 - `architect`
+- `ux_ui_designer`
+- `qa_tester`
+- `infrastructure_engineer`
+- `security_expert`
 - `implementer`
-- `verifier`
-- `knowledge_steward`
-- `recovery_router`
 
-`operator`, `task_intake`, `github_pr`, `human_review`, and other human/system nodes remain unbound unless an operator had already bound them. Operator authority remains the human board/operator, not a generated agent.
+The Implementer is part of the plan approval gate because Auto execution must be bound to the final plan before Codex starts.
 
-The setup request requires a `sourceAgentId`. Orion copies adapter/runtime configuration from that company-scoped source agent for newly created council agents. If the selected source agent is already an implementation worker, setup binds it to the Implementer node instead of creating a duplicate Implementer. Existing node bindings are preserved.
+## Flow
 
-Setup is idempotent: repeated calls do not create duplicate Round Table workflows, duplicate nodes, or duplicate agents for already-bound executable roles. Paperclip companies using `paperclip_company` are reported as blocked rather than silently converted. The operation does not mutate Notion/Obsidian bindings, secrets, imported tasks, existing task assignments, or external-service credentials.
+1. Planner validates or creates the task spec, acceptance criteria, autonomy envelope, repo/path envelope, impact flags, and proposed participants.
+2. Orion creates an `orion_council_sessions` row and selected `orion_council_participants`.
+3. Required participants are selected from Planner proposals plus deterministic impact rules.
+4. Orion stores the final implementation plan and its SHA-256 hash.
+5. Every selected expert plus Implementer must approve the current plan hash.
+6. Orion creates an Auto run only after plan approval passes.
+7. Codex executes inside an isolated `git_worktree` branch created from `master`.
+8. Orion owns verification, council review, iteration tracking, and draft PR creation.
+9. Orion opens a draft PR only after council review passes. Orion never approves or merges PRs.
 
-## MVP Rules
+Default max fix iterations is `2`.
 
-- New Orion onboarding defaults to `orion_round_table`.
-- `orion_operator_auto_to_pr` remains available as a lighter Orion preset for operator-led Auto-to-PR companies.
-- Original Paperclip remains available through the `paperclip_company` preset.
-- V2 Round Table routing is available through the `orion_round_table` preset.
-- The first Orion worker is an implementation worker, not a CEO.
-- CEO instructions are only materialized for agents explicitly created with `role=ceo`.
-- Agent hiring authority is explicit through permissions, not implied by `role=ceo`.
-- If a workflow binding exists, recovery must use workflow `fallback_to` edges and explicit node bindings. Legacy reporting-chain behavior is allowed only when no task workflow binding exists.
+## Data Model
+
+Auto council state is stored in dedicated tables:
+
+- `orion_council_sessions`
+- `orion_council_participants`
+- `orion_council_decisions`
+- `orion_council_reviews`
+- `orion_council_iterations`
+
+REQ ledger tables remain the authority for execution evidence, changed paths, verification output, and PR receipts.
+
+## Public API
+
+Primary Auto APIs:
+
+- `POST /api/orion/tasks/:taskId/planner/validate`
+- `POST /api/orion/tasks/:taskId/council/sessions`
+- `GET /api/orion/tasks/:taskId/council/session`
+- `GET /api/orion/council/sessions/:sessionId`
+- `POST /api/orion/council/sessions/:sessionId/plan`
+- `POST /api/orion/council/sessions/:sessionId/plan/approval`
+- `POST /api/orion/council/sessions/:sessionId/execute`
+- `POST /api/orion/council/sessions/:sessionId/reviews`
+- `POST /api/orion/council/sessions/:sessionId/iterations`
+- `POST /api/orion/council/sessions/:sessionId/pr/open`
+
+Old workflow preset, task workflow binding, workflow resolution/advance, and old Round Table intake/setup endpoints return `410 Gone` for Orion Auto. They must not create workflow graph state.
+
+Auto team reset:
+
+- `POST /api/orion/companies/:companyId/auto-team/reset`
+
+The reset hard-deletes old Orion workflow rows/runs and old Lean Seven Round Table agents for the company, then recreates Planner plus the canonical Auto council agents with managed `AGENTS.md` instructions. Planner remains visible but is excluded from council approval and review matrices.

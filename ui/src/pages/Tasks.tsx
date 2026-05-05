@@ -23,7 +23,7 @@ import { TasksList } from "../components/TasksList";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { CircleDot, FileText, GitBranch } from "lucide-react";
+import { CircleDot, FileText } from "lucide-react";
 
 const WORKSPACE_FILTER_TASK_LIMIT = 1000;
 
@@ -133,14 +133,6 @@ export function Tasks() {
     },
   });
 
-  const queueExisting = useMutation({
-    mutationFn: () => orionApi.queueExistingRoundTableIntake(selectedCompanyId!, { limit: 500 }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(selectedCompanyId!) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.orion.workflows(selectedCompanyId!) });
-    },
-  });
-
   const createPlannerDraft = useMutation({
     mutationFn: () => orionApi.createPlannerDraft(selectedCompanyId!, {
       title: plannerDraftTitle,
@@ -158,12 +150,6 @@ export function Tasks() {
     },
   });
 
-  const showOrionIntake = useCallback(() => {
-    const next = new URLSearchParams(searchParams);
-    next.set("orionIntake", "true");
-    setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams]);
-
   if (!selectedCompanyId) {
     return <EmptyState icon={CircleDot} message="Select a company to view tasks." />;
   }
@@ -172,38 +158,15 @@ export function Tasks() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium">Orion Intake</p>
-          <p className="text-xs text-muted-foreground">Queue eligible tasks for Round Table routing without launching runs.</p>
+          <p className="text-sm font-medium">Orion Auto</p>
+          <p className="text-xs text-muted-foreground">Open a task to validate its spec and hand it to the Auto Round Table.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={showOrionIntake}>
-            View intake
-          </Button>
           <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setPlannerDraftOpen((value) => !value)}>
             <FileText className="h-3.5 w-3.5" />
             Planner draft
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            className="gap-2"
-            disabled={queueExisting.isPending}
-            onClick={() => queueExisting.mutate()}
-          >
-            <GitBranch className="h-3.5 w-3.5" />
-            {queueExisting.isPending ? "Queueing..." : "Queue existing tasks"}
-          </Button>
         </div>
-        {queueExisting.data ? (
-          <p className="basis-full text-xs text-muted-foreground">
-            Queued {queueExisting.data.queued}; skipped {queueExisting.data.skipped}.
-          </p>
-        ) : null}
-        {queueExisting.error ? (
-          <p className="basis-full text-xs text-destructive">
-            {queueExisting.error instanceof Error ? queueExisting.error.message : "Unable to queue tasks."}
-          </p>
-        ) : null}
         {plannerDraftOpen ? (
           <div className="basis-full space-y-2 rounded-md border border-border bg-muted/10 p-2">
             <div className="grid gap-2 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto]">

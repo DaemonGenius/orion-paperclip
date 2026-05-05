@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   createOrionRunSchema,
+  approveOrionCouncilPlanSchema,
+  ORION_COUNCIL_ROLE_IDS,
   ORION_LEAN_SEVEN_ROLE_PROFILES,
   ORION_WORKFLOW_PRESETS,
   approveOrionLedgerPlanSchema,
@@ -29,9 +31,14 @@ import {
   resolveOrionTaskWorkflowSchema,
   resolveOrionRoleProfileForAgentRole,
   runOrionVerificationSchema,
+  recordOrionCouncilReviewSchema,
+  resetOrionAutoTeamSchema,
   saveOrionLedgerPlanSchema,
+  saveOrionCouncilPlanSchema,
   setupOrionRoundTableSchema,
+  startOrionCouncilExecutionSchema,
   startOrionCodexRunSchema,
+  validateOrionPlannerSpecSchema,
   startOrionLedgerExecutionSchema,
   syncbackOrionNotionSchema,
   upsertOrionTaskPolicySchema,
@@ -51,7 +58,7 @@ const validEnvelope = {
 } as const;
 
 describe("Orion validators", () => {
-  it("accepts a complete Auto-to-PR autonomy envelope", () => {
+  it("accepts Auto execution guardrails", () => {
     expect(orionAutonomyEnvelopeSchema.parse(validEnvelope)).toMatchObject({
       mode: "auto_to_pr",
       autoMerge: false,
@@ -75,13 +82,11 @@ describe("Orion validators", () => {
     expect(parsed.autonomyEnvelope.opensPr).toBe(false);
   });
 
-  it("rejects Auto-to-PR envelopes that do not open a PR", () => {
-    expect(() =>
-      orionAutonomyEnvelopeSchema.parse({
-        ...validEnvelope,
-        opensPr: false,
-      }),
-    ).toThrow("auto_to_pr envelopes must open a PR");
+  it("allows project-scoped guardrails without a redundant repo allowlist", () => {
+    expect(orionAutonomyEnvelopeSchema.parse({
+      ...validEnvelope,
+      allowedRepos: [],
+    }).allowedRepos).toEqual([]);
   });
 
   it("keeps auto-merge out of the MVP contract", () => {
@@ -93,13 +98,7 @@ describe("Orion validators", () => {
     ).toThrow();
   });
 
-  it("requires explicit allowed repos and paths", () => {
-    expect(() =>
-      orionAutonomyEnvelopeSchema.parse({
-        ...validEnvelope,
-        allowedRepos: [],
-      }),
-    ).toThrow();
+  it("requires explicit allowed paths", () => {
     expect(() =>
       orionAutonomyEnvelopeSchema.parse({
         ...validEnvelope,
@@ -117,19 +116,58 @@ describe("Orion validators", () => {
     ).toThrow("policy mode must match autonomy envelope mode");
   });
 
-  it("validates all Lean Seven default role profiles", () => {
+  it("validates Auto Round Table council contracts", () => {
+    expect(ORION_COUNCIL_ROLE_IDS).toEqual([
+      "architect",
+      "ux_ui_designer",
+      "qa_tester",
+      "infrastructure_engineer",
+      "security_expert",
+      "implementer",
+    ]);
+    expect(validateOrionPlannerSpecSchema.parse({
+      autonomyEnvelope: validEnvelope,
+      impactFlags: { backend: true, security: true },
+      proposedParticipantRoleIds: ["security_expert"],
+      finalPlanMarkdown: "Create the lookup CRUD using the connected project repository.",
+    }).autonomyEnvelope.mode).toBe("auto_to_pr");
+    expect(() => validateOrionPlannerSpecSchema.parse({
+      autonomyEnvelope: { ...validEnvelope, mode: "pair", opensPr: false },
+      impactFlags: {},
+    })).toThrow("Auto Round Table handoff requires Auto execution guardrails");
+    expect(saveOrionCouncilPlanSchema.parse({
+      finalPlanMarkdown: "Final plan",
+    }).finalPlanMarkdown).toBe("Final plan");
+    expect(approveOrionCouncilPlanSchema.parse({
+      roleId: "implementer",
+    }).roleId).toBe("implementer");
+    expect(() => recordOrionCouncilReviewSchema.parse({
+      roleId: "qa_tester",
+      status: "failed",
+    })).toThrow("failed or blocked reviews must include a required fix summary");
+    expect(startOrionCouncilExecutionSchema.parse({}).implementerAgentId).toBeUndefined();
+  });
+
+  it("validates canonical Orion role profiles", () => {
     const parsed = ORION_LEAN_SEVEN_ROLE_PROFILES.map((profile) => orionRoleProfileSchema.parse(profile));
 
-    expect(parsed).toHaveLength(7);
+    expect(parsed).toHaveLength(8);
     expect(parsed.map((profile) => profile.roleId)).toEqual([
       "operator",
       "planner",
       "architect",
+      "ux_ui_designer",
+      "qa_tester",
+      "infrastructure_engineer",
+      "security_expert",
       "implementer",
-      "verifier",
-      "knowledge_steward",
-      "recovery_router",
     ]);
+  });
+
+  it("validates Orion Auto team reset requests", () => {
+    expect(resetOrionAutoTeamSchema.parse({})).toEqual({ dryRun: false });
+    expect(resetOrionAutoTeamSchema.parse({ dryRun: true })).toEqual({ dryRun: true });
+    expect(() => resetOrionAutoTeamSchema.parse({ force: true })).toThrow();
   });
 
   it("rejects unknown role profile ids", () => {
@@ -357,9 +395,9 @@ describe("Orion validators", () => {
     expect(queueExistingOrionRoundTableIntakeSchema.parse({ limit: 500 }).limit).toBe(500);
     expect(() => queueExistingOrionRoundTableIntakeSchema.parse({ limit: 501 })).toThrow();
     expect(routeOrionRoundTableIntakeSchema.parse({
-      targetRoleProfileId: "verifier",
+      targetRoleProfileId: "qa_tester",
       note: "PR work.",
-    }).targetRoleProfileId).toBe("verifier");
+    }).targetRoleProfileId).toBe("qa_tester");
     expect(() => routeOrionRoundTableIntakeSchema.parse({ targetRoleProfileId: "cto" })).toThrow();
 
     const now = new Date("2026-05-04T00:00:00.000Z");

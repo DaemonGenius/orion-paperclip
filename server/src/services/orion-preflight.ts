@@ -8,17 +8,15 @@ import {
   companyNotionBindings,
   instanceUserRoles,
   notionSyncState,
+  orionCouncilSessions,
   orionPrReceipts,
   orionReqLedgers,
   orionTaskPolicies,
-  orionWorkflows,
   syncConflicts,
   tasks,
 } from "@paperclipai/db";
 import {
   NOTION_TASK_PROPERTY_NAMES,
-  ORION_LEAN_SEVEN_ROLE_PROFILES,
-  ORION_WORKFLOW_PRESETS,
   type DeploymentExposure,
   type DeploymentMode,
   type OrionPreflightCheck,
@@ -209,6 +207,7 @@ export function orionPreflightService(db: Db, opts: OrionPreflightOptions = {}) 
       policies: await db.select({ count: count() }).from(orionTaskPolicies).where(eq(orionTaskPolicies.companyId, companyId)).then(firstCount),
       ledgers: await db.select({ count: count() }).from(orionReqLedgers).where(eq(orionReqLedgers.companyId, companyId)).then(firstCount),
       prReceipts: await db.select({ count: count() }).from(orionPrReceipts).where(eq(orionPrReceipts.companyId, companyId)).then(firstCount),
+      councilSessions: await db.select({ count: count() }).from(orionCouncilSessions).where(eq(orionCouncilSessions.companyId, companyId)).then(firstCount),
       notionSyncRows: await db.select({ count: count() }).from(notionSyncState).where(eq(notionSyncState.companyId, companyId)).then(firstCount),
       conflicts: await db.select({ count: count() }).from(syncConflicts).where(and(eq(syncConflicts.companyId, companyId), eq(syncConflicts.status, "open"))).then(firstCount),
     };
@@ -223,29 +222,30 @@ export function orionPreflightService(db: Db, opts: OrionPreflightOptions = {}) 
     push({
       id: "orion_schema.shared_contracts",
       subsystem: "orion_schema",
-      status: ORION_LEAN_SEVEN_ROLE_PROFILES.length === 7 && Boolean(ORION_WORKFLOW_PRESETS.orion_round_table) ? "pass" : "fail",
-      title: "Shared Orion contracts",
-      message: "Lean Seven role profiles and Round Table preset are available from shared contracts.",
-      action: "Rebuild shared package exports if shared Orion contracts are missing.",
-      evidence: { roleProfiles: ORION_LEAN_SEVEN_ROLE_PROFILES.length, hasRoundTablePreset: Boolean(ORION_WORKFLOW_PRESETS.orion_round_table) },
+      status: "pass",
+      title: "Shared Orion Auto contracts",
+      message: "Orion Auto council tables and contracts are available.",
+      action: null,
+      evidence: { councilRoles: ["architect", "ux_ui_designer", "qa_tester", "infrastructure_engineer", "security_expert", "implementer"] },
     });
   }
 
   async function checkCompanySetup(companyId: string, push: (check: OrionPreflightCheck) => void) {
-    const workflows = await db.select().from(orionWorkflows).where(eq(orionWorkflows.companyId, companyId));
-    const defaultWorkflow = workflows.find((workflow) => workflow.defaultForCompany);
     const codexAgents = await db
       .select()
       .from(agents)
       .where(and(eq(agents.companyId, companyId), eq(agents.adapterType, "codex_local")));
+    const roleSet = new Set(codexAgents.map((agent) => agent.role));
+    const requiredRoles = ["planner", "architect", "qa_tester", "implementer"];
+    const missingRoles = requiredRoles.filter((role) => !roleSet.has(role));
     push({
-      id: "company_setup.workflow",
+      id: "company_setup.auto_team",
       subsystem: "company_setup",
-      status: defaultWorkflow ? "pass" : "fail",
-      title: "Default Orion workflow",
-      message: defaultWorkflow ? `Default workflow is ${defaultWorkflow.presetId}.` : "No default workflow is configured.",
-      action: "Use Round Table setup or create an Orion workflow preset for this company.",
-      evidence: { workflowCount: workflows.length, defaultPresetId: defaultWorkflow?.presetId ?? null },
+      status: missingRoles.length === 0 ? "pass" : "fail",
+      title: "Orion Auto team",
+      message: missingRoles.length === 0 ? "Canonical Orion Auto agents exist." : `Missing Auto roles: ${missingRoles.join(", ")}.`,
+      action: "Use the Org page reset action to recreate the canonical Orion Auto team.",
+      evidence: { requiredRoles, missingRoles },
     });
     push({
       id: "company_setup.codex_agent",

@@ -1,19 +1,12 @@
 import type {
-  BindOrionTaskWorkflow,
-  CreateOrionWorkflowEdge,
-  CreateOrionWorkflowFromPreset,
-  CreateOrionWorkflowNode,
   OrionAutonomyEnvelope,
   OrionAutonomyMode,
+  OrionCouncilRoleId,
+  OrionCouncilSession,
   OrionReqLedger,
-  OrionRoleProfile,
-  OrionRoundTableSetupResult,
   OrionRunReadiness,
   OrionTaskPolicy,
-  OrionTaskWorkflowBinding,
   OrionPrReceipt,
-  OrionWorkflow,
-  OrionWorkflowDefinition,
   ObsidianIndexResult,
   NotionKnowledgeSyncResult,
   NotionKnowledgeSyncJobStatus,
@@ -25,25 +18,12 @@ import type {
   ProjectWorkspaceStructure,
   SyncConflict,
   OrionNotionSyncbackResult,
+  OrionAutoTeamResetResult,
   OrionPlannerDraftResult,
-  OrionRoundTableBulkQueueResult,
-  OrionRoundTableIntakeState,
-  OrionRoundTableQueueResult,
-  OrionRoundTableRouteResult,
-  OrionRoleProfileId,
 } from "@paperclipai/shared";
 import { api } from "./client";
 
 export const orionApi = {
-  workflowPresets: () => api.get<OrionWorkflowDefinition[]>("/orion/workflow-presets"),
-  roleProfiles: () => api.get<OrionRoleProfile[]>("/orion/role-profiles"),
-  workflows: (companyId: string) => api.get<OrionWorkflow[]>(`/orion/companies/${companyId}/workflows`),
-  roundTableSetupReadiness: (companyId: string) =>
-    api.get<OrionRoundTableSetupResult>(`/orion/companies/${companyId}/round-table/setup-readiness`),
-  setupRoundTable: (companyId: string, data: { sourceAgentId: string; makeDefault?: boolean; dryRun?: boolean }) =>
-    api.post<OrionRoundTableSetupResult>(`/orion/companies/${companyId}/round-table/setup`, data),
-  queueExistingRoundTableIntake: (companyId: string, data?: { limit?: number }) =>
-    api.post<OrionRoundTableBulkQueueResult>(`/orion/companies/${companyId}/round-table/queue-existing`, data ?? {}),
   createPlannerDraft: (companyId: string, data: {
     title: string;
     description?: string | null;
@@ -57,24 +37,8 @@ export const orionApi = {
     repoPath?: string | null;
     riskLevel?: string | null;
   }) => api.post<OrionPlannerDraftResult>(`/orion/companies/${companyId}/planner-drafts`, data),
-  createWorkflowFromPreset: (companyId: string, data: CreateOrionWorkflowFromPreset) =>
-    api.post<OrionWorkflow>(`/orion/companies/${companyId}/workflows/presets`, data),
-  workflow: (workflowId: string) => api.get<OrionWorkflow>(`/orion/workflows/${workflowId}`),
-  createNode: (workflowId: string, data: CreateOrionWorkflowNode) =>
-    api.post(`/orion/workflows/${workflowId}/nodes`, data),
-  createEdge: (workflowId: string, data: CreateOrionWorkflowEdge) =>
-    api.post(`/orion/workflows/${workflowId}/edges`, data),
-  bindTaskWorkflow: (taskId: string, data: BindOrionTaskWorkflow) =>
-    api.post<OrionTaskWorkflowBinding>(`/orion/tasks/${taskId}/workflow-binding`, data),
-  roundTableIntake: (taskId: string) =>
-    api.get<OrionRoundTableIntakeState>(`/orion/tasks/${taskId}/round-table/intake`),
-  queueRoundTableIntake: (taskId: string, data?: { workflowId?: string | null; source?: string }) =>
-    api.post<OrionRoundTableQueueResult>(`/orion/tasks/${taskId}/round-table/queue`, data ?? {}),
-  routeRoundTableIntake: (taskId: string, data?: {
-    targetRoleProfileId?: OrionRoleProfileId | null;
-    targetNodeKey?: string | null;
-    note?: string | null;
-  }) => api.post<OrionRoundTableRouteResult>(`/orion/tasks/${taskId}/round-table/route`, data ?? {}),
+  resetAutoTeam: (companyId: string, data?: { dryRun?: boolean }) =>
+    api.post<OrionAutoTeamResetResult>(`/orion/companies/${companyId}/auto-team/reset`, data ?? {}),
   publishPlannerDraftToNotion: (taskId: string, data?: { idempotencyKey?: string | null }) =>
     api.post<OrionPlannerDraftResult>(`/orion/tasks/${taskId}/planner-draft/publish-to-notion`, data ?? {}),
   taskPolicy: (taskId: string) =>
@@ -85,6 +49,52 @@ export const orionApi = {
   ) => api.put<OrionTaskPolicy>(`/orion/tasks/${taskId}/policy`, data),
   runReadiness: (taskId: string) =>
     api.get<OrionRunReadiness>(`/orion/tasks/${taskId}/run-readiness`),
+  councilSession: (taskId: string) =>
+    api.get<OrionCouncilSession | null>(`/orion/tasks/${taskId}/council/session`),
+  validatePlannerSpec: (taskId: string, data: {
+    autonomyEnvelope: OrionAutonomyEnvelope;
+    plannerNotes?: string | null;
+    impactFlags?: Partial<Record<"frontend" | "backend" | "data_model" | "infrastructure" | "security" | "testing", boolean>>;
+    proposedParticipantRoleIds?: OrionCouncilRoleId[];
+    finalPlanMarkdown?: string | null;
+    implementerAgentId?: string | null;
+    maxIterations?: number;
+    baseBranch?: string;
+    idempotencyKey?: string | null;
+  }) => api.post<OrionCouncilSession>(`/orion/tasks/${taskId}/planner/validate`, data),
+  saveCouncilPlan: (sessionId: string, data: { finalPlanMarkdown: string; idempotencyKey?: string | null }) =>
+    api.post<OrionCouncilSession>(`/orion/council/sessions/${sessionId}/plan`, data),
+  approveCouncilPlan: (sessionId: string, data: {
+    roleId: OrionCouncilRoleId;
+    agentId?: string | null;
+    notes?: string | null;
+    idempotencyKey?: string | null;
+  }) => api.post<OrionCouncilSession>(`/orion/council/sessions/${sessionId}/plan/approval`, data),
+  startCouncilExecution: (sessionId: string, data?: {
+    implementerAgentId?: string | null;
+    note?: string | null;
+    idempotencyKey?: string | null;
+  }) => api.post<{
+    session: OrionCouncilSession;
+    run: { id: string; companyId: string; agentId: string; status: string };
+    ledger: OrionReqLedger;
+  }>(`/orion/council/sessions/${sessionId}/execute`, data ?? {}),
+  recordCouncilReview: (sessionId: string, data: {
+    roleId: OrionCouncilRoleId;
+    status: "passed" | "failed" | "blocked";
+    notes?: string | null;
+    blockingReason?: string | null;
+    requiredFixSummary?: string | null;
+    idempotencyKey?: string | null;
+  }) => api.post<OrionCouncilSession>(`/orion/council/sessions/${sessionId}/reviews`, data),
+  openCouncilPr: (sessionId: string, data: {
+    planSha256?: string | null;
+    title?: string | null;
+    body?: string | null;
+    baseBranch?: string | null;
+    draft?: boolean;
+    idempotencyKey?: string | null;
+  }) => api.post<OrionPrReceipt>(`/orion/council/sessions/${sessionId}/pr/open`, data),
   createRun: (taskId: string, data: {
     agentId: string;
     mode: OrionAutonomyMode;

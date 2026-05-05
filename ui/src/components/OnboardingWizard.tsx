@@ -39,13 +39,11 @@ import {
 } from "../lib/onboarding-launch";
 import {
   DEFAULT_ONBOARDING_WORKFLOW_PRESET_ID,
-  agentBindingKeyForPreset,
   agentRoleForPreset,
   agentTitleForPreset,
   defaultAgentNameForPreset,
   defaultTaskDescriptionForPreset,
   defaultTaskTitleForPreset,
-  startNodeForPreset,
 } from "../lib/onboarding-preset";
 import { buildNewAgentRuntimeConfig } from "../lib/new-agent-runtime-config";
 import {
@@ -177,7 +175,6 @@ export function OnboardingWizard() {
     setAgentName((current) => {
       if (
         current === defaultAgentNameForPreset("paperclip_company") ||
-        current === defaultAgentNameForPreset("orion_operator_auto_to_pr") ||
         current === defaultAgentNameForPreset("orion_round_table") ||
         !current.trim()
       ) {
@@ -620,20 +617,16 @@ export function OnboardingWizard() {
         });
       }
       const agent = hire.agent;
-      setCreatedAgentId(agent.id);
-      const workflow = await orionApi.createWorkflowFromPreset(createdCompanyId, {
-        presetId: workflowPresetId,
-        makeDefault: true,
-        agentBindings: {
-          [agentBindingKeyForPreset(workflowPresetId)]: agent.id
-        }
-      });
-      setCreatedWorkflowId(workflow.id);
+      if (workflowPresetId === "paperclip_company") {
+        setCreatedAgentId(agent.id);
+      } else {
+        const reset = await orionApi.resetAutoTeam(createdCompanyId);
+        const implementer = reset.createdAgents.find((entry) => entry.role === "implementer");
+        setCreatedAgentId(implementer?.id ?? agent.id);
+      }
+      setCreatedWorkflowId(null);
       queryClient.invalidateQueries({
         queryKey: queryKeys.agents.list(createdCompanyId)
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.orion.workflows(createdCompanyId)
       });
       setStep(4);
     } catch (err) {
@@ -747,12 +740,6 @@ export function OnboardingWizard() {
         );
         taskRef = task.identifier ?? task.id;
         setCreatedTaskRef(taskRef);
-        if (createdWorkflowId) {
-          await orionApi.bindTaskWorkflow(task.id, {
-            workflowId: createdWorkflowId,
-            currentNodeKey: startNodeForPreset(workflowPresetId)
-          });
-        }
         queryClient.invalidateQueries({
           queryKey: queryKeys.tasks.list(createdCompanyId)
         });
@@ -906,13 +893,8 @@ export function OnboardingWizard() {
                       {[
                         {
                           id: "orion_round_table" as OrionWorkflowPresetId,
-                          title: "Orion Round Table",
-                          description: "Lean Seven roles with explicit implementation, verification, PR, review, and recovery routing."
-                        },
-                        {
-                          id: "orion_operator_auto_to_pr" as OrionWorkflowPresetId,
-                          title: "Orion operator-led",
-                          description: "Independent Codex worker, verification, PR, then human review."
+                          title: "Orion Auto Round Table",
+                          description: "Planner plus dynamic expert council with approved Auto execution and draft PR gating."
                         },
                         {
                           id: "paperclip_company" as OrionWorkflowPresetId,
