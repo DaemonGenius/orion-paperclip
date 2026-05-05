@@ -1484,6 +1484,12 @@ function allowsTaskInteractionWake(
   return Boolean(deriveCommentId(contextSnapshot, null));
 }
 
+function isOrionCouncilPlanningWake(
+  contextSnapshot: Record<string, unknown> | null | undefined,
+) {
+  return Boolean(readNonEmptyString(parseObject(contextSnapshot?.orionCouncilPlanning).sessionId));
+}
+
 async function listUnresolvedBlockerSummaries(
   dbOrTx: Pick<Db, "select">,
   companyId: string,
@@ -4029,7 +4035,8 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     }
 
     const taskId = readNonEmptyString(context.taskId);
-    if (taskId) {
+    const councilPlanningWake = isOrionCouncilPlanningWake(context);
+    if (taskId && !councilPlanningWake) {
       const activePauseHold = await treeControlSvc.getActivePauseHoldGate(run.companyId, taskId);
       const treeHoldInteractionWake = activePauseHold && await isVerifiedTaskTreeControlInteractionWake(db, {
         companyId: run.companyId,
@@ -4115,8 +4122,9 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
 
     // Fix A (lazy locking): stamp executionRunId now that the run is actually running,
     // not at queue time. Guard is idempotent — safe if called more than once.
-    const claimedTaskId = readNonEmptyString(parseObject(claimed.contextSnapshot).taskId);
-    if (claimedTaskId) {
+    const claimedContext = parseObject(claimed.contextSnapshot);
+    const claimedTaskId = readNonEmptyString(claimedContext.taskId);
+    if (claimedTaskId && !isOrionCouncilPlanningWake(claimedContext)) {
       const claimedAgent = await getAgent(claimed.agentId);
       await db
         .update(tasks)
@@ -6867,6 +6875,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       payload,
     });
     let taskId = readNonEmptyString(enrichedContextSnapshot.taskId) ?? taskIdFromPayload;
+    const isOrionCouncilPlanningRun = isOrionCouncilPlanningWake(enrichedContextSnapshot);
 
     const agent = await getAgent(agentId);
     if (!agent) throw notFound("Agent not found");
@@ -6948,7 +6957,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       return null;
     }
 
-    if (taskId) {
+    if (taskId && !isOrionCouncilPlanningRun) {
       const activePauseHold = await treeControlSvc.getActivePauseHoldGate(agent.companyId, taskId);
       if (activePauseHold) {
         const treeHoldInteractionWake = await isVerifiedTaskTreeControlInteractionWake(db, {
@@ -6995,7 +7004,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       }
     }
 
-    if (taskId) {
+    if (taskId && !isOrionCouncilPlanningRun) {
       // Mention-triggered wakes can request input from another agent, but they must
       // still respect the task execution lock so a second agent cannot start on the
       // same task workspace while the assignee already has a live run.

@@ -16,6 +16,7 @@ import { companies } from "./companies.js";
 import { companySecrets } from "./company_secrets.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import { tasks } from "./tasks.js";
+import { taskComments } from "./task_comments.js";
 
 export const companyNotionBindings = pgTable(
   "company_notion_bindings",
@@ -211,6 +212,10 @@ export const orionCouncilSessions = pgTable(
     finalPlanMarkdown: text("final_plan_markdown"),
     finalPlanSha256: text("final_plan_sha256"),
     approvedPlanSha256: text("approved_plan_sha256"),
+    finalPlanProvenance: jsonb("final_plan_provenance").$type<Record<string, unknown>>(),
+    planStaleAt: timestamp("plan_stale_at", { withTimezone: true }),
+    latestPlanningCommentId: uuid("latest_planning_comment_id").references(() => taskComments.id, { onDelete: "set null" }),
+    manualPlanOverride: boolean("manual_plan_override").notNull().default(false),
     createdByUserId: text("created_by_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -243,6 +248,38 @@ export const orionCouncilParticipants = pgTable(
     sessionRoleIdx: uniqueIndex("orion_council_participants_session_role_uq").on(table.sessionId, table.roleId),
     sessionIdx: index("orion_council_participants_session_idx").on(table.companyId, table.sessionId),
     agentIdx: index("orion_council_participants_agent_idx").on(table.companyId, table.agentId),
+  }),
+);
+
+export const orionCouncilPlanningNotes = pgTable(
+  "orion_council_planning_notes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    sessionId: uuid("session_id").notNull().references(() => orionCouncilSessions.id, { onDelete: "cascade" }),
+    participantId: uuid("participant_id").notNull().references(() => orionCouncilParticipants.id, { onDelete: "cascade" }),
+    taskId: uuid("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+    commentId: uuid("comment_id").references(() => taskComments.id, { onDelete: "cascade" }),
+    sourceCommentId: uuid("source_comment_id").references(() => taskComments.id, { onDelete: "set null" }),
+    runId: uuid("run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),
+    roleId: text("role_id").notNull(),
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: "set null" }),
+    status: text("status").notNull().default("requested"),
+    reason: text("reason"),
+    requestedForCommentId: uuid("requested_for_comment_id").references(() => taskComments.id, { onDelete: "set null" }),
+    supersedesNoteId: uuid("supersedes_note_id"),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    staleAt: timestamp("stale_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    participantIdx: index("orion_council_planning_notes_participant_idx").on(table.participantId),
+    sessionIdx: index("orion_council_planning_notes_session_idx").on(table.companyId, table.sessionId),
+    taskIdx: index("orion_council_planning_notes_task_idx").on(table.companyId, table.taskId),
+    commentIdx: index("orion_council_planning_notes_comment_idx").on(table.commentId),
+    runIdx: index("orion_council_planning_notes_run_idx").on(table.companyId, table.runId),
   }),
 );
 

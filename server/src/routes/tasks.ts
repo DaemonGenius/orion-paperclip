@@ -70,6 +70,7 @@ import {
   SVG_CONTENT_TYPE,
 } from "../attachment-types.js";
 import { queueTaskAssignmentWakeup } from "../services/task-assignment-wakeup.js";
+import { orionService } from "../services/orion.js";
 import { assertEnvironmentSelectionForCompany } from "./environment-selection.js";
 import { executionWorkspaceService as executionWorkspaceServiceDirect } from "../services/execution-workspaces.js";
 import { feedbackService } from "../services/feedback.js";
@@ -79,6 +80,7 @@ import {
   applyTaskExecutionPolicyTransition,
   normalizeTaskExecutionPolicy,
   parseTaskExecutionState,
+  pruneTaskExecutionPolicyAgentParticipants,
 } from "../services/task-execution-policy.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
 import { isTaskIdentifier } from "../utils/task-identifiers.js";
@@ -415,6 +417,7 @@ export function taskRoutes(
   const heartbeat = heartbeatService(db, {
     pluginWorkerManager: opts.pluginWorkerManager,
   });
+  const orion = orionService(db);
   const feedback = feedbackService(db);
   const instanceSettings = instanceSettingsService(db);
   const agentsSvc = agentService(db);
@@ -785,6 +788,30 @@ export function taskRoutes(
     }
     return resolved.agent.id;
   }
+
+  async function pruneMissingAgentParticipantsFromExecutionPolicy(
+    companyId: string,
+    policy: NormalizedExecutionPolicy | null,
+  ) {
+    if (!policy) return { policy: null, changed: false };
+    const agentIds = Array.from(new Set(
+      policy.stages.flatMap((stage) =>
+        stage.participants
+          .filter((participant) => participant.type === "agent" && participant.agentId)
+          .map((participant) => participant.agentId!),
+      ),
+    ));
+    if (agentIds.length === 0) return { policy, changed: false };
+
+    const validAgentIds = new Set<string>();
+    await Promise.all(agentIds.map(async (agentId) => {
+      const agent = await agentsSvc.getById(agentId);
+      if (agent?.companyId === companyId) validAgentIds.add(agentId);
+    }));
+
+    return pruneTaskExecutionPolicyAgentParticipants(policy, (agentId) => validAgentIds.has(agentId));
+  }
+
   function toValidTimestamp(value: Date | string | null | undefined) {
     if (!value) return null;
     const timestamp = value instanceof Date ? value.getTime() : new Date(value).getTime();
@@ -2040,10 +2067,21 @@ export function taskRoutes(
       updateFields.executionPolicy = normalizeTaskExecutionPolicy(req.body.executionPolicy);
     }
     const previousExecutionPolicy = normalizeTaskExecutionPolicy(existing.executionPolicy ?? null);
-    const nextExecutionPolicy =
+    let nextExecutionPolicy =
       updateFields.executionPolicy !== undefined
         ? (updateFields.executionPolicy as NormalizedExecutionPolicy | null)
         : previousExecutionPolicy;
+    const prunedExecutionPolicy = await pruneMissingAgentParticipantsFromExecutionPolicy(
+      existing.companyId,
+      nextExecutionPolicy,
+    );
+    if (prunedExecutionPolicy.changed) {
+      nextExecutionPolicy = prunedExecutionPolicy.policy;
+      updateFields.executionPolicy = prunedExecutionPolicy.policy;
+      if (updateFields.executionState === undefined) {
+        updateFields.executionState = null;
+      }
+    }
     if (normalizedAssigneeAgentId !== undefined) {
       updateFields.assigneeAgentId = normalizedAssigneeAgentId;
     }
@@ -2382,7 +2420,7 @@ export function taskRoutes(
       }
     }
 
-    let comment = null;
+    let comment: Awaited<ReturnType<typeof svc.addComment>> | null = null;
     if (commentBody) {
       const commentReferenceSummaryBefore = updateReferenceSummaryAfter
         ?? await taskReferencesSvc.listTaskReferenceSummary(task.id);
@@ -2391,6 +2429,11 @@ export function taskRoutes(
         userId: actor.actorType === "user" ? actor.actorId : undefined,
         runId: actor.runId,
       });
+      const commentId = comment.id;
+      void orion.handleCouncilTaskComment(commentId, {
+        queueRun: heartbeat.wakeup,
+        createdByUserId: actor.actorType === "user" ? actor.actorId : null,
+      }).catch((err) => logger.warn({ err, taskId: task.id, commentId }, "failed to reconcile Orion council task comment"));
       await taskReferencesSvc.syncComment(comment.id);
       const commentReferenceSummaryAfter = await taskReferencesSvc.listTaskReferenceSummary(task.id);
       const commentReferenceDiff = taskReferencesSvc.diffTaskReferenceSummary(
@@ -3445,6 +3488,10 @@ export function taskRoutes(
       userId: actor.actorType === "user" ? actor.actorId : undefined,
       runId: actor.runId,
     });
+    void orion.handleCouncilTaskComment(comment.id, {
+      queueRun: heartbeat.wakeup,
+      createdByUserId: actor.actorType === "user" ? actor.actorId : null,
+    }).catch((err) => logger.warn({ err, taskId: currentTask.id, commentId: comment.id }, "failed to reconcile Orion council task comment"));
     await taskReferencesSvc.syncComment(comment.id);
     const commentReferenceSummaryAfter = await taskReferencesSvc.listTaskReferenceSummary(currentTask.id);
     const commentReferenceDiff = taskReferencesSvc.diffTaskReferenceSummary(

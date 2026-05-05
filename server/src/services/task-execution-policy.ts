@@ -40,6 +40,11 @@ type TransitionResult = {
   workflowControlledAssignment?: boolean;
 };
 
+export type PrunedTaskExecutionPolicyResult = {
+  policy: TaskExecutionPolicy | null;
+  changed: boolean;
+};
+
 const COMPLETED_STATUS: TaskExecutionState["status"] = "completed";
 const PENDING_STATUS: TaskExecutionState["status"] = "pending";
 const CHANGES_REQUESTED_STATUS: TaskExecutionState["status"] = "changes_requested";
@@ -87,6 +92,39 @@ export function normalizeTaskExecutionPolicy(input: unknown): TaskExecutionPolic
     mode: parsed.data.mode ?? "normal",
     commentRequired: true,
     stages,
+  };
+}
+
+export function pruneTaskExecutionPolicyAgentParticipants(
+  policy: TaskExecutionPolicy | null,
+  isValidAgentId: (agentId: string) => boolean,
+): PrunedTaskExecutionPolicyResult {
+  if (!policy) return { policy: null, changed: false };
+
+  let changed = false;
+  const stages = policy.stages
+    .map((stage) => {
+      const participants = stage.participants.filter((participant) => {
+        if (participant.type !== "agent") return true;
+        const keep = Boolean(participant.agentId && isValidAgentId(participant.agentId));
+        if (!keep) changed = true;
+        return keep;
+      });
+      if (participants.length === 0) {
+        changed = true;
+        return null;
+      }
+      return participants.length === stage.participants.length ? stage : { ...stage, participants };
+    })
+    .filter((stage): stage is TaskExecutionStage => stage !== null);
+
+  if (stages.length === 0) {
+    return { policy: null, changed };
+  }
+
+  return {
+    policy: changed ? { ...policy, stages } : policy,
+    changed,
   };
 }
 

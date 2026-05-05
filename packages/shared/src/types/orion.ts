@@ -16,6 +16,8 @@ export type OrionPlannerImpactFlag =
   | "testing";
 export type OrionCouncilSessionStatus =
   | "planning"
+  | "planning_notes"
+  | "plan_stale"
   | "awaiting_plan_approval"
   | "approved"
   | "executing"
@@ -142,6 +144,28 @@ export interface OrionCouncilParticipant {
   updatedAt: Date | string;
 }
 
+export interface OrionCouncilPlanningNote {
+  id: string;
+  companyId: string;
+  sessionId: string;
+  participantId: string;
+  taskId: string;
+  commentId: string | null;
+  sourceCommentId: string | null;
+  runId: string | null;
+  roleId: OrionCouncilRoleId | string;
+  agentId: string | null;
+  status: "requested" | "queued" | "running" | "posted" | "blocked" | "stale" | string;
+  reason: string | null;
+  requestedForCommentId: string | null;
+  supersedesNoteId: string | null;
+  requestedAt: Date | string;
+  completedAt: Date | string | null;
+  staleAt: Date | string | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
 export interface OrionCouncilDecision {
   id: string;
   companyId: string;
@@ -203,10 +227,15 @@ export interface OrionCouncilSession {
   finalPlanMarkdown: string | null;
   finalPlanSha256: string | null;
   approvedPlanSha256: string | null;
+  finalPlanProvenance: Record<string, unknown> | null;
+  planStaleAt: Date | string | null;
+  latestPlanningCommentId: string | null;
+  manualPlanOverride: boolean;
   createdByUserId: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
   participants?: OrionCouncilParticipant[];
+  planningNotes?: OrionCouncilPlanningNote[];
   decisions?: OrionCouncilDecision[];
   reviews?: OrionCouncilReview[];
   iterations?: OrionCouncilIteration[];

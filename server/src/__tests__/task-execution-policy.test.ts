@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { applyTaskExecutionPolicyTransition, normalizeTaskExecutionPolicy, parseTaskExecutionState } from "../services/task-execution-policy.ts";
+import {
+  applyTaskExecutionPolicyTransition,
+  normalizeTaskExecutionPolicy,
+  parseTaskExecutionState,
+  pruneTaskExecutionPolicyAgentParticipants,
+} from "../services/task-execution-policy.ts";
 import type { TaskExecutionPolicy, TaskExecutionState } from "@paperclipai/shared";
 
 const coderAgentId = "11111111-1111-4111-8111-111111111111";
@@ -111,6 +116,49 @@ describe("normalizeTaskExecutionPolicy", () => {
 
   it("throws for invalid input", () => {
     expect(() => normalizeTaskExecutionPolicy({ stages: [{ type: "invalid_type" }] })).toThrow();
+  });
+});
+
+describe("pruneTaskExecutionPolicyAgentParticipants", () => {
+  it("removes missing agent participants while preserving valid user participants", () => {
+    const policy = makePolicy([
+      {
+        type: "review",
+        participants: [
+          { type: "agent", agentId: qaAgentId },
+          { type: "agent", agentId: ctoAgentId },
+        ],
+      },
+      { type: "approval", participants: [{ type: "user", userId: boardUserId }] },
+    ]);
+
+    const result = pruneTaskExecutionPolicyAgentParticipants(policy, (agentId) => agentId === qaAgentId);
+
+    expect(result.changed).toBe(true);
+    expect(result.policy?.stages).toHaveLength(2);
+    expect(result.policy?.stages[0].participants).toEqual([
+      expect.objectContaining({ type: "agent", agentId: qaAgentId }),
+    ]);
+    expect(result.policy?.stages[1].participants).toEqual([
+      expect.objectContaining({ type: "user", userId: boardUserId }),
+    ]);
+  });
+
+  it("returns null when every stage only references missing agents", () => {
+    const policy = reviewOnlyPolicy();
+
+    const result = pruneTaskExecutionPolicyAgentParticipants(policy, () => false);
+
+    expect(result).toEqual({ policy: null, changed: true });
+  });
+
+  it("reports unchanged when all agent participants are valid", () => {
+    const policy = twoStagePolicy();
+
+    const result = pruneTaskExecutionPolicyAgentParticipants(policy, () => true);
+
+    expect(result.changed).toBe(false);
+    expect(result.policy).toBe(policy);
   });
 });
 

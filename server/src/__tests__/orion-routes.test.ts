@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -9,6 +9,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { eq, sql } from "drizzle-orm";
 import {
   agents,
+  agentWakeupRequests,
   activityLog,
   companies,
   companyExternalAppBindings,
@@ -19,6 +20,7 @@ import {
   instanceUserRoles,
   companyNotionBindings,
   orionPrReceipts,
+  orionCouncilPlanningNotes,
   orionReqLedgerArtifacts,
   orionReqLedgerEvents,
   orionReqLedgers,
@@ -28,19 +30,22 @@ import {
   orionWorkflows,
   syncConflicts,
   syncCursors,
+  taskComments,
   tasks,
   startEmbeddedPostgresTestDatabase,
 } from "@paperclipai/db";
 import { errorHandler } from "../middleware/index.js";
 import { orionRoutes } from "../routes/orion.js";
 import { heartbeatService } from "../services/heartbeat.js";
-import { orionService } from "../services/orion.js";
+import { agentInstructionsService } from "../services/agent-instructions.js";
+import { orionService, type QueueCouncilPlanningRun } from "../services/orion.js";
 import { secretService } from "../services/secrets.js";
+import { taskService } from "../services/tasks.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
 
-function createApp(db: ReturnType<typeof createDb>) {
+function createApp(db: ReturnType<typeof createDb>, opts: { queueCouncilPlanningRun?: QueueCouncilPlanningRun } = {}) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
@@ -58,6 +63,7 @@ function createApp(db: ReturnType<typeof createDb>) {
     deploymentExposure: "private",
     publicUrl: "http://orion.local:3100",
     allowedHostnames: ["orion.local"],
+    queueCouncilPlanningRun: opts.queueCouncilPlanningRun,
   }));
   app.use(errorHandler);
   return app;
@@ -85,7 +91,10 @@ if (!embeddedPostgresSupport.supported) {
 }
 
 describeEmbeddedPostgres("Orion routes", () => {
+  const originalPaperclipHome = process.env.PAPERCLIP_HOME;
+  const originalPaperclipInstanceId = process.env.PAPERCLIP_INSTANCE_ID;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
+  let tempPaperclipHome: string | null = null;
   let db!: ReturnType<typeof createDb>;
   let app!: express.Express;
   let companyId!: string;
@@ -93,6 +102,9 @@ describeEmbeddedPostgres("Orion routes", () => {
 
   beforeAll(async () => {
     process.env.PAPERCLIP_SECRETS_MASTER_KEY = "0123456789abcdef0123456789abcdef";
+    tempPaperclipHome = await mkdtemp(path.join(os.tmpdir(), "paperclip-orion-home-"));
+    process.env.PAPERCLIP_HOME = tempPaperclipHome;
+    process.env.PAPERCLIP_INSTANCE_ID = "orion-routes-test";
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-orion-routes-");
     db = createDb(tempDb.connectionString);
     app = createApp(db);
@@ -105,6 +117,11 @@ describeEmbeddedPostgres("Orion routes", () => {
 
   afterAll(async () => {
     await tempDb?.cleanup();
+    if (tempPaperclipHome) await rm(tempPaperclipHome, { recursive: true, force: true });
+    if (originalPaperclipHome === undefined) delete process.env.PAPERCLIP_HOME;
+    else process.env.PAPERCLIP_HOME = originalPaperclipHome;
+    if (originalPaperclipInstanceId === undefined) delete process.env.PAPERCLIP_INSTANCE_ID;
+    else process.env.PAPERCLIP_INSTANCE_ID = originalPaperclipInstanceId;
   });
 
   async function seedCompanyAndAgent() {
@@ -136,7 +153,13 @@ describeEmbeddedPostgres("Orion routes", () => {
     }).onConflictDoNothing();
   }
 
-  async function seedAgent(input: { name: string; role: string; reportsTo?: string | null }) {
+  async function seedAgent(input: {
+    name: string;
+    role: string;
+    reportsTo?: string | null;
+    adapterType?: string;
+    adapterConfig?: Record<string, unknown>;
+  }) {
     const id = randomUUID();
     await db.insert(agents).values({
       id,
@@ -145,13 +168,61 @@ describeEmbeddedPostgres("Orion routes", () => {
       role: input.role,
       status: "active",
       reportsTo: input.reportsTo ?? null,
-      adapterType: "codex_local",
-      adapterConfig: {},
+      adapterType: input.adapterType ?? "codex_local",
+      adapterConfig: input.adapterConfig ?? {},
       runtimeConfig: {},
       permissions: {},
     });
     return id;
   }
+
+  async function seedOrionAutoCouncilAgents() {
+    const processPlanningAdapter = {
+      adapterType: "process",
+      adapterConfig: {
+        command: process.execPath,
+        args: ["-e", "console.log('orion council planning test run')"],
+      },
+    };
+    return {
+      architect: await seedAgent({ name: "Orion Architect", role: "architect", ...processPlanningAdapter }),
+      qa: await seedAgent({ name: "Orion QA Tester", role: "qa_tester", ...processPlanningAdapter }),
+      security: await seedAgent({ name: "Orion Security Expert", role: "security_expert", ...processPlanningAdapter }),
+      implementer: await seedAgent({ name: "Orion Implementer", role: "implementer", ...processPlanningAdapter }),
+    };
+  }
+
+  const queueCouncilPlanningRunWithoutStarting: QueueCouncilPlanningRun = async (queuedAgentId, opts) => {
+    const now = new Date();
+    const [wakeupRequest] = await db.insert(agentWakeupRequests).values({
+      companyId,
+      agentId: queuedAgentId,
+      source: opts.source,
+      triggerDetail: opts.triggerDetail,
+      reason: opts.reason,
+      payload: opts.payload,
+      status: "queued",
+      requestedByActorType: opts.requestedByActorType ?? null,
+      requestedByActorId: opts.requestedByActorId ?? null,
+      idempotencyKey: opts.idempotencyKey ?? null,
+      updatedAt: now,
+    }).returning();
+    const [run] = await db.insert(heartbeatRuns).values({
+      companyId,
+      agentId: queuedAgentId,
+      invocationSource: opts.source,
+      triggerDetail: opts.triggerDetail,
+      status: "queued",
+      wakeupRequestId: wakeupRequest.id,
+      contextSnapshot: opts.contextSnapshot,
+      updatedAt: now,
+    }).returning();
+    await db
+      .update(agentWakeupRequests)
+      .set({ runId: run.id, updatedAt: now })
+      .where(eq(agentWakeupRequests.id, wakeupRequest.id));
+    return run;
+  };
 
   async function createVerificationWorktree(changedPath = "src/app.ts") {
     const cwd = await mkdtemp(path.join(os.tmpdir(), "orion-verification-"));
@@ -216,6 +287,229 @@ describeEmbeddedPostgres("Orion routes", () => {
     }).returning();
     return { binding, secret };
   }
+
+  it("resets Orion Auto agents with AGENTS and IDENTITY instruction bundles", async () => {
+    await seedCompanyAndAgent();
+    const staleRoot = await mkdtemp(path.join(os.tmpdir(), "orion-stale-instructions-"));
+    await writeFile(path.join(staleRoot, "AGENTS.md"), "You are Orion Implementer. Stale one-line instructions.\n", "utf8");
+    await db.insert(agents).values({
+      companyId,
+      name: "Orion QA Tester",
+      role: "qa_tester",
+      title: "QA Tester",
+      status: "idle",
+      adapterType: "codex_local",
+      adapterConfig: {
+        instructionsBundleMode: "managed",
+        instructionsRootPath: staleRoot,
+        instructionsEntryFile: "AGENTS.md",
+        instructionsFilePath: path.join(staleRoot, "AGENTS.md"),
+        promptTemplate: "legacy prompt should be cleared",
+      },
+      runtimeConfig: {},
+      permissions: {},
+      metadata: { orionAutoTeam: true, canonicalRole: "qa_tester" },
+    });
+
+    const response = await request(app)
+      .post(`/api/orion/companies/${companyId}/auto-team/reset`)
+      .send({ dryRun: false });
+
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    expect(response.body.createdAgents).toHaveLength(7);
+
+    const created = await db.select().from(agents).where(eq(agents.companyId, companyId));
+    const instructionSvc = agentInstructionsService();
+    const planner = created.find((agent) => agent.role === "planner")!;
+    const architect = created.find((agent) => agent.role === "architect")!;
+    const qa = created.find((agent) => agent.role === "qa_tester")!;
+    const implementer = created.find((agent) => agent.role === "implementer")!;
+
+    for (const agent of [planner, architect, qa, implementer]) {
+      const bundle = await instructionSvc.getBundle(agent);
+      expect(bundle.mode).toBe("managed");
+      expect(bundle.entryFile).toBe("AGENTS.md");
+      expect(bundle.files.map((file) => file.path)).toEqual(["AGENTS.md", "IDENTITY.md"]);
+      const agentsMd = await instructionSvc.readFile(agent, "AGENTS.md");
+      expect(agentsMd.content).toContain("Read `IDENTITY.md` before doing task work.");
+      expect(agentsMd.content).toContain("Do not read secrets");
+      expect(agentsMd.content).toContain("Do not approve PRs, merge PRs");
+      const identity = await instructionSvc.readFile(agent, "IDENTITY.md");
+      expect(identity.content).toContain("Organization: SteinmannLab / Orion Auto");
+      expect(identity.content).toContain(`Role ID: ${agent.role}`);
+    }
+
+    expect((await instructionSvc.readFile(planner, "IDENTITY.md")).content).toContain("Not voting. Planner is a pre-handoff spec assistant");
+    expect((await instructionSvc.readFile(implementer, "IDENTITY.md")).content).toContain("isolated git worktree branch created from master");
+    expect((await instructionSvc.readFile(implementer, "IDENTITY.md")).content).toContain("Opening draft PRs");
+    expect((await instructionSvc.readFile(qa, "AGENTS.md")).content).toContain("QA review must pass before Orion opens a draft PR.");
+    expect((await instructionSvc.readFile(qa, "IDENTITY.md")).content).not.toContain("Execute only the final approved Auto Round Table plan");
+    expect((await instructionSvc.readFile(architect, "IDENTITY.md")).content).not.toContain("Orion Implementer");
+
+    const qaConfig = qa.adapterConfig as Record<string, unknown>;
+    expect(qaConfig.instructionsBundleMode).toBe("managed");
+    expect(qaConfig.instructionsEntryFile).toBe("AGENTS.md");
+    expect(qaConfig.instructionsFilePath).toContain("AGENTS.md");
+    expect(qaConfig.promptTemplate).toBeUndefined();
+
+    await rm(staleRoot, { recursive: true, force: true });
+  });
+
+  it("convenes council planning as task comments and compiles the final plan", async () => {
+    await seedCompanyAndAgent();
+    const councilAgents = await seedOrionAutoCouncilAgents();
+    const planningApp = createApp(db, { queueCouncilPlanningRun: queueCouncilPlanningRunWithoutStarting });
+    const [task] = await db.insert(tasks).values({
+      companyId,
+      title: "Review LicenseModule architecture",
+      description: "LicenseModule touches member data, tracking, crawler snapshots, and admin operations.",
+      acceptanceCriteria: "Review bounded contexts, privacy, tests, and active-project placement.",
+      status: "todo",
+      priority: "high",
+      layer: "Application",
+      module: "LicenseModule",
+      repoPath: "ShootersUnion.Domain/Modules/LicenseModule; ShootersUnion.API/Controllers",
+      riskLevel: "High",
+      taskType: "Review",
+    }).returning();
+
+    const validate = await request(planningApp)
+      .post(`/api/orion/tasks/${task.id}/planner/validate`)
+      .send({
+        autonomyEnvelope: autoEnvelope(),
+        impactFlags: { backend: true, security: true, testing: true },
+        proposedParticipantRoleIds: ["architect", "qa_tester", "security_expert", "implementer"],
+        plannerNotes: "Validated from task content.",
+        baseBranch: "master",
+        maxIterations: 2,
+      });
+    expect(validate.status, JSON.stringify(validate.body)).toBe(201);
+    expect(validate.body.finalPlanMarkdown).toBeNull();
+
+    const compileBeforeNotes = await request(planningApp)
+      .post(`/api/orion/council/sessions/${validate.body.id}/plan/compile`)
+      .send({});
+    expect(compileBeforeNotes.status, JSON.stringify(compileBeforeNotes.body)).toBe(409);
+
+    const convene = await request(planningApp)
+      .post(`/api/orion/council/sessions/${validate.body.id}/planning/convene`)
+      .send({});
+    expect(convene.status, JSON.stringify(convene.body)).toBe(200);
+    expect(convene.body.status).toBe("planning_notes");
+    expect(convene.body.planningNotes).toHaveLength(4);
+    expect(convene.body.planningNotes.map((note: { roleId: string }) => note.roleId).sort()).toEqual([
+      "architect",
+      "implementer",
+      "qa_tester",
+      "security_expert",
+    ]);
+
+    const notes = await db.select().from(orionCouncilPlanningNotes).where(eq(orionCouncilPlanningNotes.sessionId, validate.body.id));
+    expect(notes).toHaveLength(4);
+    expect(notes.every((note) => Boolean(note.runId))).toBe(true);
+    expect(notes.every((note) => note.commentId === null)).toBe(true);
+    const comments = await db.select().from(taskComments).where(eq(taskComments.taskId, task.id));
+    expect(comments.some((comment) => comment.body.includes("Round Table planning started"))).toBe(true);
+    expect(comments.some((comment) => comment.authorAgentId && comment.body.includes("planning notes"))).toBe(false);
+
+    const compiledBeforeRunNotes = await request(planningApp)
+      .post(`/api/orion/council/sessions/${validate.body.id}/plan/compile`)
+      .send({});
+    expect(compiledBeforeRunNotes.status, JSON.stringify(compiledBeforeRunNotes.body)).toBe(409);
+
+    const taskSvc = taskService(db);
+    const postAgentNote = async (
+      noteByRole: Map<string, typeof orionCouncilPlanningNotes.$inferSelect>,
+      roleId: string,
+      agentId: string,
+      heading: string,
+    ) => {
+      const note = noteByRole.get(roleId);
+      expect(note?.runId).toBeTruthy();
+      const comment = await taskSvc.addComment(task.id, [
+        `## ${heading}`,
+        "",
+        "### Reasoning",
+        `- ${heading} reviewed the task context and role-specific risks.`,
+        "",
+        "### Assumptions",
+        "- Use the connected project repository and stay in scope.",
+        "",
+        "### Risks and blockers",
+        "- None.",
+        "",
+        "### Plan guidance",
+        "- Include this run-backed council note in the final plan.",
+        "",
+        "### Approval posture",
+        "- Ready to approve a compiled plan that incorporates these notes.",
+      ].join("\n"), { agentId, runId: note!.runId! });
+      await orionService(db).handleCouncilTaskComment(comment.id);
+      return comment;
+    };
+    await postAgentNote(new Map(notes.map((note) => [note.roleId, note])), "architect", councilAgents.architect, "Architect planning notes");
+    await postAgentNote(new Map(notes.map((note) => [note.roleId, note])), "qa_tester", councilAgents.qa, "QA planning notes");
+    await postAgentNote(new Map(notes.map((note) => [note.roleId, note])), "security_expert", councilAgents.security, "Security planning notes");
+    await postAgentNote(new Map(notes.map((note) => [note.roleId, note])), "implementer", councilAgents.implementer, "Implementer execution notes");
+
+    const compiled = await request(planningApp)
+      .get(`/api/orion/council/sessions/${validate.body.id}`)
+      .send();
+    expect(compiled.status, JSON.stringify(compiled.body)).toBe(200);
+    expect(compiled.body.status).toBe("awaiting_plan_approval");
+    expect(compiled.body.phase).toBe("plan_approval");
+    expect(compiled.body.finalPlanMarkdown).toContain("Final Council Implementation Plan");
+    expect(compiled.body.finalPlanMarkdown).toContain("LicenseModule");
+    expect(compiled.body.finalPlanProvenance.source).toBe("orion_auto_council_runs");
+    expect(compiled.body.finalPlanProvenance.notes).toHaveLength(4);
+    expect(compiled.body.finalPlanSha256).toMatch(/^[a-f0-9]{64}$/);
+
+    const afterCompileComments = await db.select().from(taskComments).where(eq(taskComments.taskId, task.id));
+    expect(afterCompileComments.some((comment) => comment.body.includes("Final Council Implementation Plan compiled"))).toBe(true);
+    expect(afterCompileComments.some((comment) => comment.authorAgentId === councilAgents.architect && comment.createdByRunId && comment.body.includes("Architect planning notes"))).toBe(true);
+
+    const approve = async (roleId: string) => request(planningApp)
+      .post(`/api/orion/council/sessions/${validate.body.id}/plan/approval`)
+      .send({ roleId });
+    await approve("architect");
+    await approve("qa_tester");
+    await approve("security_expert");
+    const almost = await approve("implementer");
+    expect(almost.status, JSON.stringify(almost.body)).toBe(200);
+    expect(almost.body.status).toBe("approved");
+    expect(almost.body.approvedPlanSha256).toBe(compiled.body.finalPlanSha256);
+
+    const operatorComment = await taskSvc.addComment(task.id, "Please also account for audit history in the council plan.", { userId: "local-board" });
+    const stale = await orionService(db).handleCouncilTaskComment(operatorComment.id, {
+      queueRun: queueCouncilPlanningRunWithoutStarting,
+      createdByUserId: "local-board",
+    });
+    expect(stale?.status).toBe("plan_stale");
+
+    const staleCompile = await request(planningApp)
+      .post(`/api/orion/council/sessions/${validate.body.id}/plan/compile`)
+      .send({});
+    expect(staleCompile.status, JSON.stringify(staleCompile.body)).toBe(409);
+
+    const revisedNotes = await db
+      .select()
+      .from(orionCouncilPlanningNotes)
+      .where(eq(orionCouncilPlanningNotes.sessionId, validate.body.id));
+    const latestRevisedByRole = new Map<string, typeof orionCouncilPlanningNotes.$inferSelect>();
+    for (const note of revisedNotes.filter((note) => note.requestedForCommentId === operatorComment.id)) {
+      latestRevisedByRole.set(note.roleId, note);
+    }
+    await postAgentNote(latestRevisedByRole, "architect", councilAgents.architect, "Architect planning notes revised");
+    await postAgentNote(latestRevisedByRole, "qa_tester", councilAgents.qa, "QA planning notes revised");
+    await postAgentNote(latestRevisedByRole, "security_expert", councilAgents.security, "Security planning notes revised");
+    const recompiled = await postAgentNote(latestRevisedByRole, "implementer", councilAgents.implementer, "Implementer execution notes revised")
+      .then(() => request(planningApp).get(`/api/orion/council/sessions/${validate.body.id}`).send());
+    expect(recompiled.status, JSON.stringify(recompiled.body)).toBe(200);
+    expect(recompiled.body.status).toBe("awaiting_plan_approval");
+    expect(recompiled.body.planStaleAt).toBeNull();
+    expect(recompiled.body.finalPlanSha256).not.toBe(compiled.body.finalPlanSha256);
+    expect(recompiled.body.participants.every((participant: { planApprovedAt: string | null }) => participant.planApprovedAt === null)).toBe(true);
+  });
 
   it("reports safe Orion preflight failures without mutating external app health", async () => {
     await seedCompanyAndAgent();

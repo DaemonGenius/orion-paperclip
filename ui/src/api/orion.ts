@@ -64,6 +64,10 @@ export const orionApi = {
   }) => api.post<OrionCouncilSession>(`/orion/tasks/${taskId}/planner/validate`, data),
   saveCouncilPlan: (sessionId: string, data: { finalPlanMarkdown: string; idempotencyKey?: string | null }) =>
     api.post<OrionCouncilSession>(`/orion/council/sessions/${sessionId}/plan`, data),
+  conveneCouncilPlanning: (sessionId: string, data?: { idempotencyKey?: string | null }) =>
+    api.post<OrionCouncilSession>(`/orion/council/sessions/${sessionId}/planning/convene`, data ?? {}),
+  compileCouncilPlan: (sessionId: string, data?: { idempotencyKey?: string | null }) =>
+    api.post<OrionCouncilSession>(`/orion/council/sessions/${sessionId}/plan/compile`, data ?? {}),
   approveCouncilPlan: (sessionId: string, data: {
     roleId: OrionCouncilRoleId;
     agentId?: string | null;

@@ -18,6 +18,8 @@ import {
   orionSyncNotionSchema,
   approveOrionLedgerPlanSchema,
   advanceOrionCouncilIterationSchema,
+  compileOrionCouncilPlanSchema,
+  conveneOrionCouncilPlanningSchema,
   recordOrionPrSchema,
   recordOrionLedgerEvidenceSchema,
   recordOrionLedgerVerificationSchema,
@@ -47,7 +49,7 @@ import type { DeploymentExposure, DeploymentMode } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import { knowledgeService } from "../services/knowledge.js";
 import { heartbeatService } from "../services/heartbeat.js";
-import { orionService } from "../services/orion.js";
+import { orionService, type QueueCouncilPlanningRun } from "../services/orion.js";
 import { orionPreflightService } from "../services/orion-preflight.js";
 import { logActivity } from "../services/activity-log.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
@@ -58,6 +60,7 @@ export function orionRoutes(db: Db, opts: {
   deploymentExposure?: DeploymentExposure;
   allowedHostnames?: string[];
   publicUrl?: string | null;
+  queueCouncilPlanningRun?: QueueCouncilPlanningRun;
 } = {}) {
   const router = Router();
   const svc = orionService(db);
@@ -496,6 +499,57 @@ export function orionRoutes(db: Db, opts: {
     const session = await svc.getCouncilSession(req.params.sessionId as string);
     assertCompanyAccess(req, session.companyId);
     res.json(await svc.saveCouncilPlan(session.id, req.body));
+  });
+
+  router.post("/orion/council/sessions/:sessionId/planning/convene", validate(conveneOrionCouncilPlanningSchema), async (req, res) => {
+    assertBoard(req);
+    const session = await svc.getCouncilSession(req.params.sessionId as string);
+    assertCompanyAccess(req, session.companyId);
+    const actor = getActorInfo(req);
+    const result = await svc.conveneCouncilPlanning(
+      session.id,
+      req.body,
+      req.actor.type === "board" ? req.actor.userId ?? null : null,
+      { queueRun: opts.queueCouncilPlanningRun ?? heartbeat.wakeup },
+    );
+    await logActivity(db, {
+      companyId: session.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      action: "orion.council_planning_convened",
+      entityType: "task",
+      entityId: session.taskId,
+      details: {
+        councilSessionId: session.id,
+        participantRoleIds: result.participants?.filter((participant) => participant.required).map((participant) => participant.roleId) ?? [],
+      },
+    });
+    res.json(result);
+  });
+
+  router.post("/orion/council/sessions/:sessionId/plan/compile", validate(compileOrionCouncilPlanSchema), async (req, res) => {
+    assertBoard(req);
+    const session = await svc.getCouncilSession(req.params.sessionId as string);
+    assertCompanyAccess(req, session.companyId);
+    const actor = getActorInfo(req);
+    const result = await svc.compileCouncilPlan(
+      session.id,
+      req.body,
+      req.actor.type === "board" ? req.actor.userId ?? null : null,
+    );
+    await logActivity(db, {
+      companyId: session.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      action: "orion.council_plan_compiled",
+      entityType: "task",
+      entityId: session.taskId,
+      details: {
+        councilSessionId: session.id,
+        finalPlanSha256: result.finalPlanSha256,
+      },
+    });
+    res.json(result);
   });
 
   router.post("/orion/council/sessions/:sessionId/plan/approval", validate(approveOrionCouncilPlanSchema), async (req, res) => {

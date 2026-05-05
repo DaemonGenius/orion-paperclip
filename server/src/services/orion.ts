@@ -19,6 +19,7 @@ import {
   orionCouncilDecisions,
   orionCouncilIterations,
   orionCouncilParticipants,
+  orionCouncilPlanningNotes,
   orionCouncilReviews,
   orionCouncilSessions,
   orionPrReceipts,
@@ -33,6 +34,7 @@ import {
   orionWorkflows,
   syncConflicts,
   syncCursors,
+  taskComments,
 } from "@paperclipai/db";
 import type {
   BindOrionTaskWorkflow,
@@ -45,6 +47,8 @@ import type {
   OrionBootstrapNotion,
   AdvanceOrionCouncilIteration,
   ApproveOrionCouncilPlan,
+  CompileOrionCouncilPlan,
+  ConveneOrionCouncilPlanning,
   OpenOrionPr,
   OrionCouncilRoleId,
   OrionCouncilSession,
@@ -163,6 +167,44 @@ const COUNCIL_ROLE_LABELS: Record<OrionCouncilRoleId, string> = {
   security_expert: "Security Expert",
   implementer: "Implementer",
 };
+const COUNCIL_PLANNING_NOTE_LABELS: Record<OrionCouncilRoleId, string> = {
+  architect: "Architect planning notes",
+  ux_ui_designer: "UX/UI planning notes",
+  qa_tester: "QA planning notes",
+  infrastructure_engineer: "Infrastructure planning notes",
+  security_expert: "Security planning notes",
+  implementer: "Implementer execution notes",
+};
+
+export type QueueCouncilPlanningRun = (
+  agentId: string,
+  opts: {
+    source: "automation";
+    triggerDetail: "system";
+    reason: string;
+    payload: Record<string, unknown>;
+    requestedByActorType?: "user" | "agent" | "system";
+    requestedByActorId?: string | null;
+    idempotencyKey?: string | null;
+    contextSnapshot: Record<string, unknown>;
+  },
+) => Promise<(typeof heartbeatRuns.$inferSelect) | null>;
+
+type OrionAutoAgentInstructionDefinition = {
+  role: string;
+  name: string;
+  title: string;
+  adapterType: "codex_local";
+  capabilities: string;
+  councilParticipation: string;
+  mission: string;
+  owns: string[];
+  doesNotOwn: string[];
+  decisionPosture: string;
+  escalationTriggers: string[];
+  roleRules: string[];
+};
+
 const ORION_AUTO_AGENT_DEFINITIONS = [
   {
     role: "planner",
@@ -170,7 +212,31 @@ const ORION_AUTO_AGENT_DEFINITIONS = [
     title: "Planner",
     adapterType: "codex_local",
     capabilities: "Creates and validates task specifications before Auto Round Table handoff.",
-    instructions: "You are Orion Planner. Help the operator turn intent into a complete task specification with acceptance criteria, autonomy envelope, impact flags, and proposed Auto Round Table participants. You do not vote in council approvals or implementation reviews.",
+    councilParticipation: "Not voting. Planner is a pre-handoff spec assistant and never appears in council approval or review matrices.",
+    mission: "Turn operator intent or existing tasks into complete Auto-ready specifications with acceptance criteria, project repo readiness, impact flags, and proposed council participants.",
+    owns: [
+      "Task/spec clarity before handoff",
+      "Acceptance criteria completeness",
+      "Impact flag and participant proposals",
+      "Repo/path readiness notes derived from the connected project",
+    ],
+    doesNotOwn: [
+      "Council plan approval votes",
+      "Implementation review votes",
+      "Code execution",
+      "Draft PR publication",
+    ],
+    decisionPosture: "Be scope-focused, explicit about assumptions, and conservative when task authority or acceptance criteria are unclear.",
+    escalationTriggers: [
+      "Operator intent conflicts with existing task details",
+      "The task lacks acceptance criteria or project repo context",
+      "The requested work needs policy, secret, or production authority",
+    ],
+    roleRules: [
+      "Create or validate the task spec before Auto council handoff.",
+      "Propose impact flags and required council participants; do not approve the final plan.",
+      "Keep implementation details bounded enough for the council and Implementer to reason about.",
+    ],
   },
   {
     role: "architect",
@@ -178,7 +244,31 @@ const ORION_AUTO_AGENT_DEFINITIONS = [
     title: "Architect",
     adapterType: "codex_local",
     capabilities: "Reviews system boundaries, contracts, data authority, and implementation plan risks.",
-    instructions: "You are Orion Architect. Review implementation plans and completed work for architecture, contracts, data ownership, and system boundary risks. Approve only when the plan or implementation is coherent and bounded.",
+    councilParticipation: "Base council participant. Architect normally participates in plan approval and implementation review.",
+    mission: "Protect system boundaries, contracts, data ownership, and implementation coherence before and after Auto execution.",
+    owns: [
+      "Architecture and integration fit",
+      "Data authority and schema boundary review",
+      "Cross-module risk identification",
+      "Plan coherence before execution",
+    ],
+    doesNotOwn: [
+      "Writing implementation code",
+      "QA verification verdicts",
+      "Security sign-off when security impact is selected",
+      "PR approval or merge authority",
+    ],
+    decisionPosture: "Approve only when the plan is bounded, internally coherent, and aligned with the existing system contracts.",
+    escalationTriggers: [
+      "Ambiguous ownership of data or authority",
+      "Unreviewed schema or API boundary changes",
+      "Implementation plan conflicts with repo architecture",
+    ],
+    roleRules: [
+      "Review the final plan for architecture risks before approval.",
+      "During review, compare evidence against the approved plan hash and call out drift.",
+      "Block when system boundaries, contracts, or data authority are unresolved.",
+    ],
   },
   {
     role: "ux_ui_designer",
@@ -186,7 +276,31 @@ const ORION_AUTO_AGENT_DEFINITIONS = [
     title: "UX/UI Designer",
     adapterType: "codex_local",
     capabilities: "Reviews user experience, interface flows, visual quality, and frontend acceptance criteria.",
-    instructions: "You are Orion UX/UI Designer. Join council work only when frontend or experience impact is selected. Review plans and implementations for interaction quality, visual consistency, accessibility, and user workflow fit.",
+    councilParticipation: "Conditional council participant. Join only when frontend or experience impact is selected by Planner/rules.",
+    mission: "Make UI-impacting Auto work usable, accessible, visually consistent, and aligned with expected user workflows.",
+    owns: [
+      "User flow and interaction review",
+      "Visual consistency with Paperclip design patterns",
+      "Accessibility and responsive-state risks",
+      "Frontend acceptance criteria quality",
+    ],
+    doesNotOwn: [
+      "Backend architecture sign-off",
+      "Security sign-off",
+      "Infrastructure sign-off",
+      "Code execution",
+    ],
+    decisionPosture: "Be practical and user-centered; block only when the plan or result would create confusing, inaccessible, or incomplete UI behavior.",
+    escalationTriggers: [
+      "Missing UI states for expected workflows",
+      "Accessibility-impacting ambiguity",
+      "Visual or interaction patterns diverge from Paperclip conventions",
+    ],
+    roleRules: [
+      "Participate only when selected for frontend/UX impact.",
+      "Review copy, layout states, responsive behavior, and interaction expectations.",
+      "Request screenshot or visual evidence when implementation changes UI.",
+    ],
   },
   {
     role: "qa_tester",
@@ -194,7 +308,31 @@ const ORION_AUTO_AGENT_DEFINITIONS = [
     title: "QA Tester",
     adapterType: "codex_local",
     capabilities: "Defines and reviews verification evidence, regression risk, and acceptance coverage.",
-    instructions: "You are Orion QA Tester. Review plans and implementations for testability, acceptance criteria coverage, verification evidence, and regression risk. QA review must pass before Auto can open a draft PR.",
+    councilParticipation: "Base council participant. QA review is required before Auto can open a draft PR.",
+    mission: "Ensure acceptance criteria are testable and implementation evidence is strong enough for council review.",
+    owns: [
+      "Verification evidence requirements",
+      "Acceptance criteria coverage review",
+      "Regression risk notes",
+      "QA pass/fail review decision",
+    ],
+    doesNotOwn: [
+      "Architecture approval",
+      "Security approval",
+      "Infrastructure approval",
+      "PR approval or merge authority",
+    ],
+    decisionPosture: "Be evidence-first. Pass only when required verification is present, relevant, and tied to the approved plan.",
+    escalationTriggers: [
+      "Missing or inconclusive verification output",
+      "Acceptance criteria not covered by evidence",
+      "Repeated failures or flaky checks without a mitigation note",
+    ],
+    roleRules: [
+      "Define expected verification evidence during planning.",
+      "During review, verify command output, changed paths, failures, and residual risks.",
+      "QA review must pass before Orion opens a draft PR.",
+    ],
   },
   {
     role: "infrastructure_engineer",
@@ -202,7 +340,31 @@ const ORION_AUTO_AGENT_DEFINITIONS = [
     title: "Infrastructure Engineer",
     adapterType: "codex_local",
     capabilities: "Reviews runtime, deployment, environment, CI, and infrastructure impacts.",
-    instructions: "You are Orion Infrastructure Engineer. Join council work only when infrastructure impact is selected. Review plans and implementations for environment, CI, deployment, runtime, and operational risks.",
+    councilParticipation: "Conditional council participant. Join only when infrastructure impact is selected by Planner/rules.",
+    mission: "Protect runtime, CI, deployment, environment, and operational safety for infrastructure-impacting Auto work.",
+    owns: [
+      "Environment and runtime risk review",
+      "CI/deployment impact notes",
+      "Migration and operational concerns",
+      "Infrastructure-specific review decisions",
+    ],
+    doesNotOwn: [
+      "Feature product decisions",
+      "General QA verdicts when no infrastructure impact exists",
+      "Security approval unless security impact is selected",
+      "Code execution",
+    ],
+    decisionPosture: "Be operationally conservative; approve when the plan is deployable, reversible enough, and clear about environment impact.",
+    escalationTriggers: [
+      "Public exposure or deployment authority changes",
+      "Unclear migration/rollback path",
+      "CI, runtime, or environment changes without verification",
+    ],
+    roleRules: [
+      "Participate only when selected for infrastructure impact.",
+      "Review CI, environment variables, runtime services, migrations, and deployment assumptions.",
+      "Block unsafe operational changes or missing deployment evidence.",
+    ],
   },
   {
     role: "security_expert",
@@ -210,7 +372,31 @@ const ORION_AUTO_AGENT_DEFINITIONS = [
     title: "Security Expert",
     adapterType: "codex_local",
     capabilities: "Reviews secret handling, authorization, data exposure, and security risk.",
-    instructions: "You are Orion Security Expert. Join council work only when security impact is selected. Review plans and implementations for auth, data exposure, dependency, secret-handling, and abuse risks.",
+    councilParticipation: "Conditional council participant. Join only when security impact is selected by Planner/rules.",
+    mission: "Protect authorization, secret handling, data exposure boundaries, dependency risk, and abuse resistance.",
+    owns: [
+      "Threat and trust-boundary review",
+      "Auth/authz and sensitive data risk notes",
+      "Secret-handling policy enforcement",
+      "Security-specific review decisions",
+    ],
+    doesNotOwn: [
+      "Reading or retrieving secrets",
+      "General implementation execution",
+      "PR approval or merge authority",
+      "Non-security UX or infrastructure decisions",
+    ],
+    decisionPosture: "Be skeptical and explicit. Approve only when security impact is understood and mitigations are adequate.",
+    escalationTriggers: [
+      "Secret access is requested or implied",
+      "Auth, authorization, or public exposure boundaries change",
+      "Sensitive data handling is ambiguous",
+    ],
+    roleRules: [
+      "Participate only when selected for security impact.",
+      "Never read secrets; review whether code would access, expose, or mishandle them.",
+      "Block if auth, data exposure, or dependency risk lacks mitigation.",
+    ],
   },
   {
     role: "implementer",
@@ -218,10 +404,119 @@ const ORION_AUTO_AGENT_DEFINITIONS = [
     title: "Implementer",
     adapterType: "codex_local",
     capabilities: "Executes approved Auto plans inside isolated git worktrees from master.",
-    instructions: "You are Orion Implementer. Execute only the final approved Auto Round Table plan in the isolated git worktree branch from master. Do not open PRs, approve PRs, merge, read secrets, or write Orion authority state.",
+    councilParticipation: "Required execution participant. Implementer must approve the final plan before execution starts.",
+    mission: "Execute only the final approved Auto Round Table plan inside the isolated git worktree branch created from master.",
+    owns: [
+      "Code changes within the approved plan and task boundaries",
+      "Focused local verification commands",
+      "Changed-path and residual-risk evidence",
+      "Fix iterations requested by council review",
+    ],
+    doesNotOwn: [
+      "Opening draft PRs",
+      "Approving or merging PRs",
+      "Reading secrets",
+      "Writing Orion authority state or council decisions",
+    ],
+    decisionPosture: "Stay bounded and evidence-driven. Stop when the approved plan, repo/path guardrails, or authority boundaries are unclear.",
+    escalationTriggers: [
+      "Approved plan is missing, stale, or conflicts with task details",
+      "Work requires denied paths, secrets, PR approval, merge, or Orion authority mutation",
+      "Verification fails repeatedly or requires operator judgment",
+    ],
+    roleRules: [
+      "Execute only after all selected experts plus Implementer approve the final plan.",
+      "Work only in the isolated git worktree branch created from master.",
+      "Do not open PRs, approve PRs, merge, read secrets, or write Orion authority state.",
+    ],
   },
-] as const;
+] as const satisfies readonly OrionAutoAgentInstructionDefinition[];
 const OLD_ORION_AUTO_AGENT_ROLES = new Set(["planner", "architect", "verifier", "knowledge_steward", "recovery_router", "implementation_worker", "ux_ui_designer", "qa_tester", "infrastructure_engineer", "security_expert", "implementer"]);
+
+function markdownList(values: readonly string[]) {
+  return values.map((value) => `- ${value}`).join("\n");
+}
+
+function buildOrionAutoIdentityMarkdown(definition: OrionAutoAgentInstructionDefinition) {
+  return `# ${definition.name}
+
+## Identity
+
+- Agent name: ${definition.name}
+- Role ID: ${definition.role}
+- Title: ${definition.title}
+- Organization: SteinmannLab / Orion Auto
+
+## Mission
+
+${definition.mission}
+
+## Owns
+
+${markdownList(definition.owns)}
+
+## Does Not Own
+
+${markdownList(definition.doesNotOwn)}
+
+## Council Participation
+
+${definition.councilParticipation}
+
+## Decision Posture
+
+${definition.decisionPosture}
+
+## Escalation Triggers
+
+${markdownList(definition.escalationTriggers)}
+`;
+}
+
+function buildOrionAutoAgentsMarkdown(definition: OrionAutoAgentInstructionDefinition) {
+  return `# ${definition.name} Operational Rules
+
+Read \`IDENTITY.md\` before doing task work. Treat \`IDENTITY.md\` as the source of truth for who you are, what you own, and when you participate in Orion Auto.
+
+## Operating Context
+
+- You are ${definition.name}, the ${definition.title} for SteinmannLab / Orion Auto.
+- Orion Auto is a council-gated workflow: Planner/spec readiness, council planning, final plan approval, isolated Auto execution, council implementation review, bounded fix iterations, and draft PR handoff.
+- The task's connected project repository is the execution repository. Auto execution creates an isolated git worktree branch from \`master\`.
+- Planner is pre-handoff only and is not a voting council participant.
+- Selected council experts plus Implementer approve the final plan before execution starts.
+- Orion opens a draft PR only after council review passes. Orion never approves or merges PRs.
+
+## Security And Authority
+
+- Do not read secrets, print secrets, request secrets, or infer secret values.
+- Do not bypass project, path, branch, verification, budget, or council policy.
+- Do not approve PRs, merge PRs, or mark human/operator gates approved.
+- Do not mutate Orion authority state, council decisions, policy records, task ownership, budgets, or approvals unless the task explicitly grants that authority through Paperclip/Orion.
+- Stop and escalate when work requires denied paths, secret access, production authority, destructive data changes, public exposure changes, or unclear operator approval.
+
+## Workflow Rules
+
+- During Planner/spec work, make acceptance criteria, project repo readiness, impact flags, and participant proposals explicit.
+- During council planning, review the final implementation plan for your role's risks and required evidence.
+- Approve a plan only when it is specific, bounded, consistent with the task, and safe for the Implementer to execute.
+- During implementation review, compare evidence against the approved plan hash and acceptance criteria.
+- If review fails, provide a blocking reason and required fix summary that the Implementer can execute.
+- Respect the default maximum of 2 Auto fix iterations before escalation.
+- Keep draft PR creation separate from implementation execution.
+
+## Evidence And Memory
+
+- Record assumptions, decisions, risks, verification evidence, changed paths, blockers, and residual concerns in Orion task or REQ ledger context when available.
+- Prefer concise, durable evidence over conversational notes that cannot be audited.
+- Include command names and outcomes when verification is relevant.
+- Identify what you did not verify.
+
+## Role-Specific Rules
+
+${markdownList(definition.roleRules)}
+`;
+}
 
 function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
@@ -747,12 +1042,17 @@ export function orionService(db: Db) {
       .limit(1)
       .then((rows) => rows[0] ?? null);
     if (!session) throw notFound("Orion council session not found");
-    const [participants, decisions, reviews, iterations] = await Promise.all([
+    const [participants, planningNoteRows, decisions, reviews, iterations] = await Promise.all([
       db
         .select()
         .from(orionCouncilParticipants)
         .where(eq(orionCouncilParticipants.sessionId, session.id))
         .orderBy(orionCouncilParticipants.createdAt),
+      db
+        .select()
+        .from(orionCouncilPlanningNotes)
+        .where(eq(orionCouncilPlanningNotes.sessionId, session.id))
+        .orderBy(orionCouncilPlanningNotes.createdAt),
       db
         .select()
         .from(orionCouncilDecisions)
@@ -769,14 +1069,214 @@ export function orionService(db: Db) {
         .where(eq(orionCouncilIterations.sessionId, session.id))
         .orderBy(orionCouncilIterations.iteration),
     ]);
+    const runIds = planningNoteRows
+      .map((note) => note.runId)
+      .filter((value): value is string => typeof value === "string" && value.length > 0);
+    const runStatusById = new Map<string, string>();
+    if (runIds.length > 0) {
+      const runRows = await db
+        .select({ id: heartbeatRuns.id, status: heartbeatRuns.status })
+        .from(heartbeatRuns)
+        .where(inArray(heartbeatRuns.id, Array.from(new Set(runIds))));
+      for (const run of runRows) runStatusById.set(run.id, run.status);
+    }
+    const planningNotes = planningNoteRows.map((note) => {
+      const runStatus = note.runId ? runStatusById.get(note.runId) : null;
+      if (note.status === "posted" || note.status === "stale" || note.status === "blocked") return note;
+      if (runStatus === "running") return { ...note, status: "running" };
+      if (runStatus === "failed" || runStatus === "cancelled" || runStatus === "timed_out") return { ...note, status: "blocked" };
+      if (runStatus === "queued" || runStatus === "scheduled_retry") return { ...note, status: "queued" };
+      return note;
+    });
     return {
       ...session,
       impactFlags: normalizeCouncilImpactFlags(session.impactFlags as Record<string, boolean> | null),
       participants,
+      planningNotes,
       decisions,
       reviews,
       iterations,
     };
+  }
+
+  function councilTaskContextMarkdown(task: typeof tasks.$inferSelect) {
+    const lines = [
+      `# ${task.identifier ? `${task.identifier}: ` : ""}${task.title}`,
+      "",
+      "## Task Context",
+      task.description?.trim() || "_No task description provided._",
+      "",
+      "## Acceptance Criteria",
+      task.acceptanceCriteria?.trim() || "_No acceptance criteria provided._",
+      "",
+      "## Properties",
+      `- Layer: ${task.layer ?? "not specified"}`,
+      `- Module: ${task.module ?? "not specified"}`,
+      `- Risk: ${task.riskLevel ?? "not specified"}`,
+      `- Sprint: ${task.sprintPhase ?? "not specified"}`,
+      `- Type: ${task.taskType ?? "not specified"}`,
+      `- Repo paths: ${task.repoPath ?? "project default"}`,
+    ];
+    const notionProperties = task.notionProperties && typeof task.notionProperties === "object"
+      ? task.notionProperties as Record<string, unknown>
+      : null;
+    if (notionProperties) {
+      for (const key of ["Wiki Docs", "Review Checks", "Implementation Plans"]) {
+        const value = notionProperties[key];
+        if (value !== undefined && value !== null) {
+          lines.push(`- ${key}: ${formatCouncilContextValue(value)}`);
+        }
+      }
+    }
+    return lines.join("\n");
+  }
+
+  function formatCouncilContextValue(value: unknown): string {
+    if (Array.isArray(value)) {
+      return value.map(formatCouncilContextValue).filter(Boolean).join(", ");
+    }
+    if (typeof value === "object" && value !== null) {
+      const record = value as Record<string, unknown>;
+      const direct = readString(record.url) ?? readString(record.href) ?? readString(record.id) ?? readString(record.title) ?? readString(record.name);
+      if (direct) return direct;
+      return JSON.stringify(value);
+    }
+    return String(value);
+  }
+
+  function buildCouncilPlanningPrompt(input: {
+    roleId: OrionCouncilRoleId;
+    task: typeof tasks.$inferSelect;
+    session: OrionCouncilSession;
+    requestedForCommentId: string | null;
+  }) {
+    const roleLabel = COUNCIL_ROLE_LABELS[input.roleId];
+    const noteLabel = COUNCIL_PLANNING_NOTE_LABELS[input.roleId];
+    return [
+      `## Round Table planning request: ${roleLabel}`,
+      "",
+      `Council session: ${input.session.id}`,
+      `Task: ${input.task.identifier ?? input.task.id}`,
+      input.requestedForCommentId ? `Responding to comment: ${input.requestedForCommentId}` : null,
+      "",
+      "You are participating in Orion Auto council planning. Think through the task from your role, then post one normal task comment as yourself.",
+      "",
+      "Your comment must use this shape:",
+      `## ${noteLabel}`,
+      "",
+      "### Reasoning",
+      "- Explain the role-specific reasoning, tradeoffs, and any uncertainty.",
+      "",
+      "### Assumptions",
+      "- List assumptions you are relying on.",
+      "",
+      "### Risks and blockers",
+      "- List blocking risks or write `None`.",
+      "",
+      "### Plan guidance",
+      "- Give concrete implementation or review guidance for the final plan.",
+      "",
+      "### Approval posture",
+      "- Say whether you are ready to approve a compiled plan that incorporates these notes.",
+      "",
+      "Rules: do not read secrets, approve PRs, merge PRs, or mutate Orion authority state. Planner is not a voting participant.",
+      "",
+      councilTaskContextMarkdown(input.task),
+    ].filter((line): line is string => typeof line === "string").join("\n");
+  }
+
+  function buildCouncilPlanningNoteBody(input: {
+    roleId: OrionCouncilRoleId;
+    task: typeof tasks.$inferSelect;
+    session: OrionCouncilSession;
+  }) {
+    const label = COUNCIL_PLANNING_NOTE_LABELS[input.roleId];
+    const roleLabel = COUNCIL_ROLE_LABELS[input.roleId];
+    const base = [
+      `## ${label}`,
+      "",
+      `Council session: ${input.session.id}`,
+      `Task: ${input.task.identifier ?? input.task.id}`,
+      "",
+      "### Assumptions",
+      `- Use the connected project repository and branch from ${input.session.baseBranch}.`,
+      `- Stay within the task module/path scope: ${input.task.repoPath ?? "project default paths"}.`,
+      "- Do not read secrets, approve PRs, merge PRs, or mutate Orion authority state.",
+      "",
+      "### Role guidance",
+    ];
+    const roleGuidance: Record<OrionCouncilRoleId, string[]> = {
+      architect: [
+        "- Check bounded contexts, dependency direction, API/domain boundaries, and data ownership.",
+        "- Block if the plan crosses modules or authority boundaries without explicit evidence.",
+      ],
+      ux_ui_designer: [
+        "- Confirm user-facing states, copy, accessibility, and workflow fit if UI changes are present.",
+        "- Request screenshot evidence for frontend changes.",
+      ],
+      qa_tester: [
+        "- Require verification that maps directly to the acceptance criteria.",
+        "- Capture command output, failures, residual risk, and any unverified criteria.",
+      ],
+      infrastructure_engineer: [
+        "- Check runtime, environment, CI, deployment, migration, and rollback impact.",
+        "- Block operational changes without verification or rollback notes.",
+      ],
+      security_expert: [
+        "- Check auth, privacy, sensitive data exposure, secret handling, and abuse paths.",
+        "- Block any plan requiring secret access or ambiguous authorization boundaries.",
+      ],
+      implementer: [
+        "- Execute only the approved final plan in the isolated worktree from master.",
+        "- Record changed paths, verification output, blockers, and residual risks.",
+      ],
+    };
+    return [
+      ...base,
+      ...roleGuidance[input.roleId],
+      "",
+      "### Planning verdict",
+      `- ${roleLabel} is ready to approve a compiled plan that incorporates these notes.`,
+    ].join("\n");
+  }
+
+  function buildFinalCouncilPlanMarkdown(input: {
+    task: typeof tasks.$inferSelect;
+    session: OrionCouncilSession;
+    noteBodiesByRole: Array<{ roleId: string; body: string; runId: string | null; commentId: string | null }>;
+  }) {
+    const impactFlags = Object.entries(input.session.impactFlags ?? {})
+      .filter(([, selected]) => selected)
+      .map(([flag]) => flag)
+      .join(", ") || "none selected";
+    return [
+      "# Final Council Implementation Plan",
+      "",
+      councilTaskContextMarkdown(input.task),
+      "",
+      "## Impact Flags",
+      impactFlags,
+      "",
+      "## Council Planning Notes",
+      ...input.noteBodiesByRole.flatMap((note) => [
+        "",
+        `### ${COUNCIL_ROLE_LABELS[note.roleId as OrionCouncilRoleId] ?? note.roleId}`,
+        `Source: comment ${note.commentId ?? "unknown"}${note.runId ? `, run ${note.runId}` : ""}`,
+        "",
+        note.body,
+      ]),
+      "",
+      "## Execution Plan",
+      "- Work only inside the connected project repository and isolated worktree branch created from master.",
+      "- Review the task, linked docs, review checks, implementation plan links, and council notes before editing.",
+      "- Make the smallest code or documentation changes required to satisfy acceptance criteria.",
+      "- Do not open, approve, or merge PRs during implementation.",
+      "",
+      "## Required Verification",
+      "- Run targeted checks for the affected module/API paths.",
+      "- QA must verify evidence against the acceptance criteria before draft PR creation.",
+      "- Record changed paths, command output, failures, and residual risks in Orion evidence.",
+    ].join("\n");
   }
 
   async function getCouncilSessionForTask(taskId: string): Promise<OrionCouncilSession | null> {
@@ -1769,6 +2269,13 @@ export function orionService(db: Db) {
     await client.execute(sql`update agents set reports_to = null where reports_to = ${agentId}`);
     await client.execute(sql`update tasks set assignee_agent_id = null where assignee_agent_id = ${agentId}`);
     await client.execute(sql`update tasks set created_by_agent_id = null where created_by_agent_id = ${agentId}`);
+    await client.execute(sql`
+      update tasks
+      set execution_policy = null,
+          execution_state = null
+      where execution_policy is not null
+        and execution_policy::text like ${`%${agentId}%`}
+    `);
     await client.execute(sql`update approvals set requested_by_agent_id = null where requested_by_agent_id = ${agentId}`);
     await client.execute(sql`update activity_log set agent_id = null where agent_id = ${agentId}`);
     await client.execute(sql`update assets set created_by_agent_id = null where created_by_agent_id = ${agentId}`);
@@ -1786,6 +2293,7 @@ export function orionService(db: Db) {
     await client.execute(sql`update task_thread_interactions set created_by_agent_id = null where created_by_agent_id = ${agentId}`);
     await client.execute(sql`update task_thread_interactions set resolved_by_agent_id = null where resolved_by_agent_id = ${agentId}`);
     await client.execute(sql`update orion_council_participants set agent_id = null where agent_id = ${agentId}`);
+    await client.execute(sql`update orion_council_planning_notes set agent_id = null where agent_id = ${agentId}`);
     await client.execute(sql`update orion_council_decisions set created_by_agent_id = null where created_by_agent_id = ${agentId}`);
     await client.execute(sql`update orion_workflow_nodes set agent_id = null where agent_id = ${agentId}`);
     await client.execute(sql`update company_secrets set created_by_agent_id = null where created_by_agent_id = ${agentId}`);
@@ -1817,6 +2325,7 @@ export function orionService(db: Db) {
     await client.execute(sql`update task_tree_holds set created_by_run_id = null where created_by_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
     await client.execute(sql`update task_tree_holds set released_by_run_id = null where released_by_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
     await client.execute(sql`update task_thread_interactions set source_run_id = null where source_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
+    await client.execute(sql`update orion_council_planning_notes set run_id = null where run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
     await client.execute(sql`update task_work_products set created_by_run_id = null where created_by_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
     await client.execute(sql`update workspace_runtime_services set started_by_run_id = null where started_by_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
     await client.execute(sql`update workspace_operations set heartbeat_run_id = null where heartbeat_run_id in (select id from heartbeat_runs where agent_id = ${agentId})`);
@@ -1835,9 +2344,16 @@ export function orionService(db: Db) {
     await client.execute(sql`delete from agents where id = ${agentId}`);
   }
 
-  async function writeAutoAgentInstructions(agent: typeof agents.$inferSelect, body: string) {
+  async function writeAutoAgentInstructions(agent: typeof agents.$inferSelect, definition: OrionAutoAgentInstructionDefinition) {
     const instructions = agentInstructionsService();
-    const result = await instructions.writeFile(agent, "AGENTS.md", body, { clearLegacyPromptTemplate: true });
+    const result = await instructions.materializeManagedBundle(agent, {
+      "AGENTS.md": buildOrionAutoAgentsMarkdown(definition),
+      "IDENTITY.md": buildOrionAutoIdentityMarkdown(definition),
+    }, {
+      clearLegacyPromptTemplate: true,
+      entryFile: "AGENTS.md",
+      replaceExisting: true,
+    });
     await db
       .update(agents)
       .set({ adapterConfig: result.adapterConfig, updatedAt: new Date() })
@@ -2416,6 +2932,244 @@ export function orionService(db: Db) {
     };
   }
 
+  async function latestCurrentPlanningNotes(session: OrionCouncilSession) {
+    const current = new Map<string, typeof orionCouncilPlanningNotes.$inferSelect>();
+    const notes = await db
+      .select()
+      .from(orionCouncilPlanningNotes)
+      .where(eq(orionCouncilPlanningNotes.sessionId, session.id))
+      .orderBy(orionCouncilPlanningNotes.createdAt);
+    for (const note of notes) {
+      if (note.status === "stale") continue;
+      current.set(note.participantId, note);
+    }
+    return current;
+  }
+
+  async function compileCouncilPlanFromCurrentNotes(
+    sessionId: string,
+    createdByUserId?: string | null,
+  ) {
+    const session = await getCouncilSessionDetail(sessionId);
+    const task = await db.select().from(tasks).where(eq(tasks.id, session.taskId)).limit(1).then((rows) => rows[0] ?? null);
+    if (!task) throw notFound("Task not found");
+    const required = (session.participants ?? []).filter((entry) => entry.required);
+    const currentNotesByParticipant = await latestCurrentPlanningNotes(session);
+    const missing = required.filter((participant) => {
+      const note = currentNotesByParticipant.get(participant.id);
+      return !note || note.status !== "posted" || !note.commentId || !note.runId;
+    });
+    if (missing.length > 0) {
+      throw conflict(`Council plan compilation requires current run-backed planning notes from: ${missing.map((entry) => COUNCIL_ROLE_LABELS[entry.roleId as OrionCouncilRoleId] ?? entry.roleId).join(", ")}`);
+    }
+
+    const notes = required.map((participant) => currentNotesByParticipant.get(participant.id)!).filter(Boolean);
+    const commentIds = notes.map((note) => note.commentId).filter((value): value is string => Boolean(value));
+    const commentRows = commentIds.length
+      ? await db
+        .select({ id: taskComments.id, body: taskComments.body, createdByRunId: taskComments.createdByRunId })
+        .from(taskComments)
+        .where(inArray(taskComments.id, commentIds))
+      : [];
+    const commentById = new Map(commentRows.map((comment) => [comment.id, comment]));
+    const noteBodiesByRole = notes.map((note) => {
+      const comment = note.commentId ? commentById.get(note.commentId) : null;
+      return {
+        roleId: note.roleId,
+        body: comment?.body ?? "",
+        runId: note.runId,
+        commentId: note.commentId,
+      };
+    });
+    const finalPlanMarkdown = buildFinalCouncilPlanMarkdown({ task, session, noteBodiesByRole });
+    const planSha256 = sha256(finalPlanMarkdown);
+    const provenance = {
+      source: "orion_auto_council_runs",
+      compiledAt: new Date().toISOString(),
+      latestPlanningCommentId: session.latestPlanningCommentId ?? null,
+      notes: notes.map((note) => ({
+        roleId: note.roleId,
+        participantId: note.participantId,
+        commentId: note.commentId,
+        runId: note.runId,
+        requestedForCommentId: note.requestedForCommentId,
+      })),
+    };
+
+    const planChanged = session.finalPlanSha256 !== planSha256 || session.planStaleAt !== null || session.manualPlanOverride;
+    const [updated] = await db
+      .update(orionCouncilSessions)
+      .set({
+        status: "awaiting_plan_approval",
+        phase: "plan_approval",
+        finalPlanMarkdown,
+        finalPlanSha256: planSha256,
+        approvedPlanSha256: null,
+        finalPlanProvenance: provenance,
+        planStaleAt: null,
+        manualPlanOverride: false,
+        updatedAt: new Date(),
+      })
+      .where(eq(orionCouncilSessions.id, session.id))
+      .returning();
+    if (planChanged) {
+      await db
+        .update(orionCouncilParticipants)
+        .set({ planApprovedAt: null, status: "pending_plan", updatedAt: new Date() })
+        .where(eq(orionCouncilParticipants.sessionId, session.id));
+    }
+    await taskService(db).addComment(
+      task.id,
+      [
+        "## Final Council Implementation Plan compiled",
+        "",
+        `Plan hash: \`${planSha256}\``,
+        `Source runs: ${notes.map((note) => note.runId).filter(Boolean).join(", ")}`,
+        "",
+        finalPlanMarkdown,
+      ].join("\n"),
+      { userId: createdByUserId ?? undefined },
+    );
+    return getCouncilSessionDetail(updated!.id);
+  }
+
+  async function requestCouncilPlanningRuns(input: {
+    session: OrionCouncilSession;
+    task: typeof tasks.$inferSelect;
+    participants: NonNullable<OrionCouncilSession["participants"]>;
+    requestedForCommentId: string | null;
+    queueRun?: QueueCouncilPlanningRun;
+    createdByUserId?: string | null;
+    reason: "initial" | "operator_comment";
+  }) {
+    const now = new Date();
+    const required = input.participants.filter((entry) => entry.required);
+    const previousNotes = await db
+      .select()
+      .from(orionCouncilPlanningNotes)
+      .where(eq(orionCouncilPlanningNotes.sessionId, input.session.id))
+      .orderBy(orionCouncilPlanningNotes.createdAt);
+    const latestByParticipant = new Map<string, typeof previousNotes[number]>();
+    for (const note of previousNotes) latestByParticipant.set(note.participantId, note);
+
+    for (const participant of required) {
+      const roleId = participant.roleId as OrionCouncilRoleId;
+      if (!participant.agentId) {
+        await db
+          .update(orionCouncilParticipants)
+          .set({ status: "planning_blocked", updatedAt: now })
+          .where(eq(orionCouncilParticipants.id, participant.id));
+        continue;
+      }
+      const previous = latestByParticipant.get(participant.id) ?? null;
+      if (previous?.status === "posted" && previous.requestedForCommentId === input.requestedForCommentId && !previous.staleAt) {
+        continue;
+      }
+      const [request] = await db
+        .insert(orionCouncilPlanningNotes)
+        .values({
+          companyId: input.session.companyId,
+          sessionId: input.session.id,
+          participantId: participant.id,
+          taskId: input.task.id,
+          roleId,
+          agentId: participant.agentId,
+          status: input.queueRun ? "requested" : "blocked",
+          reason: input.reason,
+          requestedForCommentId: input.requestedForCommentId,
+          supersedesNoteId: previous?.id ?? null,
+          requestedAt: now,
+          updatedAt: now,
+        })
+        .returning();
+      if (!input.queueRun) {
+        await db.update(orionCouncilParticipants).set({ status: "planning_blocked", updatedAt: now }).where(eq(orionCouncilParticipants.id, participant.id));
+        continue;
+      }
+      const prompt = buildCouncilPlanningPrompt({ roleId, task: input.task, session: input.session, requestedForCommentId: input.requestedForCommentId });
+      const run = await input.queueRun(participant.agentId, {
+        source: "automation",
+        triggerDetail: "system",
+        reason: "orion_council_planning",
+        requestedByActorType: input.createdByUserId ? "user" : "system",
+        requestedByActorId: input.createdByUserId ?? "orion",
+        idempotencyKey: `orion-council-planning:${input.session.id}:${participant.id}:${input.requestedForCommentId ?? "initial"}`,
+        payload: {
+          taskId: input.task.id,
+          councilSessionId: input.session.id,
+          councilParticipantId: participant.id,
+          councilPlanningNoteId: request!.id,
+          roleId,
+          commentId: input.requestedForCommentId,
+        },
+        contextSnapshot: {
+          taskId: input.task.id,
+          taskKey: input.task.identifier ?? input.task.id,
+          projectId: input.task.projectId ?? null,
+          commentId: input.requestedForCommentId ?? undefined,
+          wakeCommentId: input.requestedForCommentId ?? undefined,
+          source: "orion.council.planning",
+          wakeReason: "orion_council_planning",
+          orionCouncilPlanning: {
+            sessionId: input.session.id,
+            participantId: participant.id,
+            planningNoteId: request!.id,
+            roleId,
+            prompt,
+          },
+          paperclipSessionHandoffMarkdown: prompt,
+        },
+      });
+      await db
+        .update(orionCouncilPlanningNotes)
+        .set({ runId: run?.id ?? null, status: run ? "queued" : "blocked", updatedAt: new Date() })
+        .where(eq(orionCouncilPlanningNotes.id, request!.id));
+      await db
+        .update(orionCouncilParticipants)
+        .set({ status: run ? "planning_queued" : "planning_blocked", updatedAt: new Date() })
+        .where(eq(orionCouncilParticipants.id, participant.id));
+    }
+  }
+
+  async function markCouncilPlanStaleForComment(input: {
+    session: OrionCouncilSession;
+    commentId: string;
+    queueRun?: QueueCouncilPlanningRun;
+    createdByUserId?: string | null;
+  }) {
+    const task = await db.select().from(tasks).where(eq(tasks.id, input.session.taskId)).limit(1).then((rows) => rows[0] ?? null);
+    if (!task) throw notFound("Task not found");
+    const now = new Date();
+    await db
+      .update(orionCouncilPlanningNotes)
+      .set({ status: "stale", staleAt: now, updatedAt: now })
+      .where(and(eq(orionCouncilPlanningNotes.sessionId, input.session.id), eq(orionCouncilPlanningNotes.status, "posted")));
+    await db
+      .update(orionCouncilSessions)
+      .set({
+        status: "plan_stale",
+        phase: "planning_notes",
+        planStaleAt: now,
+        latestPlanningCommentId: input.commentId,
+        approvedPlanSha256: null,
+        updatedAt: now,
+      })
+      .where(eq(orionCouncilSessions.id, input.session.id));
+    await db
+      .update(orionCouncilParticipants)
+      .set({ planApprovedAt: null, status: "planning_requested", updatedAt: now })
+      .where(eq(orionCouncilParticipants.sessionId, input.session.id));
+    await requestCouncilPlanningRuns({
+      session: { ...input.session, latestPlanningCommentId: input.commentId, planStaleAt: now, status: "plan_stale", phase: "planning_notes" },
+      task,
+      participants: input.session.participants ?? [],
+      requestedForCommentId: input.commentId,
+      queueRun: input.queueRun,
+      createdByUserId: input.createdByUserId,
+      reason: "operator_comment",
+    });
+  }
+
   return {
     validateChangedPathsAgainstEnvelope,
     workflowPresets: () => Object.values(ORION_WORKFLOW_PRESETS),
@@ -2524,7 +3278,7 @@ export function orionService(db: Db) {
 
       for (const agent of createdAgents) {
         const definition = ORION_AUTO_AGENT_DEFINITIONS.find((entry) => entry.role === agent.role);
-        if (definition) await writeAutoAgentInstructions(agent, definition.instructions);
+        if (definition) await writeAutoAgentInstructions(agent, definition);
       }
 
       return {
@@ -2626,6 +3380,142 @@ export function orionService(db: Db) {
       return await (orionService(db)).validatePlannerSpec(taskId, input, createdByUserId);
     },
 
+    conveneCouncilPlanning: async (
+      sessionId: string,
+      _input: ConveneOrionCouncilPlanning = {},
+      createdByUserId?: string | null,
+      opts?: { queueRun?: QueueCouncilPlanningRun },
+    ) => {
+      const session = await getCouncilSessionDetail(sessionId);
+      const task = await db.select().from(tasks).where(eq(tasks.id, session.taskId)).limit(1).then((rows) => rows[0] ?? null);
+      if (!task) throw notFound("Task not found");
+      const required = (session.participants ?? []).filter((entry) => entry.required);
+      if (required.length === 0) throw unprocessable("Round Table planning requires selected council participants");
+
+      const taskSvc = taskService(db);
+      const kickoff = await taskSvc.addComment(
+        task.id,
+        [
+          "## Round Table planning started",
+          "",
+          `Council session: ${session.id}`,
+          `Selected participants: ${required.map((entry) => COUNCIL_ROLE_LABELS[entry.roleId as OrionCouncilRoleId] ?? entry.roleId).join(", ")}`,
+          "",
+          "Orion is queuing real planning runs for the selected council participants. Each participant should post its reasoning as a normal task comment.",
+        ].join("\n"),
+        { userId: createdByUserId ?? undefined },
+      );
+
+      await db
+        .update(orionCouncilSessions)
+        .set({
+          status: "planning_notes",
+          phase: "planning_notes",
+          latestPlanningCommentId: kickoff.id,
+          finalPlanSha256: null,
+          approvedPlanSha256: null,
+          finalPlanProvenance: null,
+          planStaleAt: null,
+          manualPlanOverride: false,
+          updatedAt: new Date(),
+        })
+        .where(eq(orionCouncilSessions.id, session.id));
+      await db
+        .update(orionCouncilPlanningNotes)
+        .set({ status: "stale", staleAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(orionCouncilPlanningNotes.sessionId, session.id), eq(orionCouncilPlanningNotes.status, "posted")));
+      await requestCouncilPlanningRuns({
+        session: { ...session, latestPlanningCommentId: kickoff.id, status: "planning_notes", phase: "planning_notes" },
+        task,
+        participants: session.participants ?? [],
+        requestedForCommentId: kickoff.id,
+        queueRun: opts?.queueRun,
+        createdByUserId,
+        reason: "initial",
+      });
+      return getCouncilSessionDetail(session.id);
+    },
+
+    compileCouncilPlan: async (
+      sessionId: string,
+      _input: CompileOrionCouncilPlan = {},
+      createdByUserId?: string | null,
+    ) => {
+      return compileCouncilPlanFromCurrentNotes(sessionId, createdByUserId);
+    },
+
+    handleCouncilTaskComment: async (
+      commentId: string,
+      opts?: { queueRun?: QueueCouncilPlanningRun; createdByUserId?: string | null },
+    ) => {
+      const comment = await db
+        .select()
+        .from(taskComments)
+        .where(eq(taskComments.id, commentId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      if (!comment) throw notFound("Task comment not found");
+      const session = await getCouncilSessionForTask(comment.taskId);
+      if (!session) return null;
+      const activePlanningStatuses = new Set(["planning_notes", "plan_stale", "awaiting_plan_approval", "approved"]);
+      if (!activePlanningStatuses.has(session.status)) return session;
+
+      if (comment.authorAgentId && comment.createdByRunId) {
+        const participant = (session.participants ?? []).find((entry) => entry.agentId === comment.authorAgentId && entry.required) ?? null;
+        if (!participant) return session;
+        const pending = await db
+          .select()
+          .from(orionCouncilPlanningNotes)
+          .where(and(
+            eq(orionCouncilPlanningNotes.sessionId, session.id),
+            eq(orionCouncilPlanningNotes.participantId, participant.id),
+            inArray(orionCouncilPlanningNotes.status, ["requested", "queued", "running", "blocked", "stale"]),
+          ))
+          .orderBy(desc(orionCouncilPlanningNotes.createdAt))
+          .limit(1)
+          .then((rows) => rows[0] ?? null);
+        if (!pending) return session;
+        await db
+          .update(orionCouncilPlanningNotes)
+          .set({
+            commentId: comment.id,
+            sourceCommentId: comment.id,
+            runId: comment.createdByRunId,
+            status: "posted",
+            completedAt: new Date(),
+            staleAt: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(orionCouncilPlanningNotes.id, pending.id));
+        await db
+          .update(orionCouncilParticipants)
+          .set({ status: "planning_note_posted", domainNotes: comment.body, updatedAt: new Date() })
+          .where(eq(orionCouncilParticipants.id, participant.id));
+
+        const refreshed = await getCouncilSessionDetail(session.id);
+        const required = (refreshed.participants ?? []).filter((entry) => entry.required);
+        const currentNotes = await latestCurrentPlanningNotes(refreshed);
+        const allPosted = required.length > 0 && required.every((entry) => {
+          const note = currentNotes.get(entry.id);
+          return note?.status === "posted" && Boolean(note.commentId) && Boolean(note.runId);
+        });
+        if (allPosted) return compileCouncilPlanFromCurrentNotes(session.id, opts?.createdByUserId ?? null);
+        return getCouncilSessionDetail(session.id);
+      }
+
+      if (comment.authorUserId) {
+        await markCouncilPlanStaleForComment({
+          session,
+          commentId: comment.id,
+          queueRun: opts?.queueRun,
+          createdByUserId: opts?.createdByUserId ?? comment.authorUserId,
+        });
+        return getCouncilSessionDetail(session.id);
+      }
+
+      return session;
+    },
+
     saveCouncilPlan: async (sessionId: string, input: SaveOrionCouncilPlan) => {
       const session = await getCouncilSessionDetail(sessionId);
       const planSha256 = sha256(input.finalPlanMarkdown);
@@ -2637,6 +3527,12 @@ export function orionService(db: Db) {
           finalPlanMarkdown: input.finalPlanMarkdown,
           finalPlanSha256: planSha256,
           approvedPlanSha256: null,
+          finalPlanProvenance: {
+            source: "operator_manual_override",
+            savedAt: new Date().toISOString(),
+          },
+          planStaleAt: null,
+          manualPlanOverride: true,
           updatedAt: new Date(),
         })
         .where(eq(orionCouncilSessions.id, session.id))
@@ -2655,6 +3551,12 @@ export function orionService(db: Db) {
     ) => {
       const session = await getCouncilSessionDetail(sessionId);
       if (!session.finalPlanSha256) throw unprocessable("Council plan approval requires a saved final implementation plan");
+      if (session.planStaleAt) throw conflict("Council plan approval is blocked because the plan is stale. Recompile from current council notes first.");
+      if (session.manualPlanOverride) throw conflict("Council plan approval is blocked for manual override plans until the operator explicitly accepts the override path.");
+      const provenance = readRecord(session.finalPlanProvenance);
+      if (readString(provenance.source) !== "orion_auto_council_runs") {
+        throw conflict("Council plan approval requires a plan compiled from real council agent runs");
+      }
       const participant = session.participants?.find((entry) => entry.roleId === input.roleId) ?? null;
       if (!participant || !participant.required) throw unprocessable("Only selected council participants can approve this plan");
       const now = new Date();
@@ -2697,6 +3599,9 @@ export function orionService(db: Db) {
 
     startCouncilExecution: async (sessionId: string, input: StartOrionCouncilExecution) => {
       const session = await getCouncilSessionDetail(sessionId);
+      if (session.planStaleAt || session.manualPlanOverride) {
+        throw conflict("Auto execution is blocked until the current plan is compiled from real council agent runs");
+      }
       if (session.status !== "approved" || !session.approvedPlanSha256 || session.approvedPlanSha256 !== session.finalPlanSha256) {
         throw conflict("Auto execution is blocked until every selected expert and the Implementer approve the final plan");
       }

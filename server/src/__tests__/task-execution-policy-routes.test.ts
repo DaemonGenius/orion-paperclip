@@ -22,6 +22,8 @@ const mockHeartbeatService = vi.hoisted(() => ({
   cancelRun: vi.fn(async () => null),
 }));
 
+const mockAgentServiceGetById = vi.hoisted(() => vi.fn());
+
 function registerModuleMocks() {
   vi.doMock("../services/index.js", () => ({
     accessService: () => ({
@@ -29,7 +31,7 @@ function registerModuleMocks() {
       hasPermission: vi.fn(async () => false),
     }),
     agentService: () => ({
-      getById: vi.fn(async () => null),
+      getById: mockAgentServiceGetById,
     }),
     documentService: () => ({}),
     executionWorkspaceService: () => ({}),
@@ -108,6 +110,7 @@ describe("task execution policy routes", () => {
     mockTaskService.getRelationSummaries.mockResolvedValue({ blockedBy: [], blocks: [] });
     mockTaskService.listWakeableBlockedDependents.mockResolvedValue([]);
     mockTaskService.getWakeableParentAfterChildCompletion.mockResolvedValue(null);
+    mockAgentServiceGetById.mockImplementation(async (id: string) => ({ id, companyId: "company-1" }));
   });
 
   it("does not auto-start execution review when reviewers are added to an already in_review task", async () => {
@@ -158,5 +161,58 @@ describe("task execution policy routes", () => {
     expect(updatePatch.assigneeUserId).toBeUndefined();
     expect(updatePatch.executionState).toBeUndefined();
     expect(mockHeartbeatService.wakeup).not.toHaveBeenCalled();
+  });
+
+  it("clears legacy execution policy participants that reference deleted agents before status updates", async () => {
+    const staleAgentId = "99999999-9999-4999-8999-999999999999";
+    const policy = normalizeTaskExecutionPolicy({
+      stages: [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          type: "review",
+          participants: [{ type: "agent", agentId: staleAgentId }],
+        },
+      ],
+    })!;
+    const task = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      companyId: "company-1",
+      status: "blocked",
+      assigneeAgentId: null,
+      assigneeUserId: "local-board",
+      createdByUserId: "local-board",
+      identifier: "PAP-1000",
+      title: "Legacy stale reviewer",
+      executionPolicy: policy,
+      executionState: null,
+    };
+    mockTaskService.getById.mockResolvedValue(task);
+    mockAgentServiceGetById.mockImplementation(async (id: string) =>
+      id === staleAgentId ? null : { id, companyId: "company-1" }
+    );
+    mockTaskService.update.mockImplementation(async (_id: string, patch: Record<string, unknown>) => ({
+      ...task,
+      ...patch,
+      updatedAt: new Date(),
+    }));
+
+    const res = await request(await createApp())
+      .patch("/api/tasks/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+      .send({ status: "done" });
+
+    expect(res.status).toBe(200);
+    expect(mockTaskService.update).toHaveBeenCalledWith(
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      expect.objectContaining({
+        status: "done",
+        executionPolicy: null,
+        executionState: null,
+        actorAgentId: null,
+        actorUserId: "local-board",
+      }),
+    );
+    const updatePatch = mockTaskService.update.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(updatePatch.assigneeAgentId).toBeUndefined();
+    expect(updatePatch.assigneeUserId).toBeUndefined();
   });
 });

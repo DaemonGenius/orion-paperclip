@@ -839,6 +839,14 @@ export const saveOrionCouncilPlanSchema = z.object({
   idempotencyKey: z.string().trim().min(1).max(120).optional().nullable(),
 }).strict();
 
+export const conveneOrionCouncilPlanningSchema = z.object({
+  idempotencyKey: z.string().trim().min(1).max(120).optional().nullable(),
+}).strict();
+
+export const compileOrionCouncilPlanSchema = z.object({
+  idempotencyKey: z.string().trim().min(1).max(120).optional().nullable(),
+}).strict();
+
 export const approveOrionCouncilPlanSchema = z.object({
   roleId: orionCouncilRoleIdSchema,
   agentId: z.string().uuid().optional().nullable(),
@@ -988,6 +996,8 @@ export type OrionPlannerImpactFlag = z.infer<typeof orionPlannerImpactFlagSchema
 export type ValidateOrionPlannerSpec = z.infer<typeof validateOrionPlannerSpecSchema>;
 export type StartOrionCouncilSession = z.infer<typeof startOrionCouncilSessionSchema>;
 export type SaveOrionCouncilPlan = z.infer<typeof saveOrionCouncilPlanSchema>;
+export type ConveneOrionCouncilPlanning = z.infer<typeof conveneOrionCouncilPlanningSchema>;
+export type CompileOrionCouncilPlan = z.infer<typeof compileOrionCouncilPlanSchema>;
 export type ApproveOrionCouncilPlan = z.infer<typeof approveOrionCouncilPlanSchema>;
 export type StartOrionCouncilExecution = z.infer<typeof startOrionCouncilExecutionSchema>;
 export type RecordOrionCouncilReview = z.infer<typeof recordOrionCouncilReviewSchema>;
