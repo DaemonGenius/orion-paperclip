@@ -328,6 +328,48 @@ describe("renderPaperclipWakePrompt", () => {
     expect(prompt).toContain("PAP-1723 Finish blocker (todo)");
   });
 
+  it("renders Orion council planning metadata and boundaries", () => {
+    const payload = {
+      reason: "orion_council_planning",
+      task: {
+        id: "task-1",
+        identifier: "SHO-9",
+        title: "Harden registry sync",
+        status: "in_progress",
+      },
+      orionCouncilPlanning: {
+        sessionId: "session-1",
+        participantId: "participant-1",
+        planningNoteId: "note-1",
+        roleId: "qa_tester",
+        planningChatEndpoint: "/api/orion/council/sessions/session-1/messages",
+        requestedForMessageId: "message-1",
+      },
+      fallbackFetchNeeded: false,
+    };
+
+    expect(JSON.parse(stringifyPaperclipWakePayload(payload) ?? "{}")).toMatchObject({
+      orionCouncilPlanning: {
+        sessionId: "session-1",
+        participantId: "participant-1",
+        planningNoteId: "note-1",
+        roleId: "qa_tester",
+        planningChatEndpoint: "/api/orion/council/sessions/session-1/messages",
+        requestedForMessageId: "message-1",
+      },
+    });
+
+    const prompt = renderPaperclipWakePrompt(payload);
+    expect(prompt).toContain("Orion council planning: yes");
+    expect(prompt).toContain("council session id: session-1");
+    expect(prompt).toContain("planning chat endpoint: /api/orion/council/sessions/session-1/messages");
+    expect(prompt).toContain("planning-only, read-only council work");
+    expect(prompt).toContain("Do not post council planning notes to normal task Chat");
+    expect(prompt).toContain("do not change task status");
+    expect(prompt).toContain("do not checkout or claim the task");
+    expect(prompt).toContain("do not create subtasks as a fallback");
+  });
+
   it("renders loose review request instructions for execution handoffs", () => {
     const prompt = renderPaperclipWakePrompt({
       reason: "execution_review_requested",

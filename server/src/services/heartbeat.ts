@@ -1743,6 +1743,20 @@ async function buildPaperclipWakePayload(input: {
     | null;
 }) {
   const executionStage = parseObject(input.contextSnapshot.executionStage);
+  const orionCouncilPlanningRaw = parseObject(input.contextSnapshot.orionCouncilPlanning);
+  const orionCouncilPlanningSessionId = readNonEmptyString(orionCouncilPlanningRaw.sessionId);
+  const orionCouncilPlanning = orionCouncilPlanningSessionId
+    ? {
+        sessionId: orionCouncilPlanningSessionId,
+        participantId: readNonEmptyString(orionCouncilPlanningRaw.participantId),
+        planningNoteId: readNonEmptyString(orionCouncilPlanningRaw.planningNoteId),
+        roleId: readNonEmptyString(orionCouncilPlanningRaw.roleId),
+        planningChatEndpoint: readNonEmptyString(orionCouncilPlanningRaw.planningChatEndpoint),
+        requestedForMessageId:
+          readNonEmptyString(input.contextSnapshot.wakePlanningMessageId) ??
+          readNonEmptyString(input.contextSnapshot.planningMessageId),
+      }
+    : null;
   const commentIds = extractWakeCommentIds(input.contextSnapshot);
   const taskId = readNonEmptyString(input.contextSnapshot.taskId);
   const continuationSummary = input.continuationSummary ?? null;
@@ -1761,7 +1775,7 @@ async function buildPaperclipWakePayload(input: {
           .where(and(eq(tasks.id, taskId), eq(tasks.companyId, input.companyId)))
           .then((rows) => rows[0] ?? null)
       : null);
-  if (commentIds.length === 0 && Object.keys(executionStage).length === 0 && !taskSummary) return null;
+  if (commentIds.length === 0 && Object.keys(executionStage).length === 0 && !orionCouncilPlanning && !taskSummary) return null;
 
   const commentRows =
     commentIds.length === 0
@@ -1859,6 +1873,7 @@ async function buildPaperclipWakePayload(input: {
     dependencyBlockedInteraction: input.contextSnapshot.dependencyBlockedInteraction === true,
     treeHoldInteraction: input.contextSnapshot.treeHoldInteraction === true,
     activeTreeHold: parseObject(input.contextSnapshot.activeTreeHold),
+    orionCouncilPlanning,
     unresolvedBlockerTaskIds: Array.isArray(input.contextSnapshot.unresolvedBlockerTaskIds)
       ? input.contextSnapshot.unresolvedBlockerTaskIds.filter((value): value is string => typeof value === "string" && value.length > 0)
       : [],

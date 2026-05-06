@@ -342,6 +342,15 @@ type PaperclipWakeTreeHoldSummary = {
   reason: string | null;
 };
 
+type PaperclipWakeOrionCouncilPlanning = {
+  sessionId: string | null;
+  participantId: string | null;
+  planningNoteId: string | null;
+  roleId: string | null;
+  planningChatEndpoint: string | null;
+  requestedForMessageId: string | null;
+};
+
 type PaperclipWakePayload = {
   reason: string | null;
   task: PaperclipWakeTask | null;
@@ -349,6 +358,7 @@ type PaperclipWakePayload = {
   dependencyBlockedInteraction: boolean;
   treeHoldInteraction: boolean;
   activeTreeHold: PaperclipWakeTreeHoldSummary | null;
+  orionCouncilPlanning: PaperclipWakeOrionCouncilPlanning | null;
   unresolvedBlockerTaskIds: string[];
   unresolvedBlockerSummaries: PaperclipWakeBlockerSummary[];
   executionStage: PaperclipWakeExecutionStage | null;
@@ -464,6 +474,20 @@ function normalizePaperclipWakeTreeHoldSummary(value: unknown): PaperclipWakeTre
   return { holdId, rootTaskId, mode, reason };
 }
 
+function normalizePaperclipWakeOrionCouncilPlanning(value: unknown): PaperclipWakeOrionCouncilPlanning | null {
+  const planning = parseObject(value);
+  const sessionId = asString(planning.sessionId, "").trim();
+  if (!sessionId) return null;
+  return {
+    sessionId,
+    participantId: asString(planning.participantId, "").trim() || null,
+    planningNoteId: asString(planning.planningNoteId, "").trim() || null,
+    roleId: asString(planning.roleId, "").trim() || null,
+    planningChatEndpoint: asString(planning.planningChatEndpoint, "").trim() || null,
+    requestedForMessageId: asString(planning.requestedForMessageId, "").trim() || null,
+  };
+}
+
 function normalizePaperclipWakeExecutionPrincipal(value: unknown): PaperclipWakeExecutionPrincipal | null {
   const principal = parseObject(value);
   const typeRaw = asString(principal.type, "").trim().toLowerCase();
@@ -545,7 +569,8 @@ export function normalizePaperclipWakePayload(value: unknown): PaperclipWakePayl
     : [];
 
   const activeTreeHold = normalizePaperclipWakeTreeHoldSummary(payload.activeTreeHold);
-  if (comments.length === 0 && commentIds.length === 0 && childTaskSummaries.length === 0 && unresolvedBlockerTaskIds.length === 0 && unresolvedBlockerSummaries.length === 0 && !activeTreeHold && !executionStage && !continuationSummary && !livenessContinuation && !normalizePaperclipWakeTask(payload.task)) {
+  const orionCouncilPlanning = normalizePaperclipWakeOrionCouncilPlanning(payload.orionCouncilPlanning);
+  if (comments.length === 0 && commentIds.length === 0 && childTaskSummaries.length === 0 && unresolvedBlockerTaskIds.length === 0 && unresolvedBlockerSummaries.length === 0 && !activeTreeHold && !orionCouncilPlanning && !executionStage && !continuationSummary && !livenessContinuation && !normalizePaperclipWakeTask(payload.task)) {
     return null;
   }
 
@@ -556,6 +581,7 @@ export function normalizePaperclipWakePayload(value: unknown): PaperclipWakePayl
     dependencyBlockedInteraction: asBoolean(payload.dependencyBlockedInteraction, false),
     treeHoldInteraction: asBoolean(payload.treeHoldInteraction, false),
     activeTreeHold,
+    orionCouncilPlanning,
     unresolvedBlockerTaskIds,
     unresolvedBlockerSummaries,
     executionStage,
@@ -657,6 +683,23 @@ export function renderPaperclipWakePrompt(
       const hold = normalized.activeTreeHold;
       lines.push(`- active tree hold: ${hold.holdId ?? "unknown"}${hold.rootTaskId ? ` rooted at ${hold.rootTaskId}` : ""}${hold.mode ? ` (${hold.mode})` : ""}`);
     }
+  }
+  if (normalized.orionCouncilPlanning) {
+    const planning = normalized.orionCouncilPlanning;
+    lines.push(
+      "- Orion council planning: yes",
+      `- council session id: ${planning.sessionId ?? "unknown"}`,
+      `- council participant id: ${planning.participantId ?? "unknown"}`,
+      `- council planning note id: ${planning.planningNoteId ?? "unknown"}`,
+      `- council role id: ${planning.roleId ?? "unknown"}`,
+      `- planning chat endpoint: ${planning.planningChatEndpoint ?? "unknown"}`,
+      `- requested planning message id: ${planning.requestedForMessageId ?? "none"}`,
+      "",
+      "Orion council planning instructions:",
+      "This is planning-only, read-only council work. Post the council planning note to the Planning Chat endpoint above.",
+      "Do not post council planning notes to normal task Chat, do not change task status, do not checkout or claim the task, and do not create subtasks as a fallback.",
+      "",
+    );
   }
   if (normalized.missingCount > 0) {
     lines.push(`- omitted comments: ${normalized.missingCount}`);
