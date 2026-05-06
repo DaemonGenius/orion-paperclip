@@ -20,6 +20,7 @@ import {
   advanceOrionCouncilIterationSchema,
   compileOrionCouncilPlanSchema,
   conveneOrionCouncilPlanningSchema,
+  createOrionCouncilMessageSchema,
   recordOrionPrSchema,
   recordOrionLedgerEvidenceSchema,
   recordOrionLedgerVerificationSchema,
@@ -52,7 +53,7 @@ import { heartbeatService } from "../services/heartbeat.js";
 import { orionService, type QueueCouncilPlanningRun } from "../services/orion.js";
 import { orionPreflightService } from "../services/orion-preflight.js";
 import { logActivity } from "../services/activity-log.js";
-import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertAuthenticated, assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 import { unprocessable } from "../errors.js";
 
 export function orionRoutes(db: Db, opts: {
@@ -492,6 +493,47 @@ export function orionRoutes(db: Db, opts: {
     const session = await svc.getCouncilSession(req.params.sessionId as string);
     assertCompanyAccess(req, session.companyId);
     res.json(session);
+  });
+
+  router.get("/orion/council/sessions/:sessionId/messages", async (req, res) => {
+    const session = await svc.getCouncilSession(req.params.sessionId as string);
+    assertCompanyAccess(req, session.companyId);
+    res.json(await svc.listCouncilMessages(session.id));
+  });
+
+  router.post("/orion/council/sessions/:sessionId/messages", validate(createOrionCouncilMessageSchema), async (req, res) => {
+    assertAuthenticated(req);
+    const session = await svc.getCouncilSession(req.params.sessionId as string);
+    assertCompanyAccess(req, session.companyId);
+    if (req.actor.type === "agent" && !req.actor.agentId) {
+      throw unprocessable("Agent Planning Chat writes require an agent identity");
+    }
+    const messageActor = req.actor.type === "agent"
+      ? { type: "agent" as const, agentId: req.actor.agentId!, runId: req.actor.runId ?? null }
+      : { type: "user" as const, userId: req.actor.type === "board" ? req.actor.userId ?? null : null };
+    const result = await svc.addCouncilMessage(
+      session.id,
+      req.body,
+      messageActor,
+      { queueRun: opts.queueCouncilPlanningRun ?? heartbeat.wakeup },
+    );
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: session.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "orion.council_message_added",
+      entityType: "task",
+      entityId: session.taskId,
+      details: {
+        councilSessionId: session.id,
+        messageId: result.message.id,
+        messageKind: result.message.messageKind,
+      },
+    });
+    res.status(201).json(result);
   });
 
   router.post("/orion/council/sessions/:sessionId/plan", validate(saveOrionCouncilPlanSchema), async (req, res) => {

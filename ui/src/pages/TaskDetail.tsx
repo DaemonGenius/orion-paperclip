@@ -12,6 +12,7 @@ import { accessApi } from "../api/access";
 import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
 import { projectsApi } from "../api/projects";
+import { orionApi } from "../api/orion";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
 import { usePanel } from "../context/PanelContext";
@@ -122,6 +123,7 @@ import {
   Repeat,
   SlidersHorizontal,
   Trash2,
+  UsersRound,
   XCircle,
 } from "lucide-react";
 import {
@@ -132,6 +134,8 @@ import {
   type ActivityEvent,
   type Agent,
   type FeedbackVote,
+  type OrionCouncilMessage,
+  type OrionCouncilSession,
   type Task,
   type TaskAttachment,
   type TaskComment,
@@ -151,6 +155,32 @@ type TaskDetailComment = (TaskComment | OptimisticTaskComment) & {
   queueTargetRunId?: string | null;
   queueReason?: "hold" | "active_run" | "other";
 };
+
+type OrionPlanningRunMeta = {
+  orionCouncilPlanningSessionId?: string | null;
+  contextSnapshot?: Record<string, unknown> | null;
+};
+
+function readOrionCouncilPlanningSessionId(run: OrionPlanningRunMeta | null | undefined) {
+  if (!run) return null;
+  if (typeof run.orionCouncilPlanningSessionId === "string" && run.orionCouncilPlanningSessionId.trim()) {
+    return run.orionCouncilPlanningSessionId;
+  }
+  const planning = run.contextSnapshot?.orionCouncilPlanning;
+  if (planning && typeof planning === "object" && !Array.isArray(planning)) {
+    const sessionId = (planning as Record<string, unknown>).sessionId;
+    return typeof sessionId === "string" && sessionId.trim() ? sessionId : null;
+  }
+  return null;
+}
+
+function isOrionCouncilPlanningRun(run: OrionPlanningRunMeta | null | undefined) {
+  return Boolean(readOrionCouncilPlanningSessionId(run));
+}
+
+function isOrionCouncilPlanningRunForSession(run: OrionPlanningRunMeta | null | undefined, sessionId: string) {
+  return readOrionCouncilPlanningSessionId(run) === sessionId;
+}
 
 const FEEDBACK_TERMS_URL = import.meta.env.VITE_FEEDBACK_TERMS_URL?.trim() || "https://paperclip.ing/tos";
 const TASK_COMMENT_PAGE_SIZE = 50;
@@ -378,7 +408,7 @@ function TaskDetailLoadingState({
   const identifier = headerSeed?.identifier ?? headerSeed?.id.slice(0, 8) ?? null;
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="max-w-5xl space-y-6">
       <div className="space-y-3">
         <Skeleton className="h-3 w-40" />
 
@@ -652,7 +682,11 @@ const TaskDetailChatTab = memo(function TaskDetailChatTab({
     placeholderData: keepPreviousDataForSameQueryTail<LiveRunForTask[]>(taskId),
   });
   const resolvedLiveRuns = liveRuns ?? [];
-  const liveRunCount = resolvedLiveRuns.length;
+  const normalLiveRuns = useMemo(
+    () => resolvedLiveRuns.filter((run) => !isOrionCouncilPlanningRun(run)),
+    [resolvedLiveRuns],
+  );
+  const liveRunCount = normalLiveRuns.length;
   const { data: activeRun = null } = useQuery({
     queryKey: queryKeys.tasks.activeRun(taskId),
     queryFn: () => heartbeatsApi.activeRunForTask(taskId),
@@ -664,7 +698,8 @@ const TaskDetailChatTab = memo(function TaskDetailChatTab({
     () => resolveTaskActiveRun({ status: taskStatus, executionRunId }, activeRun),
     [activeRun, executionRunId, taskStatus],
   );
-  const hasLiveRuns = liveRunCount > 0 || !!resolvedActiveRun;
+  const normalActiveRun = isOrionCouncilPlanningRun(resolvedActiveRun) ? null : resolvedActiveRun;
+  const hasLiveRuns = liveRunCount > 0 || !!normalActiveRun;
   const { data: linkedRuns } = useQuery({
     queryKey: queryKeys.tasks.runs(taskId),
     queryFn: () => activityApi.runsForTask(taskId),
@@ -675,24 +710,26 @@ const TaskDetailChatTab = memo(function TaskDetailChatTab({
   const resolvedLinkedRuns = linkedRuns ?? [];
 
   const runningTaskRun = useMemo(
-    () => resolveRunningTaskRun(resolvedActiveRun, resolvedLiveRuns),
-    [resolvedActiveRun, resolvedLiveRuns],
+    () => resolveRunningTaskRun(normalActiveRun, normalLiveRuns),
+    [normalActiveRun, normalLiveRuns],
   );
   const liveRunIds = useMemo(() => {
     const ids = new Set<string>();
-    for (const run of resolvedLiveRuns) ids.add(run.id);
-    if (resolvedActiveRun) ids.add(resolvedActiveRun.id);
+    for (const run of normalLiveRuns) ids.add(run.id);
+    if (normalActiveRun) ids.add(normalActiveRun.id);
     return ids;
-  }, [resolvedActiveRun, resolvedLiveRuns]);
+  }, [normalActiveRun, normalLiveRuns]);
   const timelineRuns = useMemo(() => {
     const historicalRuns = liveRunIds.size === 0
       ? resolvedLinkedRuns
       : resolvedLinkedRuns.filter((run) => !liveRunIds.has(run.runId));
-    return historicalRuns.map((run) => ({
-      ...run,
-      adapterType: run.adapterType,
-      hasStoredOutput: (run.logBytes ?? 0) > 0,
-    }));
+    return historicalRuns
+      .filter((run) => !isOrionCouncilPlanningRun(run))
+      .map((run) => ({
+        ...run,
+        adapterType: run.adapterType,
+        hasStoredOutput: (run.logBytes ?? 0) > 0,
+      }));
   }, [liveRunIds, resolvedLinkedRuns]);
   const commentsWithRunMeta = useMemo<TaskDetailComment[]>(() => {
     const activeRunStartedAt = runningTaskRun?.startedAt ?? runningTaskRun?.createdAt ?? null;
@@ -797,8 +834,8 @@ const TaskDetailChatTab = memo(function TaskDetailChatTab({
         feedbackTermsUrl={feedbackTermsUrl}
         linkedRuns={timelineRuns}
         timelineEvents={timelineEvents}
-        liveRuns={resolvedLiveRuns}
-        activeRun={resolvedActiveRun}
+        liveRuns={normalLiveRuns}
+        activeRun={normalActiveRun}
         blockedBy={blockedBy ?? []}
         blockerAttention={blockerAttention}
         companyId={companyId}
@@ -841,6 +878,160 @@ const TaskDetailChatTab = memo(function TaskDetailChatTab({
   );
 });
 
+type TaskDetailPlanningChatTabProps = {
+  taskId: string;
+  companyId: string;
+  projectId: string | null;
+  session: OrionCouncilSession;
+  agentMap: Map<string, Agent>;
+  currentUserId: string | null;
+  userLabelMap: ReadonlyMap<string, string> | null;
+  userProfileMap: ReadonlyMap<string, import("../lib/company-members").CompanyUserProfile> | null;
+};
+
+const TaskDetailPlanningChatTab = memo(function TaskDetailPlanningChatTab({
+  taskId,
+  companyId,
+  projectId,
+  session,
+  agentMap,
+  currentUserId,
+  userLabelMap,
+  userProfileMap,
+}: TaskDetailPlanningChatTabProps) {
+  const queryClient = useQueryClient();
+  const { pushToast } = useToastActions();
+  const { data: messages = [] } = useQuery({
+    queryKey: queryKeys.orion.councilMessages(session.id),
+    queryFn: () => orionApi.councilMessages(session.id),
+    refetchInterval: session.status === "planning_notes" || session.status === "plan_stale" ? 3000 : false,
+  });
+  const { data: liveRuns = [] } = useQuery({
+    queryKey: queryKeys.tasks.liveRuns(taskId),
+    queryFn: () => heartbeatsApi.liveRunsForTask(taskId),
+    refetchInterval: 3000,
+    placeholderData: keepPreviousDataForSameQueryTail<LiveRunForTask[]>(taskId),
+  });
+  const { data: linkedRuns = [] } = useQuery({
+    queryKey: queryKeys.tasks.runs(taskId),
+    queryFn: () => activityApi.runsForTask(taskId),
+    refetchInterval: liveRuns.some((run) => isOrionCouncilPlanningRunForSession(run, session.id)) ? 5000 : false,
+    placeholderData: keepPreviousDataForSameQueryTail<RunForTask[]>(taskId),
+  });
+  const addMessage = useMutation({
+    mutationFn: (body: string) => orionApi.addCouncilMessage(session.id, { body, messageKind: "operator_note" }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.orion.councilMessages(session.id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.orion.councilSession(taskId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.tasks.activity(taskId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.tasks.runs(taskId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.tasks.liveRuns(taskId) }),
+      ]);
+    },
+    onError: (error) => {
+      pushToast({
+        tone: "error",
+        title: "Planning message failed",
+        body: error instanceof Error ? error.message : "Unable to post Planning Chat message.",
+      });
+    },
+  });
+
+  const planningComments = useMemo<TaskDetailComment[]>(() => (
+    messages.map((message: OrionCouncilMessage) => ({
+      id: message.id,
+      companyId: message.companyId,
+      taskId: message.taskId,
+      authorAgentId: message.authorAgentId,
+      authorUserId: message.authorUserId,
+      body: message.body,
+      createdAt: new Date(message.createdAt),
+      updatedAt: new Date(message.updatedAt),
+      runId: message.createdByRunId,
+      runAgentId: message.authorAgentId,
+    }))
+  ), [messages]);
+  const planningLiveRuns = useMemo(
+    () => liveRuns.filter((run) => isOrionCouncilPlanningRunForSession(run, session.id)),
+    [liveRuns, session.id],
+  );
+  const planningLiveRunIds = useMemo(() => new Set(planningLiveRuns.map((run) => run.id)), [planningLiveRuns]);
+  const planningTimelineRuns = useMemo(() => (
+    linkedRuns
+      .filter((run) => isOrionCouncilPlanningRunForSession(run, session.id))
+      .filter((run) => !planningLiveRunIds.has(run.runId))
+      .map((run) => ({
+        ...run,
+        adapterType: run.adapterType,
+        hasStoredOutput: (run.logBytes ?? 0) > 0,
+      }))
+  ), [linkedRuns, planningLiveRunIds, session.id]);
+
+  return (
+    <div className="space-y-2">
+      <div className="rounded-md border border-border bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
+        Planning Chat is for Orion council discussion only. Council agents can post here without owning the task; normal task Chat keeps execution ownership rules.
+      </div>
+      <TaskChatThread
+        comments={planningComments}
+        interactions={[]}
+        feedbackVotes={[]}
+        feedbackDataSharingPreference="not_allowed"
+        feedbackTermsUrl={null}
+        linkedRuns={planningTimelineRuns}
+        liveRuns={planningLiveRuns}
+        companyId={companyId}
+        projectId={projectId}
+        taskStatus="todo"
+        agentMap={agentMap}
+        currentUserId={currentUserId}
+        userLabelMap={userLabelMap}
+        userProfileMap={userProfileMap}
+        onAdd={async (body) => {
+          await addMessage.mutateAsync(body);
+        }}
+        draftKey={`paperclip:orion-planning-chat-draft:${session.id}`}
+        showComposer
+        showJumpToLatest
+        emptyMessage="Planning Chat is empty. Convene the Round Table to queue council planning runs."
+        variant="full"
+        enableLiveTranscriptPolling
+      />
+    </div>
+  );
+});
+
+function TaskDetailPlanningChatEmptyState({
+  loading,
+  error,
+}: {
+  loading: boolean;
+  error: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="rounded-md border border-border bg-muted/10 px-4 py-6 text-sm text-muted-foreground">
+        Checking Orion council state...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-md border border-border bg-muted/10 px-4 py-6 text-sm text-muted-foreground">
+        No Planning Chat exists yet. Validate the spec from Activity to create the Orion council session, then convene the Round Table here.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-md border border-border bg-muted/10 px-4 py-6 text-sm text-muted-foreground">
+      Planning Chat is ready once Orion creates a council session. Validate the spec from Activity to select the council and unlock Round Table planning.
+    </div>
+  );
+}
+
 type TaskDetailActivityTabProps = {
   task: Task;
   taskId: string;
@@ -853,6 +1044,8 @@ type TaskDetailActivityTabProps = {
   userProfileMap: Map<string, import("../lib/company-members").CompanyUserProfile>;
   pendingApprovalAction: { approvalId: string; action: "approve" | "reject" } | null;
   onApprovalAction: (approvalId: string, action: "approve" | "reject") => void;
+  onOpenTaskChat: () => void;
+  onCouncilSessionChange: (session: OrionCouncilSession) => void;
   handoffFocusSignal?: number;
 };
 
@@ -868,6 +1061,8 @@ function TaskDetailActivityTab({
   userProfileMap,
   pendingApprovalAction,
   onApprovalAction,
+  onOpenTaskChat,
+  onCouncilSessionChange,
   handoffFocusSignal = 0,
 }: TaskDetailActivityTabProps) {
   const { data: activity, isLoading: activityLoading } = useQuery({
@@ -949,7 +1144,13 @@ function TaskDetailActivityTab({
   return (
     <>
       <div className="mb-3">
-        <OrionAutoCouncilPanel taskId={taskId} companyId={companyId} task={task} />
+        <OrionAutoCouncilPanel
+          taskId={taskId}
+          companyId={companyId}
+          task={task}
+          onOpenTaskChat={onOpenTaskChat}
+          onSessionChange={onCouncilSessionChange}
+        />
       </div>
       <div className="mb-3">
         <TaskRunLedger
@@ -1083,6 +1284,19 @@ export function TaskDetail() {
     enabled: !!taskId,
   });
   const resolvedCompanyId = task?.companyId ?? selectedCompanyId;
+  const {
+    data: councilSession = null,
+    isLoading: councilSessionLoading,
+    isError: councilSessionError,
+  } = useQuery({
+    queryKey: queryKeys.orion.councilSession(taskId!),
+    queryFn: () => orionApi.councilSession(taskId!),
+    enabled: !!taskId,
+    retry: false,
+  });
+  const handleCouncilSessionChange = useCallback((session: OrionCouncilSession) => {
+    queryClient.setQueryData(queryKeys.orion.councilSession(taskId!), session);
+  }, [queryClient, taskId]);
   const commentComposerDisabledReason = useMemo(() => {
     if (!task?.currentExecutionWorkspace || !isClosedIsolatedExecutionWorkspace(task.currentExecutionWorkspace)) {
       return null;
@@ -2777,7 +2991,7 @@ export function TaskDetail() {
   );
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="max-w-5xl space-y-6">
       {/* Parent chain breadcrumb */}
       {ancestors.length > 0 && (
         <nav className="flex items-center gap-1 text-xs text-muted-foreground flex-wrap">
@@ -3377,6 +3591,10 @@ export function TaskDetail() {
             <MessageSquare className="h-3.5 w-3.5" />
             Chat
           </TabsTrigger>
+          <TabsTrigger value="planning-chat" className="gap-1.5">
+            <UsersRound className="h-3.5 w-3.5" />
+            Planning Chat
+          </TabsTrigger>
           <TabsTrigger value="activity" className="gap-1.5">
             <ActivityIcon className="h-3.5 w-3.5" />
             Activity
@@ -3439,6 +3657,28 @@ export function TaskDetail() {
           ) : null}
         </TabsContent>
 
+        <TabsContent value="planning-chat">
+          {detailTab === "planning-chat" ? (
+            councilSession ? (
+              <TaskDetailPlanningChatTab
+                taskId={task.id}
+                companyId={task.companyId}
+                projectId={task.projectId ?? null}
+                session={councilSession}
+                agentMap={agentMap}
+                currentUserId={currentUserId}
+                userLabelMap={userLabelMap}
+                userProfileMap={userProfileMap}
+              />
+            ) : (
+              <TaskDetailPlanningChatEmptyState
+                loading={councilSessionLoading}
+                error={councilSessionError}
+              />
+            )
+          ) : null}
+        </TabsContent>
+
         <TabsContent value="activity">
           {detailTab === "activity" ? (
             <TaskDetailActivityTab
@@ -3453,6 +3693,8 @@ export function TaskDetail() {
               userProfileMap={userProfileMap}
               pendingApprovalAction={pendingApprovalAction}
               handoffFocusSignal={handoffFocusSignal}
+              onOpenTaskChat={() => setDetailTab("chat")}
+              onCouncilSessionChange={handleCouncilSessionChange}
               onApprovalAction={(approvalId, action) => {
                 approvalDecision.mutate({ approvalId, action });
               }}

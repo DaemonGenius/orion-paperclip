@@ -215,6 +215,7 @@ export const orionCouncilSessions = pgTable(
     finalPlanProvenance: jsonb("final_plan_provenance").$type<Record<string, unknown>>(),
     planStaleAt: timestamp("plan_stale_at", { withTimezone: true }),
     latestPlanningCommentId: uuid("latest_planning_comment_id").references(() => taskComments.id, { onDelete: "set null" }),
+    latestPlanningMessageId: uuid("latest_planning_message_id"),
     manualPlanOverride: boolean("manual_plan_override").notNull().default(false),
     createdByUserId: text("created_by_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -224,6 +225,30 @@ export const orionCouncilSessions = pgTable(
     taskIdx: index("orion_council_sessions_task_idx").on(table.companyId, table.taskId),
     runIdx: index("orion_council_sessions_run_idx").on(table.companyId, table.runId),
     statusIdx: index("orion_council_sessions_company_status_idx").on(table.companyId, table.status),
+  }),
+);
+
+export const orionCouncilMessages = pgTable(
+  "orion_council_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    sessionId: uuid("session_id").notNull().references(() => orionCouncilSessions.id, { onDelete: "cascade" }),
+    taskId: uuid("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+    participantId: uuid("participant_id"),
+    authorAgentId: uuid("author_agent_id").references(() => agents.id, { onDelete: "set null" }),
+    authorUserId: text("author_user_id"),
+    createdByRunId: uuid("created_by_run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),
+    messageKind: text("message_kind").notNull().default("planning_note"),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    sessionIdx: index("orion_council_messages_session_idx").on(table.companyId, table.sessionId, table.createdAt),
+    taskIdx: index("orion_council_messages_task_idx").on(table.companyId, table.taskId, table.createdAt),
+    participantIdx: index("orion_council_messages_participant_idx").on(table.participantId),
+    runIdx: index("orion_council_messages_run_idx").on(table.companyId, table.createdByRunId),
   }),
 );
 
@@ -261,12 +286,15 @@ export const orionCouncilPlanningNotes = pgTable(
     taskId: uuid("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
     commentId: uuid("comment_id").references(() => taskComments.id, { onDelete: "cascade" }),
     sourceCommentId: uuid("source_comment_id").references(() => taskComments.id, { onDelete: "set null" }),
+    planningMessageId: uuid("planning_message_id").references(() => orionCouncilMessages.id, { onDelete: "cascade" }),
+    sourceMessageId: uuid("source_message_id").references(() => orionCouncilMessages.id, { onDelete: "set null" }),
     runId: uuid("run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),
     roleId: text("role_id").notNull(),
     agentId: uuid("agent_id").references(() => agents.id, { onDelete: "set null" }),
     status: text("status").notNull().default("requested"),
     reason: text("reason"),
     requestedForCommentId: uuid("requested_for_comment_id").references(() => taskComments.id, { onDelete: "set null" }),
+    requestedForMessageId: uuid("requested_for_message_id").references(() => orionCouncilMessages.id, { onDelete: "set null" }),
     supersedesNoteId: uuid("supersedes_note_id"),
     requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
@@ -279,6 +307,8 @@ export const orionCouncilPlanningNotes = pgTable(
     sessionIdx: index("orion_council_planning_notes_session_idx").on(table.companyId, table.sessionId),
     taskIdx: index("orion_council_planning_notes_task_idx").on(table.companyId, table.taskId),
     commentIdx: index("orion_council_planning_notes_comment_idx").on(table.commentId),
+    messageIdx: index("orion_council_planning_notes_message_idx").on(table.planningMessageId),
+    requestedMessageIdx: index("orion_council_planning_notes_requested_message_idx").on(table.requestedForMessageId),
     runIdx: index("orion_council_planning_notes_run_idx").on(table.companyId, table.runId),
   }),
 );

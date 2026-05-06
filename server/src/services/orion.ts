@@ -18,6 +18,7 @@ import {
   orionDecisions,
   orionCouncilDecisions,
   orionCouncilIterations,
+  orionCouncilMessages,
   orionCouncilParticipants,
   orionCouncilPlanningNotes,
   orionCouncilReviews,
@@ -49,6 +50,7 @@ import type {
   ApproveOrionCouncilPlan,
   CompileOrionCouncilPlan,
   ConveneOrionCouncilPlanning,
+  CreateOrionCouncilMessage,
   OpenOrionPr,
   OrionCouncilRoleId,
   OrionCouncilSession,
@@ -235,6 +237,7 @@ const ORION_AUTO_AGENT_DEFINITIONS = [
     roleRules: [
       "Create or validate the task spec before Auto council handoff.",
       "Propose impact flags and required council participants; do not approve the final plan.",
+      "Act as the pre-handoff orchestrator for oversized work: propose decomposition phases or subtasks, but keep creation guarded by operator/council approval.",
       "Keep implementation details bounded enough for the council and Implementer to reason about.",
     ],
   },
@@ -266,6 +269,7 @@ const ORION_AUTO_AGENT_DEFINITIONS = [
     ],
     roleRules: [
       "Review the final plan for architecture risks before approval.",
+      "During council planning, inspect the connected repo read-only plus linked Notion context, then post your reasoning only to Planning Chat.",
       "During review, compare evidence against the approved plan hash and call out drift.",
       "Block when system boundaries, contracts, or data authority are unresolved.",
     ],
@@ -298,6 +302,7 @@ const ORION_AUTO_AGENT_DEFINITIONS = [
     ],
     roleRules: [
       "Participate only when selected for frontend/UX impact.",
+      "During council planning, inspect the connected repo read-only plus linked Notion context, then post your reasoning only to Planning Chat.",
       "Review copy, layout states, responsive behavior, and interaction expectations.",
       "Request screenshot or visual evidence when implementation changes UI.",
     ],
@@ -330,6 +335,8 @@ const ORION_AUTO_AGENT_DEFINITIONS = [
     ],
     roleRules: [
       "Define expected verification evidence during planning.",
+      "During council planning, inspect the connected repo read-only plus linked Notion context, then post your reasoning only to Planning Chat.",
+      "QA may define and later run verification evidence in review/verification phases, but does not own implementation.",
       "During review, verify command output, changed paths, failures, and residual risks.",
       "QA review must pass before Orion opens a draft PR.",
     ],
@@ -362,6 +369,7 @@ const ORION_AUTO_AGENT_DEFINITIONS = [
     ],
     roleRules: [
       "Participate only when selected for infrastructure impact.",
+      "During council planning, inspect the connected repo read-only plus linked Notion context, then post your reasoning only to Planning Chat.",
       "Review CI, environment variables, runtime services, migrations, and deployment assumptions.",
       "Block unsafe operational changes or missing deployment evidence.",
     ],
@@ -394,6 +402,7 @@ const ORION_AUTO_AGENT_DEFINITIONS = [
     ],
     roleRules: [
       "Participate only when selected for security impact.",
+      "During council planning, inspect the connected repo read-only plus linked Notion context, then post your reasoning only to Planning Chat.",
       "Never read secrets; review whether code would access, expose, or mishandle them.",
       "Block if auth, data exposure, or dependency risk lacks mitigation.",
     ],
@@ -426,7 +435,9 @@ const ORION_AUTO_AGENT_DEFINITIONS = [
     ],
     roleRules: [
       "Execute only after all selected experts plus Implementer approve the final plan.",
+      "During council planning, inspect the connected repo read-only plus linked Notion context, then post execution feasibility only to Planning Chat.",
       "Work only in the isolated git worktree branch created from master.",
+      "After execution completes, post the final resolution summary to normal task Chat for the operator-facing task record.",
       "Do not open PRs, approve PRs, merge, read secrets, or write Orion authority state.",
     ],
   },
@@ -486,6 +497,18 @@ Read \`IDENTITY.md\` before doing task work. Treat \`IDENTITY.md\` as the source
 - Planner is pre-handoff only and is not a voting council participant.
 - Selected council experts plus Implementer approve the final plan before execution starts.
 - Orion opens a draft PR only after council review passes. Orion never approves or merges PRs.
+
+## Planning Chat And Context
+
+- Council planning happens in Orion Planning Chat, not normal task Chat.
+- Planning Chat is scoped to a council session and does not require task checkout or task ownership.
+- During council planning, inspect the connected project repository in read-only mode. Do not checkout the task, assign the task to yourself, or edit code.
+- Read the task body, acceptance criteria, properties, linked repo paths, and Orion-provided Notion context before posting a planning message.
+- If linked Notion content is unavailable or incomplete, state that as an assumption or blocker in Planning Chat.
+- Post council planning notes only through the Planning Chat endpoint provided in the wake context.
+- Do not post council planning notes to normal task Chat.
+- Do not create subtasks as a fallback when Planning Chat posting fails. Report the blocker instead.
+- Subtasks are for deliberate decomposition or approved follow-up work only; propose them in Planning Chat unless the prompt explicitly authorizes creation.
 
 ## Security And Authority
 
@@ -1042,7 +1065,7 @@ export function orionService(db: Db) {
       .limit(1)
       .then((rows) => rows[0] ?? null);
     if (!session) throw notFound("Orion council session not found");
-    const [participants, planningNoteRows, decisions, reviews, iterations] = await Promise.all([
+    const [participants, planningNoteRows, planningMessages, decisions, reviews, iterations] = await Promise.all([
       db
         .select()
         .from(orionCouncilParticipants)
@@ -1053,6 +1076,11 @@ export function orionService(db: Db) {
         .from(orionCouncilPlanningNotes)
         .where(eq(orionCouncilPlanningNotes.sessionId, session.id))
         .orderBy(orionCouncilPlanningNotes.createdAt),
+      db
+        .select()
+        .from(orionCouncilMessages)
+        .where(eq(orionCouncilMessages.sessionId, session.id))
+        .orderBy(orionCouncilMessages.createdAt),
       db
         .select()
         .from(orionCouncilDecisions)
@@ -1093,6 +1121,7 @@ export function orionService(db: Db) {
       impactFlags: normalizeCouncilImpactFlags(session.impactFlags as Record<string, boolean> | null),
       participants,
       planningNotes,
+      planningMessages,
       decisions,
       reviews,
       iterations,
@@ -1144,11 +1173,148 @@ export function orionService(db: Db) {
     return String(value);
   }
 
+  function collectNotionRefsFromValue(value: unknown, refs: Map<string, { id: string; url: string | null; sourceKey: string }>, sourceKey: string) {
+    if (Array.isArray(value)) {
+      for (const item of value) collectNotionRefsFromValue(item, refs, sourceKey);
+      return;
+    }
+    if (typeof value === "object" && value !== null) {
+      const record = value as Record<string, unknown>;
+      const id = readString(record.id) ?? readString(record.pageId) ?? readString(record.notionPageId) ?? readString(record.externalObjectId);
+      const url = readString(record.url) ?? readString(record.href) ?? (id ? notionPageUrl(id) : null);
+      if (id) refs.set(id, { id, url, sourceKey });
+      for (const child of Object.values(record)) collectNotionRefsFromValue(child, refs, sourceKey);
+      return;
+    }
+    const text = readString(value);
+    if (!text) return;
+    const urlMatches = text.matchAll(/https:\/\/www\.notion\.so\/([A-Za-z0-9-]{32,})/g);
+    for (const match of urlMatches) {
+      const id = match[1]!;
+      refs.set(id, { id, url: match[0], sourceKey });
+    }
+    const uuidMatches = text.matchAll(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g);
+    for (const match of uuidMatches) {
+      const id = match[0]!;
+      refs.set(id, { id, url: notionPageUrl(id), sourceKey });
+    }
+  }
+
+  function collectTaskNotionRefs(task: typeof tasks.$inferSelect) {
+    const refs = new Map<string, { id: string; url: string | null; sourceKey: string }>();
+    const notionProperties = task.notionProperties && typeof task.notionProperties === "object"
+      ? task.notionProperties as Record<string, unknown>
+      : {};
+    for (const key of ["Wiki Docs", "Review Checks", "Implementation Plans"]) {
+      collectNotionRefsFromValue(notionProperties[key], refs, key);
+    }
+    if (task.notionRelations) collectNotionRefsFromValue(task.notionRelations, refs, "Notion Relations");
+    return Array.from(refs.values());
+  }
+
+  function notionPlainText(value: unknown): string {
+    if (Array.isArray(value)) {
+      return value.map(notionPlainText).filter(Boolean).join("");
+    }
+    if (typeof value === "object" && value !== null) {
+      const record = value as Record<string, unknown>;
+      const plain = readString(record.plain_text);
+      if (plain) return plain;
+      return Object.values(record).map(notionPlainText).filter(Boolean).join("");
+    }
+    return "";
+  }
+
+  function notionPageTitle(page: Record<string, unknown>, fallback: string) {
+    const properties = readRecord(page.properties);
+    for (const property of Object.values(properties)) {
+      const record = readRecord(property);
+      if (Array.isArray(record.title)) {
+        const title = notionPlainText(record.title).trim();
+        if (title) return title;
+      }
+    }
+    return fallback;
+  }
+
+  function notionBlockMarkdown(block: Record<string, unknown>) {
+    const type = readString(block.type);
+    if (!type) return "";
+    const typed = readRecord(block[type]);
+    const text = notionPlainText(typed.rich_text).trim();
+    if (!text) return "";
+    if (type === "heading_1") return `# ${text}`;
+    if (type === "heading_2") return `## ${text}`;
+    if (type === "heading_3") return `### ${text}`;
+    if (type === "bulleted_list_item") return `- ${text}`;
+    if (type === "numbered_list_item") return `1. ${text}`;
+    if (type === "to_do") return `- [ ] ${text}`;
+    return text;
+  }
+
+  async function fetchCouncilNotionContext(task: typeof tasks.$inferSelect) {
+    const refs = collectTaskNotionRefs(task).slice(0, 12);
+    const result: Array<Record<string, unknown>> = [];
+    if (refs.length === 0) return { refs: result, markdown: "_No linked Notion context found on the task._" };
+    let token: string | null = null;
+    try {
+      token = await resolveNotionToken(task.companyId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      for (const ref of refs) result.push({ ...ref, status: "unavailable", error: message });
+      return {
+        refs: result,
+        markdown: [
+          "## Linked Notion Context",
+          "",
+          ...result.map((ref) => `- ${String(ref.sourceKey)}: ${String(ref.id)} unavailable (${String(ref.error)})`),
+        ].join("\n"),
+      };
+    }
+    for (const ref of refs) {
+      try {
+        const page = readRecord(await notionApi(token, `/pages/${encodeURIComponent(ref.id)}`));
+        const title = notionPageTitle(page, ref.id);
+        const lastEditedAt = readString(page.last_edited_time);
+        const children = readRecord(await notionApi(token, `/blocks/${encodeURIComponent(ref.id)}/children?page_size=50`));
+        const blocks = Array.isArray(children.results) ? children.results.map(readRecord) : [];
+        const markdown = blocks.map(notionBlockMarkdown).filter(Boolean).join("\n").slice(0, 8000);
+        result.push({
+          ...ref,
+          status: "read",
+          title,
+          lastEditedAt,
+          markdown: markdown || "_No readable Notion block text exported._",
+        });
+      } catch (error) {
+        result.push({
+          ...ref,
+          status: "unavailable",
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return {
+      refs: result,
+      markdown: [
+        "## Linked Notion Context",
+        "",
+        ...result.map((ref) => {
+          if (ref.status !== "read") {
+            return `### ${String(ref.sourceKey)}: ${String(ref.id)}\n\nUnavailable: ${String(ref.error ?? "unknown error")}`;
+          }
+          return `### ${String(ref.sourceKey)}: ${String(ref.title ?? ref.id)}\n\n- Notion ID: ${String(ref.id)}\n- URL: ${String(ref.url ?? notionPageUrl(String(ref.id)))}\n- Last edited: ${String(ref.lastEditedAt ?? "unknown")}\n\n${String(ref.markdown ?? "")}`;
+        }),
+      ].join("\n\n"),
+    };
+  }
+
   function buildCouncilPlanningPrompt(input: {
     roleId: OrionCouncilRoleId;
     task: typeof tasks.$inferSelect;
     session: OrionCouncilSession;
-    requestedForCommentId: string | null;
+    requestedForMessageId: string | null;
+    notionContextMarkdown: string;
   }) {
     const roleLabel = COUNCIL_ROLE_LABELS[input.roleId];
     const noteLabel = COUNCIL_PLANNING_NOTE_LABELS[input.roleId];
@@ -1157,9 +1323,12 @@ export function orionService(db: Db) {
       "",
       `Council session: ${input.session.id}`,
       `Task: ${input.task.identifier ?? input.task.id}`,
-      input.requestedForCommentId ? `Responding to comment: ${input.requestedForCommentId}` : null,
+      input.requestedForMessageId ? `Responding to Planning Chat message: ${input.requestedForMessageId}` : null,
       "",
-      "You are participating in Orion Auto council planning. Think through the task from your role, then post one normal task comment as yourself.",
+      "You are participating in Orion Auto council planning. This is planning-only, read-only work: inspect the connected project repo and linked Notion context, but do not checkout the task, do not edit code, and do not create subtasks.",
+      "",
+      `Post your council planning note to the Planning Chat endpoint: POST /api/orion/council/sessions/${input.session.id}/messages`,
+      "Do not post council planning notes to normal task Chat. Do not create subtasks as a fallback if posting fails; report the blocker instead.",
       "",
       "Your comment must use this shape:",
       `## ${noteLabel}`,
@@ -1182,6 +1351,8 @@ export function orionService(db: Db) {
       "Rules: do not read secrets, approve PRs, merge PRs, or mutate Orion authority state. Planner is not a voting participant.",
       "",
       councilTaskContextMarkdown(input.task),
+      "",
+      input.notionContextMarkdown,
     ].filter((line): line is string => typeof line === "string").join("\n");
   }
 
@@ -1243,7 +1414,7 @@ export function orionService(db: Db) {
   function buildFinalCouncilPlanMarkdown(input: {
     task: typeof tasks.$inferSelect;
     session: OrionCouncilSession;
-    noteBodiesByRole: Array<{ roleId: string; body: string; runId: string | null; commentId: string | null }>;
+    noteBodiesByRole: Array<{ roleId: string; body: string; runId: string | null; messageId: string | null }>;
   }) {
     const impactFlags = Object.entries(input.session.impactFlags ?? {})
       .filter(([, selected]) => selected)
@@ -1261,7 +1432,7 @@ export function orionService(db: Db) {
       ...input.noteBodiesByRole.flatMap((note) => [
         "",
         `### ${COUNCIL_ROLE_LABELS[note.roleId as OrionCouncilRoleId] ?? note.roleId}`,
-        `Source: comment ${note.commentId ?? "unknown"}${note.runId ? `, run ${note.runId}` : ""}`,
+        `Source: planning message ${note.messageId ?? "unknown"}${note.runId ? `, run ${note.runId}` : ""}`,
         "",
         note.body,
       ]),
@@ -2957,42 +3128,44 @@ export function orionService(db: Db) {
     const currentNotesByParticipant = await latestCurrentPlanningNotes(session);
     const missing = required.filter((participant) => {
       const note = currentNotesByParticipant.get(participant.id);
-      return !note || note.status !== "posted" || !note.commentId || !note.runId;
+      return !note || note.status !== "posted" || !note.planningMessageId || !note.runId;
     });
     if (missing.length > 0) {
       throw conflict(`Council plan compilation requires current run-backed planning notes from: ${missing.map((entry) => COUNCIL_ROLE_LABELS[entry.roleId as OrionCouncilRoleId] ?? entry.roleId).join(", ")}`);
     }
 
     const notes = required.map((participant) => currentNotesByParticipant.get(participant.id)!).filter(Boolean);
-    const commentIds = notes.map((note) => note.commentId).filter((value): value is string => Boolean(value));
-    const commentRows = commentIds.length
+    const messageIds = notes.map((note) => note.planningMessageId).filter((value): value is string => Boolean(value));
+    const messageRows = messageIds.length
       ? await db
-        .select({ id: taskComments.id, body: taskComments.body, createdByRunId: taskComments.createdByRunId })
-        .from(taskComments)
-        .where(inArray(taskComments.id, commentIds))
+        .select({ id: orionCouncilMessages.id, body: orionCouncilMessages.body, createdByRunId: orionCouncilMessages.createdByRunId })
+        .from(orionCouncilMessages)
+        .where(inArray(orionCouncilMessages.id, messageIds))
       : [];
-    const commentById = new Map(commentRows.map((comment) => [comment.id, comment]));
+    const messageById = new Map(messageRows.map((message) => [message.id, message]));
     const noteBodiesByRole = notes.map((note) => {
-      const comment = note.commentId ? commentById.get(note.commentId) : null;
+      const message = note.planningMessageId ? messageById.get(note.planningMessageId) : null;
       return {
         roleId: note.roleId,
-        body: comment?.body ?? "",
+        body: message?.body ?? "",
         runId: note.runId,
-        commentId: note.commentId,
+        messageId: note.planningMessageId,
       };
     });
+    const notionContext = await fetchCouncilNotionContext(task);
     const finalPlanMarkdown = buildFinalCouncilPlanMarkdown({ task, session, noteBodiesByRole });
     const planSha256 = sha256(finalPlanMarkdown);
     const provenance = {
       source: "orion_auto_council_runs",
       compiledAt: new Date().toISOString(),
-      latestPlanningCommentId: session.latestPlanningCommentId ?? null,
+      latestPlanningMessageId: session.latestPlanningMessageId ?? null,
+      notionRefs: notionContext.refs,
       notes: notes.map((note) => ({
         roleId: note.roleId,
         participantId: note.participantId,
-        commentId: note.commentId,
+        planningMessageId: note.planningMessageId,
         runId: note.runId,
-        requestedForCommentId: note.requestedForCommentId,
+        requestedForMessageId: note.requestedForMessageId,
       })),
     };
 
@@ -3037,7 +3210,7 @@ export function orionService(db: Db) {
     session: OrionCouncilSession;
     task: typeof tasks.$inferSelect;
     participants: NonNullable<OrionCouncilSession["participants"]>;
-    requestedForCommentId: string | null;
+    requestedForMessageId: string | null;
     queueRun?: QueueCouncilPlanningRun;
     createdByUserId?: string | null;
     reason: "initial" | "operator_comment";
@@ -3049,6 +3222,7 @@ export function orionService(db: Db) {
       .from(orionCouncilPlanningNotes)
       .where(eq(orionCouncilPlanningNotes.sessionId, input.session.id))
       .orderBy(orionCouncilPlanningNotes.createdAt);
+    const notionContext = await fetchCouncilNotionContext(input.task);
     const latestByParticipant = new Map<string, typeof previousNotes[number]>();
     for (const note of previousNotes) latestByParticipant.set(note.participantId, note);
 
@@ -3062,7 +3236,7 @@ export function orionService(db: Db) {
         continue;
       }
       const previous = latestByParticipant.get(participant.id) ?? null;
-      if (previous?.status === "posted" && previous.requestedForCommentId === input.requestedForCommentId && !previous.staleAt) {
+      if (previous?.status === "posted" && previous.requestedForMessageId === input.requestedForMessageId && !previous.staleAt) {
         continue;
       }
       const [request] = await db
@@ -3076,7 +3250,7 @@ export function orionService(db: Db) {
           agentId: participant.agentId,
           status: input.queueRun ? "requested" : "blocked",
           reason: input.reason,
-          requestedForCommentId: input.requestedForCommentId,
+          requestedForMessageId: input.requestedForMessageId,
           supersedesNoteId: previous?.id ?? null,
           requestedAt: now,
           updatedAt: now,
@@ -3086,28 +3260,34 @@ export function orionService(db: Db) {
         await db.update(orionCouncilParticipants).set({ status: "planning_blocked", updatedAt: now }).where(eq(orionCouncilParticipants.id, participant.id));
         continue;
       }
-      const prompt = buildCouncilPlanningPrompt({ roleId, task: input.task, session: input.session, requestedForCommentId: input.requestedForCommentId });
+      const prompt = buildCouncilPlanningPrompt({
+        roleId,
+        task: input.task,
+        session: input.session,
+        requestedForMessageId: input.requestedForMessageId,
+        notionContextMarkdown: notionContext.markdown,
+      });
       const run = await input.queueRun(participant.agentId, {
         source: "automation",
         triggerDetail: "system",
         reason: "orion_council_planning",
         requestedByActorType: input.createdByUserId ? "user" : "system",
         requestedByActorId: input.createdByUserId ?? "orion",
-        idempotencyKey: `orion-council-planning:${input.session.id}:${participant.id}:${input.requestedForCommentId ?? "initial"}`,
+        idempotencyKey: `orion-council-planning:${input.session.id}:${participant.id}:${input.requestedForMessageId ?? "initial"}`,
         payload: {
           taskId: input.task.id,
           councilSessionId: input.session.id,
           councilParticipantId: participant.id,
           councilPlanningNoteId: request!.id,
           roleId,
-          commentId: input.requestedForCommentId,
+          planningMessageId: input.requestedForMessageId,
         },
         contextSnapshot: {
           taskId: input.task.id,
           taskKey: input.task.identifier ?? input.task.id,
           projectId: input.task.projectId ?? null,
-          commentId: input.requestedForCommentId ?? undefined,
-          wakeCommentId: input.requestedForCommentId ?? undefined,
+          planningMessageId: input.requestedForMessageId ?? undefined,
+          wakePlanningMessageId: input.requestedForMessageId ?? undefined,
           source: "orion.council.planning",
           wakeReason: "orion_council_planning",
           orionCouncilPlanning: {
@@ -3116,6 +3296,8 @@ export function orionService(db: Db) {
             planningNoteId: request!.id,
             roleId,
             prompt,
+            planningChatEndpoint: `/api/orion/council/sessions/${input.session.id}/messages`,
+            notionRefs: notionContext.refs,
           },
           paperclipSessionHandoffMarkdown: prompt,
         },
@@ -3131,9 +3313,9 @@ export function orionService(db: Db) {
     }
   }
 
-  async function markCouncilPlanStaleForComment(input: {
+  async function markCouncilPlanStaleForMessage(input: {
     session: OrionCouncilSession;
-    commentId: string;
+    messageId: string;
     queueRun?: QueueCouncilPlanningRun;
     createdByUserId?: string | null;
   }) {
@@ -3150,7 +3332,7 @@ export function orionService(db: Db) {
         status: "plan_stale",
         phase: "planning_notes",
         planStaleAt: now,
-        latestPlanningCommentId: input.commentId,
+        latestPlanningMessageId: input.messageId,
         approvedPlanSha256: null,
         updatedAt: now,
       })
@@ -3160,14 +3342,80 @@ export function orionService(db: Db) {
       .set({ planApprovedAt: null, status: "planning_requested", updatedAt: now })
       .where(eq(orionCouncilParticipants.sessionId, input.session.id));
     await requestCouncilPlanningRuns({
-      session: { ...input.session, latestPlanningCommentId: input.commentId, planStaleAt: now, status: "plan_stale", phase: "planning_notes" },
+      session: { ...input.session, latestPlanningMessageId: input.messageId, planStaleAt: now, status: "plan_stale", phase: "planning_notes" },
       task,
       participants: input.session.participants ?? [],
-      requestedForCommentId: input.commentId,
+      requestedForMessageId: input.messageId,
       queueRun: input.queueRun,
       createdByUserId: input.createdByUserId,
       reason: "operator_comment",
     });
+  }
+
+  async function reconcileCouncilPlanningMessage(
+    message: typeof orionCouncilMessages.$inferSelect,
+    opts?: { queueRun?: QueueCouncilPlanningRun; createdByUserId?: string | null },
+  ) {
+    const session = await getCouncilSessionDetail(message.sessionId);
+    const activePlanningStatuses = new Set(["planning_notes", "plan_stale", "awaiting_plan_approval", "approved"]);
+    if (!activePlanningStatuses.has(session.status)) return session;
+
+    if (message.authorAgentId && message.createdByRunId) {
+      const participant = (session.participants ?? []).find((entry) =>
+        entry.agentId === message.authorAgentId && entry.required && entry.id === message.participantId
+      ) ?? null;
+      if (!participant) return session;
+      const pending = await db
+        .select()
+        .from(orionCouncilPlanningNotes)
+        .where(and(
+          eq(orionCouncilPlanningNotes.sessionId, session.id),
+          eq(orionCouncilPlanningNotes.participantId, participant.id),
+          inArray(orionCouncilPlanningNotes.status, ["requested", "queued", "running", "blocked", "stale"]),
+        ))
+        .orderBy(desc(orionCouncilPlanningNotes.createdAt))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      if (!pending) return session;
+      await db
+        .update(orionCouncilPlanningNotes)
+        .set({
+          planningMessageId: message.id,
+          sourceMessageId: message.id,
+          runId: message.createdByRunId,
+          status: "posted",
+          completedAt: new Date(),
+          staleAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(orionCouncilPlanningNotes.id, pending.id));
+      await db
+        .update(orionCouncilParticipants)
+        .set({ status: "planning_note_posted", domainNotes: message.body, updatedAt: new Date() })
+        .where(eq(orionCouncilParticipants.id, participant.id));
+
+      const refreshed = await getCouncilSessionDetail(session.id);
+      const required = (refreshed.participants ?? []).filter((entry) => entry.required);
+      const currentNotes = await latestCurrentPlanningNotes(refreshed);
+      const allPosted = required.length > 0 && required.every((entry) => {
+        const note = currentNotes.get(entry.id);
+        return note?.status === "posted" && Boolean(note.planningMessageId) && Boolean(note.runId);
+      });
+      if (allPosted) return compileCouncilPlanFromCurrentNotes(session.id, opts?.createdByUserId ?? null);
+      return getCouncilSessionDetail(session.id);
+    }
+
+    if (message.authorUserId) {
+      await markCouncilPlanStaleForMessage({
+        session,
+        messageId: message.id,
+        queueRun: opts?.queueRun,
+        createdByUserId: opts?.createdByUserId ?? message.authorUserId,
+      });
+      return getCouncilSessionDetail(session.id);
+    }
+
+    return session;
   }
 
   return {
@@ -3392,26 +3640,31 @@ export function orionService(db: Db) {
       const required = (session.participants ?? []).filter((entry) => entry.required);
       if (required.length === 0) throw unprocessable("Round Table planning requires selected council participants");
 
-      const taskSvc = taskService(db);
-      const kickoff = await taskSvc.addComment(
-        task.id,
-        [
-          "## Round Table planning started",
-          "",
-          `Council session: ${session.id}`,
-          `Selected participants: ${required.map((entry) => COUNCIL_ROLE_LABELS[entry.roleId as OrionCouncilRoleId] ?? entry.roleId).join(", ")}`,
-          "",
-          "Orion is queuing real planning runs for the selected council participants. Each participant should post its reasoning as a normal task comment.",
-        ].join("\n"),
-        { userId: createdByUserId ?? undefined },
-      );
+      const [kickoff] = await db
+        .insert(orionCouncilMessages)
+        .values({
+          companyId: session.companyId,
+          sessionId: session.id,
+          taskId: task.id,
+          authorUserId: createdByUserId ?? null,
+          messageKind: "planning_kickoff",
+          body: [
+            "## Round Table planning started",
+            "",
+            `Council session: ${session.id}`,
+            `Selected participants: ${required.map((entry) => COUNCIL_ROLE_LABELS[entry.roleId as OrionCouncilRoleId] ?? entry.roleId).join(", ")}`,
+            "",
+            "Orion is queuing real planning runs for the selected council participants. Each participant should post its reasoning in Planning Chat.",
+          ].join("\n"),
+        })
+        .returning();
 
       await db
         .update(orionCouncilSessions)
         .set({
           status: "planning_notes",
           phase: "planning_notes",
-          latestPlanningCommentId: kickoff.id,
+          latestPlanningMessageId: kickoff!.id,
           finalPlanSha256: null,
           approvedPlanSha256: null,
           finalPlanProvenance: null,
@@ -3425,10 +3678,10 @@ export function orionService(db: Db) {
         .set({ status: "stale", staleAt: new Date(), updatedAt: new Date() })
         .where(and(eq(orionCouncilPlanningNotes.sessionId, session.id), eq(orionCouncilPlanningNotes.status, "posted")));
       await requestCouncilPlanningRuns({
-        session: { ...session, latestPlanningCommentId: kickoff.id, status: "planning_notes", phase: "planning_notes" },
+        session: { ...session, latestPlanningMessageId: kickoff!.id, status: "planning_notes", phase: "planning_notes" },
         task,
         participants: session.participants ?? [],
-        requestedForCommentId: kickoff.id,
+        requestedForMessageId: kickoff!.id,
         queueRun: opts?.queueRun,
         createdByUserId,
         reason: "initial",
@@ -3444,10 +3697,58 @@ export function orionService(db: Db) {
       return compileCouncilPlanFromCurrentNotes(sessionId, createdByUserId);
     },
 
+    listCouncilMessages: async (sessionId: string) => {
+      const session = await getCouncilSessionDetail(sessionId);
+      return db
+        .select()
+        .from(orionCouncilMessages)
+        .where(eq(orionCouncilMessages.sessionId, session.id))
+        .orderBy(orionCouncilMessages.createdAt);
+    },
+
+    addCouncilMessage: async (
+      sessionId: string,
+      input: CreateOrionCouncilMessage,
+      actor: { type: "user"; userId: string | null } | { type: "agent"; agentId: string; runId?: string | null },
+      opts?: { queueRun?: QueueCouncilPlanningRun },
+    ) => {
+      const session = await getCouncilSessionDetail(sessionId);
+      const participant = actor.type === "agent"
+        ? (session.participants ?? []).find((entry) => entry.agentId === actor.agentId && entry.required) ?? null
+        : null;
+      if (actor.type === "agent" && !participant) {
+        throw conflict("Only selected Orion council participants can post Planning Chat messages");
+      }
+      if (actor.type === "agent" && participant?.roleId === "planner") {
+        throw conflict("Planner is not a voting council participant and cannot post council Planning Chat notes");
+      }
+      const [message] = await db
+        .insert(orionCouncilMessages)
+        .values({
+          companyId: session.companyId,
+          sessionId: session.id,
+          taskId: session.taskId,
+          participantId: participant?.id ?? null,
+          authorAgentId: actor.type === "agent" ? actor.agentId : null,
+          authorUserId: actor.type === "user" ? actor.userId ?? "board" : null,
+          createdByRunId: actor.type === "agent" ? actor.runId ?? null : null,
+          messageKind: actor.type === "agent" ? "planning_note" : "operator_note",
+          body: input.body,
+          updatedAt: new Date(),
+        })
+        .returning();
+      const result = await reconcileCouncilPlanningMessage(message!, {
+        queueRun: opts?.queueRun,
+        createdByUserId: actor.type === "user" ? actor.userId ?? null : null,
+      });
+      return { message: message!, session: result };
+    },
+
     handleCouncilTaskComment: async (
       commentId: string,
       opts?: { queueRun?: QueueCouncilPlanningRun; createdByUserId?: string | null },
     ) => {
+      void opts;
       const comment = await db
         .select()
         .from(taskComments)
@@ -3457,62 +3758,6 @@ export function orionService(db: Db) {
       if (!comment) throw notFound("Task comment not found");
       const session = await getCouncilSessionForTask(comment.taskId);
       if (!session) return null;
-      const activePlanningStatuses = new Set(["planning_notes", "plan_stale", "awaiting_plan_approval", "approved"]);
-      if (!activePlanningStatuses.has(session.status)) return session;
-
-      if (comment.authorAgentId && comment.createdByRunId) {
-        const participant = (session.participants ?? []).find((entry) => entry.agentId === comment.authorAgentId && entry.required) ?? null;
-        if (!participant) return session;
-        const pending = await db
-          .select()
-          .from(orionCouncilPlanningNotes)
-          .where(and(
-            eq(orionCouncilPlanningNotes.sessionId, session.id),
-            eq(orionCouncilPlanningNotes.participantId, participant.id),
-            inArray(orionCouncilPlanningNotes.status, ["requested", "queued", "running", "blocked", "stale"]),
-          ))
-          .orderBy(desc(orionCouncilPlanningNotes.createdAt))
-          .limit(1)
-          .then((rows) => rows[0] ?? null);
-        if (!pending) return session;
-        await db
-          .update(orionCouncilPlanningNotes)
-          .set({
-            commentId: comment.id,
-            sourceCommentId: comment.id,
-            runId: comment.createdByRunId,
-            status: "posted",
-            completedAt: new Date(),
-            staleAt: null,
-            updatedAt: new Date(),
-          })
-          .where(eq(orionCouncilPlanningNotes.id, pending.id));
-        await db
-          .update(orionCouncilParticipants)
-          .set({ status: "planning_note_posted", domainNotes: comment.body, updatedAt: new Date() })
-          .where(eq(orionCouncilParticipants.id, participant.id));
-
-        const refreshed = await getCouncilSessionDetail(session.id);
-        const required = (refreshed.participants ?? []).filter((entry) => entry.required);
-        const currentNotes = await latestCurrentPlanningNotes(refreshed);
-        const allPosted = required.length > 0 && required.every((entry) => {
-          const note = currentNotes.get(entry.id);
-          return note?.status === "posted" && Boolean(note.commentId) && Boolean(note.runId);
-        });
-        if (allPosted) return compileCouncilPlanFromCurrentNotes(session.id, opts?.createdByUserId ?? null);
-        return getCouncilSessionDetail(session.id);
-      }
-
-      if (comment.authorUserId) {
-        await markCouncilPlanStaleForComment({
-          session,
-          commentId: comment.id,
-          queueRun: opts?.queueRun,
-          createdByUserId: opts?.createdByUserId ?? comment.authorUserId,
-        });
-        return getCouncilSessionDetail(session.id);
-      }
-
       return session;
     },
 

@@ -847,6 +847,8 @@ const heartbeatRunTaskSummaryColumns = {
   lastOutputStream: heartbeatRuns.lastOutputStream,
   lastOutputBytes: heartbeatRuns.lastOutputBytes,
   taskId: sql<string | null>`${heartbeatRuns.contextSnapshot} ->> 'taskId'`.as("taskId"),
+  orionCouncilPlanningSessionId: sql<string | null>`${heartbeatRuns.contextSnapshot} #>> '{orionCouncilPlanning,sessionId}'`.as("orionCouncilPlanningSessionId"),
+  orionCouncilPlanningParticipantId: sql<string | null>`${heartbeatRuns.contextSnapshot} #>> '{orionCouncilPlanning,participantId}'`.as("orionCouncilPlanningParticipantId"),
 } as const;
 
 function appendExcerpt(prev: string, chunk: string) {

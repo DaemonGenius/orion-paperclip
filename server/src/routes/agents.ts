@@ -2558,6 +2558,8 @@ export function agentRoutes(
       lastOutputBytes: heartbeatRuns.lastOutputBytes,
       processStartedAt: heartbeatRuns.processStartedAt,
       taskId: sql<string | null>`${heartbeatRuns.contextSnapshot} ->> 'taskId'`.as("taskId"),
+      orionCouncilPlanningSessionId: sql<string | null>`${heartbeatRuns.contextSnapshot} #>> '{orionCouncilPlanning,sessionId}'`.as("orionCouncilPlanningSessionId"),
+      orionCouncilPlanningParticipantId: sql<string | null>`${heartbeatRuns.contextSnapshot} #>> '{orionCouncilPlanning,participantId}'`.as("orionCouncilPlanningParticipantId"),
     };
 
     const liveRunsQuery = db
@@ -2793,6 +2795,8 @@ export function agentRoutes(
         lastOutputStream: heartbeatRuns.lastOutputStream,
         lastOutputBytes: heartbeatRuns.lastOutputBytes,
         processStartedAt: heartbeatRuns.processStartedAt,
+        orionCouncilPlanningSessionId: sql<string | null>`${heartbeatRuns.contextSnapshot} #>> '{orionCouncilPlanning,sessionId}'`.as("orionCouncilPlanningSessionId"),
+        orionCouncilPlanningParticipantId: sql<string | null>`${heartbeatRuns.contextSnapshot} #>> '{orionCouncilPlanning,participantId}'`.as("orionCouncilPlanningParticipantId"),
       })
       .from(heartbeatRuns)
       .innerJoin(agentsTable, eq(heartbeatRuns.agentId, agentsTable.id))

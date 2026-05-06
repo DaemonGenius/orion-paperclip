@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { GitBranch, ShieldCheck, UsersRound } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { OrionAutonomyEnvelope, OrionCouncilRoleId } from "@paperclipai/shared";
+import type { OrionAutonomyEnvelope, OrionCouncilRoleId, OrionCouncilSession } from "@paperclipai/shared";
 import { ApiError } from "../api/client";
 import { orionApi } from "../api/orion";
 import { queryKeys } from "../lib/queryKeys";
@@ -53,17 +53,21 @@ export function OrionAutoCouncilPanel({
   taskId,
   companyId,
   task,
+  onOpenTaskChat,
+  onSessionChange,
 }: {
   taskId: string;
   companyId: string;
   task?: { title?: string | null; description?: string | null; acceptanceCriteria?: string | null } | null;
+  onOpenTaskChat?: () => void;
+  onSessionChange?: (session: OrionCouncilSession) => void;
 }) {
   const queryClient = useQueryClient();
+  const autoCompileAttemptKeyRef = useRef<string | null>(null);
   const [impactFlags, setImpactFlags] = useState<Record<string, boolean>>({
     backend: true,
     testing: true,
   });
-  const [planMarkdown, setPlanMarkdown] = useState("");
   const { data: session, isLoading } = useQuery({
     queryKey: queryKeys.orion.councilSession(taskId),
     queryFn: () => orionApi.councilSession(taskId),
@@ -75,9 +79,16 @@ export function OrionAutoCouncilPanel({
     retry: false,
   });
 
-  const refresh = async () => {
+  const rememberSession = (nextSession: OrionCouncilSession) => {
+    queryClient.setQueryData(queryKeys.orion.councilSession(taskId), nextSession);
+    onSessionChange?.(nextSession);
+  };
+
+  const refresh = async (nextSession?: OrionCouncilSession) => {
+    if (nextSession) rememberSession(nextSession);
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.orion.councilSession(taskId) }),
+      ...(session?.id ? [queryClient.invalidateQueries({ queryKey: queryKeys.orion.councilMessages(session.id) })] : []),
       queryClient.invalidateQueries({ queryKey: queryKeys.orion.taskPolicy(taskId) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.orion.runReadiness(taskId) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks.detail(taskId) }),
@@ -102,11 +113,6 @@ export function OrionAutoCouncilPanel({
     onSuccess: refresh,
   });
 
-  const savePlan = useMutation({
-    mutationFn: () => orionApi.saveCouncilPlan(session!.id, { finalPlanMarkdown: planMarkdown.trim() }),
-    onSuccess: refresh,
-  });
-
   const convenePlanning = useMutation({
     mutationFn: () => orionApi.conveneCouncilPlanning(session!.id),
     onSuccess: refresh,
@@ -124,7 +130,7 @@ export function OrionAutoCouncilPanel({
 
   const execute = useMutation({
     mutationFn: () => orionApi.startCouncilExecution(session!.id, { note: "Auto Round Table approved execution." }),
-    onSuccess: refresh,
+    onSuccess: (result) => refresh(result.session),
   });
 
   const review = useMutation({
@@ -143,7 +149,7 @@ export function OrionAutoCouncilPanel({
       baseBranch: session?.baseBranch ?? "master",
       draft: true,
     }),
-    onSuccess: refresh,
+    onSuccess: () => refresh(),
   });
 
   const participants = session?.participants ?? [];
@@ -159,18 +165,97 @@ export function OrionAutoCouncilPanel({
     .filter(Boolean);
   const allPlanningNotesPosted = required.length > 0 && required.every((entry) => {
     const note = planningNoteByParticipantId.get(entry.id);
-    return note?.status === "posted" && Boolean(note.runId) && Boolean(note.commentId);
+    return note?.status === "posted" && Boolean(note.runId) && Boolean(note.planningMessageId);
   });
   const planIsRunBacked = session?.finalPlanProvenance?.source === "orion_auto_council_runs";
   const planIsStale = Boolean(session?.planStaleAt) || session?.status === "plan_stale" || Boolean(session?.manualPlanOverride && session?.finalPlanSha256);
   const canApprovePlan = Boolean(session?.finalPlanSha256 && planIsRunBacked && !planIsStale);
   const allPlanApproved = required.length > 0 && required.every((entry) => entry.planApprovedAt);
   const allReviewsPassed = required.length > 0 && required.every((entry) => entry.reviewStatus === "passed");
-  const actionError = validateSpec.error ?? savePlan.error ?? convenePlanning.error ?? compilePlan.error ?? approvePlan.error ?? execute.error ?? review.error ?? openPr.error;
+  const postedPlanningNoteCount = currentPlanningNotes.filter((note) => note?.status === "posted" && note?.runId && note?.planningMessageId).length;
+  const selectedRoleCount = required.length;
+  const actionError = validateSpec.error ?? convenePlanning.error ?? compilePlan.error ?? approvePlan.error ?? execute.error ?? review.error ?? openPr.error;
+  const planState = !session
+    ? "No council session"
+    : planIsStale
+      ? "Plan stale"
+      : allPlanApproved
+        ? "Approved"
+        : session.finalPlanSha256
+          ? "Plan compiled"
+          : postedPlanningNoteCount > 0 || session.status === "planning_notes"
+            ? "Planning in progress"
+            : "No plan yet";
+  const councilProgress = !session
+    ? "Validate the task spec to select the Auto council."
+    : selectedRoleCount === 0
+      ? "No council participants selected yet."
+      : `${postedPlanningNoteCount}/${selectedRoleCount} council notes posted`;
+  const waitingRoles = required
+    .filter((entry) => {
+      const note = planningNoteByParticipantId.get(entry.id);
+      return !(note?.status === "posted" && note?.runId && note?.planningMessageId);
+    })
+    .map((entry) => COUNCIL_ROLES.find((role) => role.roleId === entry.roleId)?.label ?? entry.roleId);
+  const planningRequestCount = planningNotes.length;
+  const shouldShowFallbackCompile = Boolean(session && allPlanningNotesPosted && !session.finalPlanSha256 && compilePlan.error);
+  const primaryAction = (() => {
+    if (!session) return {
+      label: "Validate spec",
+      disabled: validateSpec.isPending,
+      onClick: () => validateSpec.mutate(),
+      icon: "shield" as const,
+    };
+    if (required.length === 0 || planningRequestCount === 0) return {
+      label: "Convene Round Table",
+      disabled: convenePlanning.isPending,
+      onClick: () => convenePlanning.mutate(),
+      icon: "council" as const,
+    };
+    if (!allPlanningNotesPosted && !session.finalPlanSha256) return {
+      label: waitingRoles.length ? `Waiting on ${waitingRoles.join(", ")}` : "Waiting for council notes",
+      disabled: true,
+      onClick: () => undefined,
+      icon: "council" as const,
+    };
+    if (shouldShowFallbackCompile) return {
+      label: "Compile final plan",
+      disabled: compilePlan.isPending,
+      onClick: () => compilePlan.mutate(),
+      icon: "council" as const,
+    };
+    if (allPlanningNotesPosted && !session.finalPlanSha256 && compilePlan.isPending) return {
+      label: "Compiling final plan",
+      disabled: true,
+      onClick: () => undefined,
+      icon: "council" as const,
+    };
+    if (session.finalPlanSha256 && !allPlanApproved) return null;
+    if (allPlanApproved && !session.runId) return {
+      label: "Start auto",
+      disabled: execute.isPending,
+      onClick: () => execute.mutate(),
+      icon: "branch" as const,
+    };
+    if (session.status === "review_passed") return {
+      label: "Open draft PR",
+      disabled: openPr.isPending,
+      onClick: () => openPr.mutate(),
+      icon: "branch" as const,
+    };
+    return null;
+  })();
 
   useEffect(() => {
-    setPlanMarkdown(session?.finalPlanMarkdown ?? "");
-  }, [session?.finalPlanMarkdown]);
+    if (!session || !allPlanningNotesPosted || session.finalPlanSha256 || compilePlan.isPending || compilePlan.error) return;
+    const attemptKey = [
+      session.id,
+      ...planningNotes.map((note) => `${note.id}:${note.status}:${note.runId ?? ""}:${note.planningMessageId ?? ""}`),
+    ].join("|");
+    if (autoCompileAttemptKeyRef.current === attemptKey) return;
+    autoCompileAttemptKeyRef.current = attemptKey;
+    compilePlan.mutate();
+  }, [allPlanningNotesPosted, compilePlan, planningNotes, session]);
 
   useEffect(() => {
     if (!session?.impactFlags) return;
@@ -198,15 +283,15 @@ export function OrionAutoCouncilPanel({
         </div>
         <div className="rounded-md border border-border bg-muted/10 px-2 py-2">
           <div className="text-muted-foreground">Plan</div>
-          <div className="mt-1 font-medium">{allPlanApproved ? "approved" : allPlanningNotesPosted ? statusText(session?.phase) : "planning notes"}</div>
+          <div className="mt-1 font-medium">{planState}</div>
         </div>
         <div className="rounded-md border border-border bg-muted/10 px-2 py-2">
           <div className="text-muted-foreground">Execution</div>
-          <div className="mt-1 font-medium">{session?.runId ? "run created" : "blocked"}</div>
+          <div className="mt-1 font-medium">{session?.runId ? "Auto run started" : session?.finalPlanSha256 ? "Awaiting approval" : "Not ready"}</div>
         </div>
         <div className="rounded-md border border-border bg-muted/10 px-2 py-2">
           <div className="text-muted-foreground">Review</div>
-          <div className="mt-1 font-medium">{allReviewsPassed ? "passed" : statusText(session?.status)}</div>
+          <div className="mt-1 font-medium">{allReviewsPassed ? "Review passed" : session?.runId ? statusText(session?.status) : "Not started"}</div>
         </div>
       </div>
 
@@ -223,23 +308,20 @@ export function OrionAutoCouncilPanel({
         ))}
       </div>
 
-      <textarea
-        className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-        placeholder="Final council implementation plan will appear here after Round Table planning is compiled."
-        value={planMarkdown}
-        onChange={(event) => setPlanMarkdown(event.target.value)}
-        readOnly={!session?.finalPlanMarkdown}
-      />
-
-      {session?.finalPlanSha256 ? (
-        <div className={`rounded-md border px-2 py-2 text-xs ${planIsStale ? "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200" : "border-border bg-muted/10 text-muted-foreground"}`}>
-          {planIsStale
-            ? "Plan is stale. The council needs current run-backed notes before approval."
-            : planIsRunBacked
-              ? `Plan generated from ${currentPlanningNotes.filter((note) => note?.runId).length} agent runs.`
-              : "Plan is not backed by council agent runs."}
+      <div className={`rounded-md border px-3 py-2 text-xs ${planIsStale ? "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200" : "border-border bg-muted/10 text-muted-foreground"}`}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span>{councilProgress}</span>
+          {session?.finalPlanSha256 && planIsRunBacked ? (
+            <span>Generated from {postedPlanningNoteCount} council runs</span>
+          ) : null}
+          {session?.finalPlanSha256 && onOpenTaskChat ? (
+            <Button type="button" size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={onOpenTaskChat}>
+              View plan in Chat
+            </Button>
+          ) : null}
         </div>
-      ) : null}
+        {planIsStale ? <p className="mt-1">The plan is stale. The council needs current run-backed notes before approval.</p> : null}
+      </div>
 
       <div className="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-3">
         {COUNCIL_ROLES.map((role) => {
@@ -259,54 +341,53 @@ export function OrionAutoCouncilPanel({
                 <span className="font-medium">{role.label}</span>
                 <span className={selected ? "text-primary" : "text-muted-foreground"}>{selected ? "selected" : "not needed"}</span>
               </div>
-              <div className="mt-1 text-muted-foreground">Planning: {planningStatus}</div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={!selected || !canApprovePlan || approvePlan.isPending}
-                  onClick={() => approvePlan.mutate(role.roleId)}
-                >
-                  {participant?.planApprovedAt ? "Approved" : "Approve"}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={!selected || session?.status !== "awaiting_review" && session?.status !== "executing" && session?.status !== "review_passed" || review.isPending}
-                  onClick={() => review.mutate({ roleId: role.roleId, status: "passed" })}
-                >
-                  Pass
-                </Button>
+              <div className="mt-1 text-muted-foreground">
+                {selected ? `Planning: ${planningStatus}` : "Not part of this task"}
               </div>
+              {selected && session?.finalPlanSha256 ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!selected || !canApprovePlan || approvePlan.isPending}
+                    onClick={() => approvePlan.mutate(role.roleId)}
+                  >
+                    {participant?.planApprovedAt ? "Approved" : "Approve"}
+                  </Button>
+                  {session?.runId ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={
+                        !selected
+                        || !["awaiting_review", "executing", "review_passed"].includes(session?.status ?? "")
+                        || review.isPending
+                      }
+                      onClick={() => review.mutate({ roleId: role.roleId, status: "passed" })}
+                    >
+                      Pass
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           );
         })}
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" size="sm" className="gap-2" disabled={validateSpec.isPending} onClick={() => validateSpec.mutate()}>
-          <ShieldCheck className="h-3.5 w-3.5" />
-          {session ? "Validate spec" : "Create council session"}
-        </Button>
-        <Button type="button" size="sm" variant="outline" disabled={!session || required.length === 0 || convenePlanning.isPending} onClick={() => convenePlanning.mutate()}>
-          Convene Round Table
-        </Button>
-        <Button type="button" size="sm" variant="outline" disabled={!session || !allPlanningNotesPosted || compilePlan.isPending} onClick={() => compilePlan.mutate()}>
-          {session?.finalPlanSha256 ? "Recompile final plan" : "Compile final plan"}
-        </Button>
-        <Button type="button" size="sm" variant="ghost" disabled={!session || !planMarkdown.trim() || savePlan.isPending} onClick={() => savePlan.mutate()}>
-          Save manual edit
-        </Button>
-        <Button type="button" size="sm" variant="outline" disabled={!session || !allPlanApproved || execute.isPending || Boolean(session?.runId)} onClick={() => execute.mutate()}>
-          <GitBranch className="h-3.5 w-3.5" />
-          Start auto
-        </Button>
-        <Button type="button" size="sm" variant="outline" disabled={!session || session.status !== "review_passed" || openPr.isPending} onClick={() => openPr.mutate()}>
-          Open draft PR
-        </Button>
-      </div>
+      {primaryAction ? (
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" className="gap-2" disabled={primaryAction.disabled} onClick={primaryAction.onClick}>
+            {primaryAction.icon === "shield" ? <ShieldCheck className="h-3.5 w-3.5" /> : null}
+            {primaryAction.icon === "branch" ? <GitBranch className="h-3.5 w-3.5" /> : null}
+            {primaryAction.label}
+          </Button>
+        </div>
+      ) : session?.finalPlanSha256 && !allPlanApproved ? (
+        <p className="text-xs text-muted-foreground">Plan ready for approval. Selected council participants must approve before Auto can start.</p>
+      ) : null}
 
       {session?.iterations?.length ? (
         <div className="space-y-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-2 text-xs text-amber-800 dark:text-amber-200">

@@ -28,6 +28,8 @@ export interface ActiveRunForTask {
   logBytes?: number | null;
   lastOutputBytes?: number | null;
   taskId?: string | null;
+  orionCouncilPlanningSessionId?: string | null;
+  orionCouncilPlanningParticipantId?: string | null;
   livenessState?: RunLivenessFields["livenessState"];
   livenessReason?: string | null;
   continuationAttempt?: number;
@@ -50,6 +52,8 @@ export interface LiveRunForTask {
   logBytes?: number | null;
   lastOutputBytes?: number | null;
   taskId?: string | null;
+  orionCouncilPlanningSessionId?: string | null;
+  orionCouncilPlanningParticipantId?: string | null;
   livenessState?: RunLivenessFields["livenessState"];
   livenessReason?: string | null;
   continuationAttempt?: number;

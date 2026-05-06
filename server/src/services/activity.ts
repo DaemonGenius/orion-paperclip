@@ -399,28 +399,30 @@ export function activityService(db: Db) {
           livenessReason: heartbeatRuns.livenessReason,
           continuationAttempt: heartbeatRuns.continuationAttempt,
           lastUsefulActionAt: heartbeatRuns.lastUsefulActionAt,
-            nextAction: heartbeatRuns.nextAction,
-            contextSnapshot: heartbeatRuns.contextSnapshot,
-            orionLedger: {
-              id: orionReqLedgers.id,
-              mode: orionReqLedgers.mode,
-              status: orionReqLedgers.status,
-              currentPhase: orionReqLedgers.currentPhase,
-              planSha256: orionReqLedgers.planSha256,
-              approvedPlanSha256: orionReqLedgers.approvedPlanSha256,
-              verificationStatus: orionReqLedgers.verificationStatus,
-              prReceipt: orionReqLedgers.prReceipt,
-            },
-          })
-          .from(heartbeatRuns)
-          .innerJoin(
+          nextAction: heartbeatRuns.nextAction,
+          contextSnapshot: heartbeatRuns.contextSnapshot,
+          orionCouncilPlanningSessionId: sql<string | null>`${heartbeatRuns.contextSnapshot} #>> '{orionCouncilPlanning,sessionId}'`.as("orionCouncilPlanningSessionId"),
+          orionCouncilPlanningParticipantId: sql<string | null>`${heartbeatRuns.contextSnapshot} #>> '{orionCouncilPlanning,participantId}'`.as("orionCouncilPlanningParticipantId"),
+          orionLedger: {
+            id: orionReqLedgers.id,
+            mode: orionReqLedgers.mode,
+            status: orionReqLedgers.status,
+            currentPhase: orionReqLedgers.currentPhase,
+            planSha256: orionReqLedgers.planSha256,
+            approvedPlanSha256: orionReqLedgers.approvedPlanSha256,
+            verificationStatus: orionReqLedgers.verificationStatus,
+            prReceipt: orionReqLedgers.prReceipt,
+          },
+        })
+        .from(heartbeatRuns)
+        .innerJoin(
           agents,
           and(
             eq(agents.id, heartbeatRuns.agentId),
-              eq(agents.companyId, heartbeatRuns.companyId),
-            ),
-          )
-          .leftJoin(orionReqLedgers, eq(orionReqLedgers.runId, heartbeatRuns.id))
+            eq(agents.companyId, heartbeatRuns.companyId),
+          ),
+        )
+        .leftJoin(orionReqLedgers, eq(orionReqLedgers.runId, heartbeatRuns.id))
         .where(
           and(
             eq(heartbeatRuns.companyId, companyId),

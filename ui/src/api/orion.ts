@@ -2,6 +2,7 @@ import type {
   OrionAutonomyEnvelope,
   OrionAutonomyMode,
   OrionCouncilRoleId,
+  OrionCouncilMessage,
   OrionCouncilSession,
   OrionReqLedger,
   OrionRunReadiness,
@@ -51,6 +52,10 @@ export const orionApi = {
     api.get<OrionRunReadiness>(`/orion/tasks/${taskId}/run-readiness`),
   councilSession: (taskId: string) =>
     api.get<OrionCouncilSession | null>(`/orion/tasks/${taskId}/council/session`),
+  councilMessages: (sessionId: string) =>
+    api.get<OrionCouncilMessage[]>(`/orion/council/sessions/${sessionId}/messages`),
+  addCouncilMessage: (sessionId: string, data: { body: string; messageKind?: "operator_note" | "planning_note"; idempotencyKey?: string | null }) =>
+    api.post<{ message: OrionCouncilMessage; session: OrionCouncilSession }>(`/orion/council/sessions/${sessionId}/messages`, data),
   validatePlannerSpec: (taskId: string, data: {
     autonomyEnvelope: OrionAutonomyEnvelope;
     plannerNotes?: string | null;

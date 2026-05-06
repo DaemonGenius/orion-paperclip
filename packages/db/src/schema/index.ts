@@ -88,6 +88,7 @@ export {
   orionDecisions,
   orionPrReceipts,
   orionCouncilSessions,
+  orionCouncilMessages,
   orionCouncilParticipants,
   orionCouncilPlanningNotes,
   orionCouncilDecisions,

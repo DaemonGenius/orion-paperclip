@@ -152,16 +152,34 @@ export interface OrionCouncilPlanningNote {
   taskId: string;
   commentId: string | null;
   sourceCommentId: string | null;
+  planningMessageId: string | null;
+  sourceMessageId: string | null;
   runId: string | null;
   roleId: OrionCouncilRoleId | string;
   agentId: string | null;
   status: "requested" | "queued" | "running" | "posted" | "blocked" | "stale" | string;
   reason: string | null;
   requestedForCommentId: string | null;
+  requestedForMessageId: string | null;
   supersedesNoteId: string | null;
   requestedAt: Date | string;
   completedAt: Date | string | null;
   staleAt: Date | string | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+export interface OrionCouncilMessage {
+  id: string;
+  companyId: string;
+  sessionId: string;
+  taskId: string;
+  participantId: string | null;
+  authorAgentId: string | null;
+  authorUserId: string | null;
+  createdByRunId: string | null;
+  messageKind: "planning_kickoff" | "planning_note" | "operator_note" | "compiled_plan" | string;
+  body: string;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -230,12 +248,14 @@ export interface OrionCouncilSession {
   finalPlanProvenance: Record<string, unknown> | null;
   planStaleAt: Date | string | null;
   latestPlanningCommentId: string | null;
+  latestPlanningMessageId: string | null;
   manualPlanOverride: boolean;
   createdByUserId: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
   participants?: OrionCouncilParticipant[];
   planningNotes?: OrionCouncilPlanningNote[];
+  planningMessages?: OrionCouncilMessage[];
   decisions?: OrionCouncilDecision[];
   reviews?: OrionCouncilReview[];
   iterations?: OrionCouncilIteration[];

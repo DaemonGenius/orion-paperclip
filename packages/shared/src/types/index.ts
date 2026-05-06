@@ -10,6 +10,8 @@ export type {
   OrionCouncilReviewStatus,
   OrionCouncilSession,
   OrionCouncilParticipant,
+  OrionCouncilPlanningNote,
+  OrionCouncilMessage,
   OrionCouncilPlan,
   OrionCouncilDecision,
   OrionCouncilReview,

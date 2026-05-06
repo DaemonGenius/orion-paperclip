@@ -302,10 +302,10 @@ export const ORION_LEAN_SEVEN_ROLE_PROFILES: OrionRoleProfile[] = [
   roleProfile({
     roleId: "implementer",
     displayName: "Implementer",
-    purpose: "Changes code inside approved task and autonomy-envelope boundaries.",
+    purpose: "Executes only the approved Auto council plan inside an isolated project worktree.",
     traits: ["practical", "test-oriented", "bounded"],
     skills: ["code editing", "command execution", "focused verification"],
-    inputs: ["approved plan", "autonomy envelope", "repo context"],
+    inputs: ["approved council plan", "project repo context", "planning chat provenance"],
     outputs: ["code changes", "test evidence", "changed-path summary"],
     allowedActions: ["edit_code", "run_commands"],
     deniedActions: ["merge_pr", "read_secrets", "delete_source_content", "change_public_exposure", "change_schema"],
@@ -313,7 +313,7 @@ export const ORION_LEAN_SEVEN_ROLE_PROFILES: OrionRoleProfile[] = [
     evidenceDuty: ["Record changed paths, command outputs, failures, and residual risks in the REQ ledger."],
     defaultAutonomyLevel: "auto_to_pr_candidate",
     compatibleNodeTypes: ["agent"],
-    escalationRules: ["Stop on envelope conflicts, denied paths, missing dependencies, or unexpected authority changes."],
+    escalationRules: ["Stop on denied paths, missing dependencies, stale plan evidence, or unexpected authority changes."],
     healthSignals: ["path-guard failures", "test failures", "workspace setup failures"],
   }),
 ];
@@ -784,6 +784,8 @@ export const orionCouncilRoleIdSchema = z.enum(ORION_COUNCIL_ROLE_IDS);
 export const orionPlannerImpactFlagSchema = z.enum(ORION_PLANNER_IMPACT_FLAGS);
 export const orionCouncilSessionStatusSchema = z.enum([
   "planning",
+  "planning_notes",
+  "plan_stale",
   "awaiting_plan_approval",
   "approved",
   "executing",
@@ -844,6 +846,12 @@ export const conveneOrionCouncilPlanningSchema = z.object({
 }).strict();
 
 export const compileOrionCouncilPlanSchema = z.object({
+  idempotencyKey: z.string().trim().min(1).max(120).optional().nullable(),
+}).strict();
+
+export const createOrionCouncilMessageSchema = z.object({
+  body: z.string().trim().min(1).max(100000),
+  messageKind: z.enum(["planning_note", "operator_note"]).optional(),
   idempotencyKey: z.string().trim().min(1).max(120).optional().nullable(),
 }).strict();
 
@@ -998,6 +1006,7 @@ export type StartOrionCouncilSession = z.infer<typeof startOrionCouncilSessionSc
 export type SaveOrionCouncilPlan = z.infer<typeof saveOrionCouncilPlanSchema>;
 export type ConveneOrionCouncilPlanning = z.infer<typeof conveneOrionCouncilPlanningSchema>;
 export type CompileOrionCouncilPlan = z.infer<typeof compileOrionCouncilPlanSchema>;
+export type CreateOrionCouncilMessage = z.infer<typeof createOrionCouncilMessageSchema>;
 export type ApproveOrionCouncilPlan = z.infer<typeof approveOrionCouncilPlanSchema>;
 export type StartOrionCouncilExecution = z.infer<typeof startOrionCouncilExecutionSchema>;
 export type RecordOrionCouncilReview = z.infer<typeof recordOrionCouncilReviewSchema>;

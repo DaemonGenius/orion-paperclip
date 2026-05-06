@@ -26,6 +26,8 @@ export interface RunForTask {
   lastUsefulActionAt?: string | null;
   nextAction?: string | null;
   contextSnapshot?: Record<string, unknown> | null;
+  orionCouncilPlanningSessionId?: string | null;
+  orionCouncilPlanningParticipantId?: string | null;
   orionLedger?: {
     id: string | null;
     mode: string | null;
