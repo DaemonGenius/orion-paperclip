@@ -73,6 +73,7 @@ import { TaskRelatedWorkPanel } from "../components/TaskRelatedWorkPanel";
 import { TaskProperties } from "../components/TaskProperties";
 import { TaskRunLedger } from "../components/TaskRunLedger";
 import { ReqBundleRoundTablePanel } from "../components/ReqBundleRoundTablePanel";
+import { PlannerSpecPanel, isPlannerSpecReady } from "../components/PlannerSpecPanel";
 import { TaskWorkspaceCard } from "../components/TaskWorkspaceCard";
 import type { MentionOption } from "../components/MarkdownEditor";
 import { ImageGalleryModal } from "../components/ImageGalleryModal";
@@ -1143,12 +1144,18 @@ function TaskDetailActivityTab({
 
   return (
     <>
+      {task.originKind === "orion_planner_draft" ? (
+        <div className="mb-3">
+          <PlannerSpecPanel task={task} companyId={companyId} />
+        </div>
+      ) : null}
       <div className="mb-3">
         <ReqBundleRoundTablePanel
           taskId={taskId}
           companyId={companyId}
           task={task}
           onOpenTaskChat={onOpenTaskChat}
+          specReady={task.originKind !== "orion_planner_draft" || isPlannerSpecReady(task)}
         />
       </div>
       <div className="mb-3">

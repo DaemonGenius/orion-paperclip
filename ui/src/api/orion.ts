@@ -2,6 +2,7 @@ import type {
   OrionAutonomyEnvelope,
   OrionAutonomyMode,
   OrionCouncilRoleId,
+  OrionPlannerDraftStatus,
   OrionCouncilMessage,
   OrionCouncilSession,
   OrionReqLedger,
@@ -41,6 +42,12 @@ export const orionApi = {
   }) => api.post<OrionPlannerDraftResult>(`/orion/companies/${companyId}/planner-drafts`, data),
   resetAutoTeam: (companyId: string, data?: { dryRun?: boolean }) =>
     api.post<OrionAutoTeamResetResult>(`/orion/companies/${companyId}/auto-team/reset`, data ?? {}),
+  updatePlannerDraftStatus: (taskId: string, data: {
+    status: OrionPlannerDraftStatus;
+    plannerNotes?: string | null;
+    impactFlags?: Partial<Record<"frontend" | "backend" | "data_model" | "infrastructure" | "security" | "testing", boolean>>;
+    idempotencyKey?: string | null;
+  }) => api.post<OrionPlannerDraftResult>(`/orion/tasks/${taskId}/planner-draft/status`, data),
   publishPlannerDraftToNotion: (taskId: string, data?: { idempotencyKey?: string | null }) =>
     api.post<OrionPlannerDraftResult>(`/orion/tasks/${taskId}/planner-draft/publish-to-notion`, data ?? {}),
   taskPolicy: (taskId: string) =>

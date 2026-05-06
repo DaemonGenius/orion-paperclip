@@ -296,6 +296,81 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     expect(mockAdapterExecute).not.toHaveBeenCalled();
   });
 
+  it("does not cancel Orion Req Bundle planning wakes when the task has a different assignee", async () => {
+    const { companyId, agentId } = await seedCompanyAndAgent({ agentName: "OrionArchitect" });
+    const assigneeAgentId = randomUUID();
+    await db.insert(agents).values({
+      id: assigneeAgentId,
+      companyId,
+      name: "OrionImplementer",
+      role: "engineer",
+      status: "active",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {
+        heartbeat: {
+          wakeOnDemand: true,
+          maxConcurrentRuns: 1,
+        },
+      },
+      permissions: {},
+    });
+
+    const taskId = randomUUID();
+    const bundleId = randomUUID();
+    const participantId = randomUUID();
+    await db.insert(tasks).values({
+      id: taskId,
+      companyId,
+      title: "Plan via Req Bundle Round Table",
+      status: "todo",
+      priority: "high",
+      assigneeAgentId,
+    });
+
+    const { runId } = await seedQueuedRun({
+      companyId,
+      agentId,
+      taskId,
+      wakeReason: "orion_req_bundle_planning",
+      invocationSource: "automation",
+      contextExtras: {
+        source: "orion.req_bundle_planning",
+        bundleId,
+        participantId,
+        roleId: "architect",
+        orionReqBundlePlanning: {
+          bundleId,
+          participantId,
+          roleId: "architect",
+          prompt: "Plan the implementation.",
+        },
+        paperclipSessionHandoffMarkdown: "Plan the implementation.",
+      },
+    });
+
+    await heartbeat.resumeQueuedRuns();
+
+    await waitForCondition(async () => {
+      const run = await db
+        .select({ status: heartbeatRuns.status })
+        .from(heartbeatRuns)
+        .where(eq(heartbeatRuns.id, runId))
+        .then((rows) => rows[0] ?? null);
+      return run?.status === "succeeded";
+    });
+
+    const run = await db
+      .select({ status: heartbeatRuns.status, errorCode: heartbeatRuns.errorCode })
+      .from(heartbeatRuns)
+      .where(eq(heartbeatRuns.id, runId))
+      .then((rows) => rows[0] ?? null);
+
+    expect(run?.status).toBe("succeeded");
+    expect(run?.errorCode).toBeNull();
+    expect(mockAdapterExecute).toHaveBeenCalledTimes(1);
+  });
+
   it("cancels queued runs when the task reaches a terminal status before the run starts", async () => {
     const { companyId, agentId } = await seedCompanyAndAgent();
     const taskId = randomUUID();

@@ -51,6 +51,7 @@ import {
   syncbackOrionNotionSchema,
   syncNotionKnowledgeSchema,
   upsertOrionTaskPolicySchema,
+  updateOrionPlannerDraftStatusSchema,
   validateOrionPlannerSpecSchema,
 } from "@paperclipai/shared";
 import type { DeploymentExposure, DeploymentMode } from "@paperclipai/shared";
@@ -338,6 +339,28 @@ export function orionRoutes(db: Db, opts: {
           targetRoleProfileId: result.intake.routedTarget?.roleProfileId ?? null,
           targetAgentId: result.intake.routedTarget?.agent?.id ?? null,
         },
+      });
+      res.json(result);
+    },
+  );
+
+  router.post(
+    "/orion/tasks/:taskId/planner-draft/status",
+    validate(updateOrionPlannerDraftStatusSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
+      if (task) assertCompanyAccess(req, task.companyId);
+      const result = await svc.updatePlannerDraftStatus(req.params.taskId as string, req.body);
+      const actor = getActorInfo(req);
+      await logActivity(db, {
+        companyId: result.companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        action: "orion.planner_draft.status_updated",
+        entityType: "task",
+        entityId: result.taskId,
+        details: { status: result.status },
       });
       res.json(result);
     },

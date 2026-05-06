@@ -57,6 +57,7 @@ import type {
   OrionCouncilRoleId,
   OrionCouncilSession,
   OrionPlannerDraftResult,
+  OrionPlannerDraftStatus,
   OrionRoleProfileId,
   OrionRoundTableBulkQueueResult,
   OrionRoundTableIntakeState,
@@ -95,6 +96,7 @@ import type {
   ValidateOrionPlannerSpec,
   UpsertOrionTaskPolicy,
   SyncbackOrionNotion,
+  UpdateOrionPlannerDraftStatus,
 } from "@paperclipai/shared";
 import {
   NOTION_TASK_PROPERTY_NAMES,
@@ -864,6 +866,20 @@ function writeRecord(value: unknown): Record<string, unknown> {
   return { ...readRecord(value) };
 }
 
+const PLANNER_DRAFT_REQ_BUNDLE_READY_STATUSES = new Set<string>([
+  "spec_ready",
+  "published",
+  "ready_for_round_table",
+]);
+
+function readPlannerDraftRecord(task: { executionState: unknown }) {
+  return readRecord(readRecord(task.executionState).orionPlannerDraft);
+}
+
+function readPlannerDraftStatus(task: { executionState: unknown }) {
+  return readString(readPlannerDraftRecord(task).status) as OrionPlannerDraftStatus | null;
+}
+
 function titleProperty(value: string) {
   return { title: [{ text: { content: value } }] };
 }
@@ -1609,6 +1625,15 @@ export function orionService(db: Db) {
   async function ensureReqBundle(taskId: string, input: StartOrionReqBundlePlanning) {
     const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).then((rows) => rows[0] ?? null);
     if (!task) throw notFound("Task not found");
+    const plannerDraftStatus = readPlannerDraftStatus(task);
+    if (
+      (task.originKind === "orion_planner_draft" || plannerDraftStatus)
+      && !PLANNER_DRAFT_REQ_BUNDLE_READY_STATUSES.has(plannerDraftStatus ?? "")
+    ) {
+      throw unprocessable("Req Bundle planning requires a Planner spec-ready task", {
+        plannerDraftStatus: plannerDraftStatus ?? null,
+      });
+    }
     const now = new Date();
     await db
       .insert(orionTaskPolicies)
@@ -1694,6 +1719,27 @@ export function orionService(db: Db) {
       `Bundle ID: ${input.bundleId}`,
       `Participant ID: ${input.participantId}`,
       councilTaskContextMarkdown(input.task),
+    ].join("\n");
+  }
+
+  function buildReqBundleSpecSnapshotMarkdown(input: {
+    task: typeof tasks.$inferSelect;
+    plannerNotes: string | null | undefined;
+    impactFlags: Record<string, boolean>;
+  }) {
+    return [
+      "# Req Bundle Spec Snapshot",
+      "",
+      `Task: ${input.task.identifier ?? input.task.id} - ${input.task.title}`,
+      "",
+      "## Description",
+      input.task.description ?? "No description recorded.",
+      "",
+      "## Acceptance Criteria",
+      input.task.acceptanceCriteria ?? "No acceptance criteria recorded.",
+      "",
+      "## Planner Notes",
+      input.plannerNotes ?? "No Planner notes recorded.",
     ].join("\n");
   }
 
@@ -3173,6 +3219,9 @@ export function orionService(db: Db) {
 
   async function createPlannerDraft(companyId: string, input: CreateOrionPlannerDraft): Promise<OrionPlannerDraftResult> {
     const now = new Date();
+    const workflow = await getRoundTableWorkflow(companyId, null, false);
+    const plannerNode = workflow ? await getRoundTableNodeByRole(workflow.id, "planner") : null;
+    const hasPlannerBinding = Boolean(workflow && plannerNode?.agentId);
     const created = await taskService(db).create(companyId, {
       title: input.title,
       description: input.description ?? null,
@@ -3180,30 +3229,80 @@ export function orionService(db: Db) {
       priority: input.priority,
       projectId: input.projectId ?? null,
       taskType: input.taskType ?? "Feature",
-      routeMode: input.routeMode ?? "pair",
+      routeMode: input.routeMode ?? "auto_to_pr",
       layer: input.layer ?? null,
       module: input.module ?? null,
       repoPath: input.repoPath ?? null,
       riskLevel: input.riskLevel ?? null,
-      status: "backlog",
+      status: hasPlannerBinding ? "todo" : "backlog",
       originKind: "orion_planner_draft",
       originFingerprint: sha256(`planner-draft:${companyId}:${input.title}:${now.toISOString()}`),
       executionState: {
         orionPlannerDraft: {
           version: 1,
-          status: "draft",
+          status: "drafting_spec",
+          ...(!hasPlannerBinding ? { blockedReason: "No Orion Planner workflow binding is configured." } : {}),
           createdAt: now.toISOString(),
         },
       },
     });
     if (!created) throw unprocessable("Unable to create planner draft");
+
+    let intake: OrionRoundTableIntakeState | null = null;
+    if (hasPlannerBinding && workflow) {
+      await queueRoundTableIntake(created.id, { workflowId: workflow.id, source: "planner_draft" });
+      const routed = await routeRoundTableIntake(created.id, {
+        targetRoleProfileId: "planner",
+        note: "Ask Planner draft created for spec preparation.",
+      });
+      intake = routed.intake;
+    } else {
+      intake = await getRoundTableIntake(created.id).catch(() => null);
+    }
+
     return {
       taskId: created.id,
       companyId,
-      status: "draft",
+      status: "drafting_spec",
       notionPageId: null,
       notionUrl: null,
-      intake: null,
+      intake,
+    };
+  }
+
+  async function updatePlannerDraftStatus(
+    taskId: string,
+    input: UpdateOrionPlannerDraftStatus,
+  ): Promise<OrionPlannerDraftResult> {
+    const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).then((rows) => rows[0] ?? null);
+    if (!task) throw notFound("Task not found");
+    const draft = readPlannerDraftRecord(task);
+    if (task.originKind !== "orion_planner_draft" && !readString(draft.status)) {
+      throw unprocessable("Only Orion planner draft tasks can update Planner draft status");
+    }
+    const now = new Date();
+    const executionState = writeRecord(task.executionState);
+    executionState.orionPlannerDraft = {
+      ...draft,
+      version: 1,
+      status: input.status,
+      plannerNotes: input.plannerNotes ?? readString(draft.plannerNotes) ?? null,
+      impactFlags: normalizeCouncilImpactFlags(input.impactFlags),
+      updatedAt: now.toISOString(),
+      ...(input.status === "spec_ready" ? { specReadyAt: now.toISOString() } : {}),
+      ...(input.status === "ready_for_round_table" ? { readyForRoundTableAt: now.toISOString() } : {}),
+    };
+    await db
+      .update(tasks)
+      .set({ executionState, updatedAt: now })
+      .where(eq(tasks.id, task.id));
+    return {
+      taskId: task.id,
+      companyId: task.companyId,
+      status: input.status,
+      notionPageId: readString(draft.notionPageId) ?? task.originId ?? null,
+      notionUrl: readString(draft.notionUrl) ?? (task.originId ? notionPageUrl(task.originId) : null),
+      intake: await getRoundTableIntake(task.id).catch(() => null),
     };
   }
 
@@ -3214,13 +3313,14 @@ export function orionService(db: Db) {
     const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).then((rows) => rows[0] ?? null);
     if (!task) throw notFound("Task not found");
     if (task.originKind === "notion_task" && task.originId) {
+      const draftStatus = readPlannerDraftStatus(task) ?? "published";
       return {
         taskId: task.id,
         companyId: task.companyId,
-        status: "published",
+        status: draftStatus,
         notionPageId: task.originId,
         notionUrl: notionPageUrl(task.originId),
-        intake: null,
+        intake: await getRoundTableIntake(task.id).catch(() => null),
       };
     }
     if (task.originKind !== "orion_planner_draft") {
@@ -3277,6 +3377,7 @@ export function orionService(db: Db) {
       notionPageId,
       notionUrl,
       publishedAt: now.toISOString(),
+      updatedAt: now.toISOString(),
     };
     await db
       .update(tasks)
@@ -3359,7 +3460,7 @@ export function orionService(db: Db) {
       status: "published",
       notionPageId,
       notionUrl,
-      intake: null,
+      intake: await getRoundTableIntake(task.id).catch(() => null),
     };
   }
 
@@ -3707,6 +3808,44 @@ export function orionService(db: Db) {
         .update(orionReqLedgers)
         .set({ status: "planning", currentPhase: "planning", updatedAt: now })
         .where(eq(orionReqLedgers.id, bundle.id));
+      const plannerDraft = readPlannerDraftRecord(task);
+      const plannerDraftStatus = readString(plannerDraft.status);
+      const normalizedImpactFlags = normalizeCouncilImpactFlags(input.impactFlags);
+      const specSnapshotBody = buildReqBundleSpecSnapshotMarkdown({
+        task,
+        plannerNotes: input.plannerNotes,
+        impactFlags: normalizedImpactFlags,
+      });
+      const existingSpecSnapshot = await db
+        .select({ id: orionReqLedgerArtifacts.id })
+        .from(orionReqLedgerArtifacts)
+        .where(and(eq(orionReqLedgerArtifacts.ledgerId, bundle.id), eq(orionReqLedgerArtifacts.kind, "spec_snapshot")))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      if (!existingSpecSnapshot) {
+        await db.insert(orionReqLedgerArtifacts).values({
+          ledgerId: bundle.id,
+          companyId: bundle.companyId,
+          phase: "spec_ready",
+          kind: "spec_snapshot",
+          title: "Req Bundle Spec Snapshot",
+          body: specSnapshotBody,
+          sha256: sha256(specSnapshotBody),
+          metadata: {
+            taskTitle: task.title,
+            acceptanceCriteria: task.acceptanceCriteria ?? null,
+            plannerNotes: input.plannerNotes ?? null,
+            impactFlags: normalizedImpactFlags,
+            layer: task.layer ?? null,
+            module: task.module ?? null,
+            repoPath: task.repoPath ?? null,
+            riskLevel: task.riskLevel ?? null,
+            originKind: task.originKind ?? null,
+            originId: task.originId ?? null,
+            plannerDraftStatus: plannerDraftStatus ?? null,
+          },
+        });
+      }
       await appendLedgerEvent({
         ledgerId: bundle.id,
         companyId: bundle.companyId,
@@ -3715,7 +3854,7 @@ export function orionService(db: Db) {
         phase: "planning",
         message: "Req Bundle Round Table planning started.",
         payload: {
-          impactFlags: normalizeCouncilImpactFlags(input.impactFlags),
+          impactFlags: normalizedImpactFlags,
           participantRoleIds: roleIds,
           createdByUserId: createdByUserId ?? null,
         },
@@ -3732,12 +3871,19 @@ export function orionService(db: Db) {
           continue;
         }
         const roleId = participant.roleId as OrionCouncilRoleId;
+        const prompt = buildReqBundlePlanningPrompt({
+          task,
+          bundleId: detail.id,
+          participantId: participant.id,
+          roleId,
+        });
         await opts.queueRun(participant.agentId, {
           source: "automation",
           triggerDetail: "system",
-          reason: `Req Bundle Round Table planning: ${COUNCIL_ROLE_LABELS[roleId] ?? roleId}`,
+          reason: "orion_req_bundle_planning",
           payload: {
             type: "orion.req_bundle.planning",
+            taskId: task.id,
             bundleId: detail.id,
             participantId: participant.id,
             roleId,
@@ -3747,16 +3893,20 @@ export function orionService(db: Db) {
           idempotencyKey: `req-bundle:${detail.id}:${participant.id}:planning`,
           contextSnapshot: {
             source: "orion.req_bundle_planning",
+            wakeReason: "orion_req_bundle_planning",
             taskId: task.id,
+            taskKey: task.identifier ?? task.id,
+            projectId: task.projectId ?? null,
             bundleId: detail.id,
             participantId: participant.id,
             roleId,
-            prompt: buildReqBundlePlanningPrompt({
-              task,
+            orionReqBundlePlanning: {
               bundleId: detail.id,
               participantId: participant.id,
               roleId,
-            }),
+              prompt,
+            },
+            paperclipSessionHandoffMarkdown: prompt,
           },
         });
         await db
@@ -4101,6 +4251,7 @@ export function orionService(db: Db) {
     queueExistingRoundTableIntake,
     routeRoundTableIntake,
     createPlannerDraft,
+    updatePlannerDraftStatus,
     publishPlannerDraftToNotion,
     getCouncilSessionForTask,
     getCouncilSession: getCouncilSessionDetail,

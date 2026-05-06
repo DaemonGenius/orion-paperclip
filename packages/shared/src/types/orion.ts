@@ -14,6 +14,13 @@ export type OrionPlannerImpactFlag =
   | "infrastructure"
   | "security"
   | "testing";
+
+export type OrionPlannerDraftStatus =
+  | "drafting_spec"
+  | "needs_user_input"
+  | "spec_ready"
+  | "published"
+  | "ready_for_round_table";
 export type OrionCouncilSessionStatus =
   | "planning"
   | "planning_notes"
@@ -493,7 +500,7 @@ export interface OrionRoundTableRouteResult {
 export interface OrionPlannerDraftResult {
   taskId: string;
   companyId: string;
-  status: "draft" | "published";
+  status: OrionPlannerDraftStatus;
   notionPageId: string | null;
   notionUrl: string | null;
   intake: OrionRoundTableIntakeState | null;

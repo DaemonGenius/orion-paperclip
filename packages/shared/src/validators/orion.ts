@@ -586,12 +586,36 @@ export const createOrionPlannerDraftSchema = z.object({
   priority: z.enum(["critical", "high", "medium", "low"]).optional().default("medium"),
   projectId: z.string().uuid().optional().nullable(),
   taskType: z.string().trim().max(120).optional().nullable(),
-  routeMode: z.enum(["pair", "auto_to_pr", "manual_review", "blocked", "replan"]).optional().nullable(),
+  routeMode: z.enum(["pair", "auto_to_pr", "manual_review", "blocked", "replan"]).optional().nullable().default("auto_to_pr"),
   layer: z.string().trim().max(120).optional().nullable(),
   module: z.string().trim().max(120).optional().nullable(),
   repoPath: z.string().trim().max(500).optional().nullable(),
   riskLevel: z.string().trim().max(120).optional().nullable(),
 });
+
+export const ORION_PLANNER_DRAFT_STATUSES = [
+  "drafting_spec",
+  "needs_user_input",
+  "spec_ready",
+  "published",
+  "ready_for_round_table",
+] as const;
+
+export const orionPlannerDraftStatusSchema = z.enum(ORION_PLANNER_DRAFT_STATUSES);
+
+export const updateOrionPlannerDraftStatusSchema = z.object({
+  status: orionPlannerDraftStatusSchema,
+  plannerNotes: z.string().trim().max(20000).optional().nullable(),
+  impactFlags: z.object({
+    frontend: z.boolean().optional(),
+    backend: z.boolean().optional(),
+    data_model: z.boolean().optional(),
+    infrastructure: z.boolean().optional(),
+    security: z.boolean().optional(),
+    testing: z.boolean().optional(),
+  }).optional().default({}),
+  idempotencyKey: z.string().trim().min(1).max(120).optional().nullable(),
+}).strict();
 
 export const publishOrionPlannerDraftSchema = z.object({
   idempotencyKey: z.string().trim().min(1).max(120).optional().nullable(),
@@ -600,7 +624,7 @@ export const publishOrionPlannerDraftSchema = z.object({
 export const orionPlannerDraftResultSchema = z.object({
   taskId: z.string().uuid(),
   companyId: z.string().uuid(),
-  status: z.enum(["draft", "published"]),
+  status: orionPlannerDraftStatusSchema,
   notionPageId: z.string().nullable(),
   notionUrl: z.string().nullable(),
   intake: orionRoundTableIntakeStateSchema.nullable(),
@@ -1068,6 +1092,7 @@ export type OrionAutonomyMode = z.infer<typeof orionAutonomyModeSchema>;
 export type OrionAutonomyEnvelope = z.infer<typeof orionAutonomyEnvelopeSchema>;
 export type OrionCouncilRoleId = z.infer<typeof orionCouncilRoleIdSchema>;
 export type OrionPlannerImpactFlag = z.infer<typeof orionPlannerImpactFlagSchema>;
+export type OrionPlannerDraftStatus = z.infer<typeof orionPlannerDraftStatusSchema>;
 export type OrionReqBundleStatus = z.infer<typeof orionReqBundleStatusSchema>;
 export type OrionReqBundlePlanningStatus = z.infer<typeof orionReqBundlePlanningStatusSchema>;
 export type OrionReqBundleReviewStatus = z.infer<typeof orionReqBundleReviewStatusSchema>;
@@ -1111,6 +1136,7 @@ export type OrionRoundTableQueueResult = z.infer<typeof orionRoundTableQueueResu
 export type OrionRoundTableBulkQueueResult = z.infer<typeof orionRoundTableBulkQueueResultSchema>;
 export type OrionRoundTableRouteResult = z.infer<typeof orionRoundTableRouteResultSchema>;
 export type CreateOrionPlannerDraft = z.infer<typeof createOrionPlannerDraftSchema>;
+export type UpdateOrionPlannerDraftStatus = z.infer<typeof updateOrionPlannerDraftStatusSchema>;
 export type PublishOrionPlannerDraft = z.infer<typeof publishOrionPlannerDraftSchema>;
 export type OrionPlannerDraftResult = z.infer<typeof orionPlannerDraftResultSchema>;
 export type SetupOrionRoundTable = z.infer<typeof setupOrionRoundTableSchema>;

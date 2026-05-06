@@ -1492,6 +1492,19 @@ function isOrionCouncilPlanningWake(
   return Boolean(readNonEmptyString(parseObject(contextSnapshot?.orionCouncilPlanning).sessionId));
 }
 
+function isOrionReqBundlePlanningWake(
+  contextSnapshot: Record<string, unknown> | null | undefined,
+) {
+  const raw = parseObject(contextSnapshot?.orionReqBundlePlanning);
+  return Boolean(readNonEmptyString(raw.bundleId) && readNonEmptyString(raw.participantId));
+}
+
+function isOrionPlanningWake(
+  contextSnapshot: Record<string, unknown> | null | undefined,
+) {
+  return isOrionCouncilPlanningWake(contextSnapshot) || isOrionReqBundlePlanningWake(contextSnapshot);
+}
+
 async function listUnresolvedBlockerSummaries(
   dbOrTx: Pick<Db, "select">,
   companyId: string,
@@ -4052,8 +4065,8 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     }
 
     const taskId = readNonEmptyString(context.taskId);
-    const councilPlanningWake = isOrionCouncilPlanningWake(context);
-    if (taskId && !councilPlanningWake) {
+    const orionPlanningWake = isOrionPlanningWake(context);
+    if (taskId && !orionPlanningWake) {
       const activePauseHold = await treeControlSvc.getActivePauseHoldGate(run.companyId, taskId);
       const treeHoldInteractionWake = activePauseHold && await isVerifiedTaskTreeControlInteractionWake(db, {
         companyId: run.companyId,
@@ -4141,7 +4154,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     // not at queue time. Guard is idempotent — safe if called more than once.
     const claimedContext = parseObject(claimed.contextSnapshot);
     const claimedTaskId = readNonEmptyString(claimedContext.taskId);
-    if (claimedTaskId && !isOrionCouncilPlanningWake(claimedContext)) {
+    if (claimedTaskId && !isOrionPlanningWake(claimedContext)) {
       const claimedAgent = await getAgent(claimed.agentId);
       await db
         .update(tasks)
@@ -6892,7 +6905,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       payload,
     });
     let taskId = readNonEmptyString(enrichedContextSnapshot.taskId) ?? taskIdFromPayload;
-    const isOrionCouncilPlanningRun = isOrionCouncilPlanningWake(enrichedContextSnapshot);
+    const isOrionPlanningRun = isOrionPlanningWake(enrichedContextSnapshot);
 
     const agent = await getAgent(agentId);
     if (!agent) throw notFound("Agent not found");
@@ -6974,7 +6987,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       return null;
     }
 
-    if (taskId && !isOrionCouncilPlanningRun) {
+    if (taskId && !isOrionPlanningRun) {
       const activePauseHold = await treeControlSvc.getActivePauseHoldGate(agent.companyId, taskId);
       if (activePauseHold) {
         const treeHoldInteractionWake = await isVerifiedTaskTreeControlInteractionWake(db, {
@@ -7021,7 +7034,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       }
     }
 
-    if (taskId && !isOrionCouncilPlanningRun) {
+    if (taskId && !isOrionPlanningRun) {
       // Mention-triggered wakes can request input from another agent, but they must
       // still respect the task execution lock so a second agent cannot start on the
       // same task workspace while the assignee already has a live run.

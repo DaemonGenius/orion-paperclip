@@ -10,6 +10,7 @@ import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { collectLiveTaskIds } from "../lib/liveTaskIds";
 import { queryKeys } from "../lib/queryKeys";
+import { takeAskPlannerTransfer } from "../lib/ask-planner-transfer";
 import { createTaskDetailLocationState } from "../lib/taskDetailBreadcrumb";
 import {
   hasTaskFilterSearchParams,
@@ -51,6 +52,12 @@ export function Tasks() {
   const [plannerDraftOpen, setPlannerDraftOpen] = useState(false);
   const [plannerDraftTitle, setPlannerDraftTitle] = useState("");
   const [plannerDraftDescription, setPlannerDraftDescription] = useState("");
+  const [plannerDraftAcceptance, setPlannerDraftAcceptance] = useState("");
+  const [plannerDraftProjectId, setPlannerDraftProjectId] = useState("");
+  const [plannerDraftLayer, setPlannerDraftLayer] = useState("");
+  const [plannerDraftModule, setPlannerDraftModule] = useState("");
+  const [plannerDraftRepoPath, setPlannerDraftRepoPath] = useState("");
+  const [plannerDraftRisk, setPlannerDraftRisk] = useState("");
 
   const initialSearch = searchParams.get("q") ?? "";
   const participantAgentId = searchParams.get("participantAgentId") ?? undefined;
@@ -107,6 +114,20 @@ export function Tasks() {
     setBreadcrumbs([{ label: "Tasks" }]);
   }, [setBreadcrumbs]);
 
+  useEffect(() => {
+    if (searchParams.get("askPlanner") !== "1") return;
+
+    const transfer = takeAskPlannerTransfer();
+    if (transfer?.title) setPlannerDraftTitle(transfer.title);
+    if (transfer?.description) setPlannerDraftDescription(transfer.description);
+    if (transfer?.projectId) setPlannerDraftProjectId(transfer.projectId);
+    setPlannerDraftOpen(true);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("askPlanner");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   const { data: tasks, isLoading, error } = useQuery({
     queryKey: [
       ...queryKeys.tasks.list(selectedCompanyId!),
@@ -137,14 +158,26 @@ export function Tasks() {
     mutationFn: () => orionApi.createPlannerDraft(selectedCompanyId!, {
       title: plannerDraftTitle,
       description: plannerDraftDescription || null,
+      acceptanceCriteria: plannerDraftAcceptance || null,
       priority: "medium",
-      routeMode: "pair",
+      projectId: plannerDraftProjectId || null,
+      routeMode: "auto_to_pr",
       taskType: "Feature",
+      layer: plannerDraftLayer || null,
+      module: plannerDraftModule || null,
+      repoPath: plannerDraftRepoPath || null,
+      riskLevel: plannerDraftRisk || null,
     }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(selectedCompanyId!) });
       setPlannerDraftTitle("");
       setPlannerDraftDescription("");
+      setPlannerDraftAcceptance("");
+      setPlannerDraftProjectId("");
+      setPlannerDraftLayer("");
+      setPlannerDraftModule("");
+      setPlannerDraftRepoPath("");
+      setPlannerDraftRisk("");
       setPlannerDraftOpen(false);
       navigate(`/tasks/${result.taskId}`);
     },
@@ -159,48 +192,80 @@ export function Tasks() {
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2">
         <div className="min-w-0">
           <p className="text-sm font-medium">Orion Auto</p>
-          <p className="text-xs text-muted-foreground">Open a task to validate its spec and hand it to the Auto Round Table.</p>
+          <p className="text-xs text-muted-foreground">Ask Planner to create or validate a spec before handing it to the Req Bundle Round Table.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setPlannerDraftOpen((value) => !value)}>
             <FileText className="h-3.5 w-3.5" />
-            Planner draft
+            Ask Planner
           </Button>
         </div>
         {plannerDraftOpen ? (
-          <div className="basis-full space-y-2 rounded-md border border-border bg-muted/10 p-2">
-            <div className="grid gap-2 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto]">
+          <div className="basis-full space-y-3 rounded-md border border-border bg-muted/10 p-3">
+            <div className="grid gap-2 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
               <Input
                 value={plannerDraftTitle}
                 onChange={(event) => setPlannerDraftTitle(event.target.value)}
                 placeholder="Feature title"
-                aria-label="Planner draft title"
+                aria-label="Ask Planner title"
               />
               <Textarea
                 value={plannerDraftDescription}
                 onChange={(event) => setPlannerDraftDescription(event.target.value)}
                 placeholder="What should Planner help specify?"
-                aria-label="Planner draft description"
+                aria-label="Ask Planner request"
                 rows={1}
               />
+              <Textarea
+                value={plannerDraftAcceptance}
+                onChange={(event) => setPlannerDraftAcceptance(event.target.value)}
+                placeholder="Acceptance criteria or success conditions"
+                aria-label="Ask Planner acceptance criteria"
+                rows={2}
+              />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <select
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  value={plannerDraftProjectId}
+                  onChange={(event) => setPlannerDraftProjectId(event.target.value)}
+                  aria-label="Ask Planner project"
+                >
+                  <option value="">No project</option>
+                  {(projects ?? []).map((project) => (
+                    <option key={project.id} value={project.id}>{project.name}</option>
+                  ))}
+                </select>
+                <Input
+                  value={plannerDraftRisk}
+                  onChange={(event) => setPlannerDraftRisk(event.target.value)}
+                  placeholder="Risk"
+                  aria-label="Ask Planner risk"
+                />
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <Input value={plannerDraftLayer} onChange={(event) => setPlannerDraftLayer(event.target.value)} placeholder="Layer" aria-label="Ask Planner layer" />
+              <Input value={plannerDraftModule} onChange={(event) => setPlannerDraftModule(event.target.value)} placeholder="Module" aria-label="Ask Planner module" />
+              <Input value={plannerDraftRepoPath} onChange={(event) => setPlannerDraftRepoPath(event.target.value)} placeholder="Repo path" aria-label="Ask Planner repo path" />
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                Creates an Auto-oriented Planner spec draft. Round Table planning stays locked until the spec is marked ready.
+              </p>
               <Button
                 type="button"
                 size="sm"
                 disabled={createPlannerDraft.isPending || plannerDraftTitle.trim().length === 0}
                 onClick={() => createPlannerDraft.mutate()}
               >
-                {createPlannerDraft.isPending ? "Creating..." : "Create draft"}
+                {createPlannerDraft.isPending ? "Creating..." : "Ask Planner"}
               </Button>
             </div>
             {createPlannerDraft.error ? (
               <p className="text-xs text-destructive">
                 {createPlannerDraft.error instanceof Error ? createPlannerDraft.error.message : "Unable to create planner draft."}
               </p>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Drafts stay local until you approve and publish them to Notion from the task.
-              </p>
-            )}
+            ) : null}
           </div>
         ) : null}
       </div>

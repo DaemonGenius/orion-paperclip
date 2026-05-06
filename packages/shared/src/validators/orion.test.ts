@@ -8,6 +8,7 @@ import {
   approveOrionLedgerPlanSchema,
   createOrionPlannerDraftSchema,
   orionAutonomyEnvelopeSchema,
+  orionPlannerDraftStatusSchema,
   orionPlannerDraftResultSchema,
   orionRoleProfileSchema,
   orionRoundTableBulkQueueResultSchema,
@@ -42,6 +43,7 @@ import {
   startOrionLedgerExecutionSchema,
   syncbackOrionNotionSchema,
   upsertOrionTaskPolicySchema,
+  updateOrionPlannerDraftStatusSchema,
 } from "./orion.js";
 
 const validEnvelope = {
@@ -455,18 +457,26 @@ describe("Orion validators", () => {
     expect(createOrionPlannerDraftSchema.parse({ title: "Plan a feature" })).toMatchObject({
       title: "Plan a feature",
       priority: "medium",
+      routeMode: "auto_to_pr",
     });
     expect(() => createOrionPlannerDraftSchema.parse({ title: "" })).toThrow();
+    expect(orionPlannerDraftStatusSchema.parse("drafting_spec")).toBe("drafting_spec");
+    expect(orionPlannerDraftStatusSchema.parse("ready_for_round_table")).toBe("ready_for_round_table");
+    expect(updateOrionPlannerDraftStatusSchema.parse({
+      status: "spec_ready",
+      plannerNotes: "Ready for Req Bundle handoff.",
+      impactFlags: { frontend: true, testing: true },
+    })).toMatchObject({ status: "spec_ready" });
     expect(publishOrionPlannerDraftSchema.parse({ idempotencyKey: "publish-1" }).idempotencyKey).toBe("publish-1");
     expect(() => publishOrionPlannerDraftSchema.parse({ idempotencyKey: "" })).toThrow();
     expect(orionPlannerDraftResultSchema.parse({
       taskId: binding.taskId,
       companyId: binding.companyId,
-      status: "published",
+      status: "ready_for_round_table",
       notionPageId: "notion-page-id",
       notionUrl: "https://www.notion.so/notion-page-id",
       intake,
-    }).status).toBe("published");
+    }).status).toBe("ready_for_round_table");
   });
 
   it("requires an agent, mode, and valid envelope shape for run creation", () => {

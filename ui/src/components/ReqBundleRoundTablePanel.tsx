@@ -64,12 +64,14 @@ export function ReqBundleRoundTablePanel({
   task,
   onOpenTaskChat,
   onBundleChange,
+  specReady = true,
 }: {
   taskId: string;
   companyId: string;
   task?: { title?: string | null; description?: string | null; acceptanceCriteria?: string | null } | null;
   onOpenTaskChat?: () => void;
   onBundleChange?: (bundle: ReqBundle) => void;
+  specReady?: boolean;
 }) {
   const queryClient = useQueryClient();
   const [impactFlags, setImpactFlags] = useState<Record<string, boolean>>({
@@ -164,6 +166,9 @@ export function ReqBundleRoundTablePanel({
   const actionError = startPlanning.error ?? compilePlan.error ?? approvePlan.error ?? execute.error ?? review.error ?? openPr.error;
 
   const primaryAction = (() => {
+    if (!bundle && !specReady) {
+      return { label: "Validate with Planner", disabled: false, onClick: () => onOpenTaskChat?.(), icon: "shield" as const };
+    }
     if (!bundle) return { label: "Start planning", disabled: startPlanning.isPending, onClick: () => startPlanning.mutate(), icon: "shield" as const };
     if (bundle.status === "planning" && allPlanningPosted && !bundle.planSha256) {
       return { label: "Compile final plan", disabled: compilePlan.isPending, onClick: () => compilePlan.mutate(), icon: "council" as const };
@@ -186,7 +191,9 @@ export function ReqBundleRoundTablePanel({
         <div className="min-w-0">
           <h3 className="text-sm font-medium text-muted-foreground">Req Bundle Round Table</h3>
           <p className="text-xs text-muted-foreground">
-            {isLoading ? "Checking bundle state..." : `${statusText(bundle?.status)} - Auto to draft PR`}
+            {!specReady && !bundle
+              ? "Create or validate the spec with Planner before Round Table planning."
+              : isLoading ? "Checking bundle state..." : `${statusText(bundle?.status)} - Auto to draft PR`}
           </p>
         </div>
         <UsersRound className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -204,7 +211,7 @@ export function ReqBundleRoundTablePanel({
         })}
       </div>
 
-      {!bundle ? (
+      {!bundle && specReady ? (
         <div className="grid gap-2 sm:grid-cols-3">
           {IMPACT_FLAGS.map(([flag, label]) => (
             <label key={flag} className="flex items-center gap-2 rounded-md border border-border px-2 py-2 text-xs">

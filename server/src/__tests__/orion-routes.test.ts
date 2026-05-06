@@ -2115,6 +2115,119 @@ describeEmbeddedPostgres("Orion routes", () => {
     expect(legacyTask.assigneeAgentId).toBeNull();
   });
 
+  it("creates active Ask Planner drafts, updates readiness, and publishes approved drafts to Notion intake", async () => {
+    await seedCompanyAndAgent();
+    await seedNotionBinding();
+    await request(app)
+      .post(`/api/orion/companies/${companyId}/notion/bootstrap`)
+      .send({ rootPageId: "notion-root-genesis" })
+      .expect(201);
+
+    const draft = await request(app)
+      .post(`/api/orion/companies/${companyId}/planner-drafts`)
+      .send({
+        title: "Design live Shooter sync",
+        description: "Planner should turn this into a bounded task.",
+        acceptanceCriteria: "Spec is clear enough to run.",
+      });
+    expect(draft.status, JSON.stringify(draft.body)).toBe(201);
+    expect(draft.body.status).toBe("drafting_spec");
+
+    const [createdTask] = await db.select().from(tasks).where(eq(tasks.id, draft.body.taskId)).limit(1);
+    expect(createdTask.originKind).toBe("orion_planner_draft");
+    expect(createdTask.routeMode).toBe("auto_to_pr");
+    expect((createdTask.executionState as Record<string, any>).orionPlannerDraft.status).toBe("drafting_spec");
+
+    const ready = await request(app)
+      .post(`/api/orion/tasks/${draft.body.taskId}/planner-draft/status`)
+      .send({
+        status: "spec_ready",
+        plannerNotes: "Acceptance criteria are clear enough for Req Bundle planning.",
+        impactFlags: { backend: true, testing: true },
+      });
+    expect(ready.status, JSON.stringify(ready.body)).toBe(200);
+    expect(ready.body.status).toBe("spec_ready");
+
+    const notPlannerDraft = await db.insert(tasks).values({
+      companyId,
+      title: "Normal implementation task",
+      status: "todo",
+      priority: "medium",
+    }).returning();
+    const badStatus = await request(app)
+      .post(`/api/orion/tasks/${notPlannerDraft[0]!.id}/planner-draft/status`)
+      .send({ status: "spec_ready" });
+    expect(badStatus.status, JSON.stringify(badStatus.body)).toBe(422);
+
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: "notion-planner-draft-page",
+        url: "https://www.notion.so/notion-planner-draft-page",
+      }),
+    } as Response);
+
+    const publish = await request(app)
+      .post(`/api/orion/tasks/${draft.body.taskId}/planner-draft/publish-to-notion`)
+      .send({ idempotencyKey: "publish-planner-draft" });
+    expect(publish.status, JSON.stringify(publish.body)).toBe(200);
+    expect(publish.body.status).toBe("published");
+    expect(publish.body.notionPageId).toBe("notion-planner-draft-page");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, draft.body.taskId)).limit(1);
+    expect(task.originKind).toBe("notion_task");
+    expect(task.originId).toBe("notion-planner-draft-page");
+    expect((task.executionState as Record<string, any>).orionPlannerDraft.status).toBe("published");
+  });
+
+  it("blocks Req Bundle planning until planner drafts are spec-ready", async () => {
+    await seedCompanyAndAgent();
+    await seedOrionAutoCouncilAgents();
+    const planningApp = createApp(db, { queueCouncilPlanningRun: queueCouncilPlanningRunWithoutStarting });
+    const draft = await request(planningApp)
+      .post(`/api/orion/companies/${companyId}/planner-drafts`)
+      .send({
+        title: "Design lookup table editor",
+        description: "Planner should refine this before Auto.",
+      });
+    expect(draft.status, JSON.stringify(draft.body)).toBe(201);
+
+    const blocked = await request(planningApp)
+      .post(`/api/orion/tasks/${draft.body.taskId}/req-bundle/plan`)
+      .send({
+        autonomyEnvelope: autoEnvelope(),
+        impactFlags: { frontend: true, backend: true, testing: true },
+        plannerNotes: "Trying to bypass spec readiness.",
+        baseBranch: "master",
+      });
+    expect(blocked.status, JSON.stringify(blocked.body)).toBe(422);
+
+    await request(planningApp)
+      .post(`/api/orion/tasks/${draft.body.taskId}/planner-draft/status`)
+      .send({
+        status: "spec_ready",
+        plannerNotes: "Spec is ready for Round Table.",
+        impactFlags: { frontend: true, backend: true, testing: true },
+      })
+      .expect(200);
+
+    const start = await request(planningApp)
+      .post(`/api/orion/tasks/${draft.body.taskId}/req-bundle/plan`)
+      .send({
+        autonomyEnvelope: autoEnvelope(),
+        impactFlags: { frontend: true, backend: true, testing: true },
+        plannerNotes: "Spec approved for Req Bundle.",
+        baseBranch: "master",
+      });
+    expect(start.status, JSON.stringify(start.body)).toBe(201);
+    expect(start.body.status).toBe("planning");
+    expect(start.body.artifacts.some((artifact: { kind: string; metadata?: Record<string, unknown> }) =>
+      artifact.kind === "spec_snapshot" && artifact.metadata?.plannerDraftStatus === "spec_ready",
+    )).toBe(true);
+  });
+
   describe.skip("Round Table routing", () => {
     async function seedRoundTableRoutingFixture(options: {
       bindPlanner?: boolean;
@@ -2360,7 +2473,7 @@ describeEmbeddedPostgres("Orion routes", () => {
       });
     });
 
-    it("creates local planner drafts and publishes approved drafts to Notion intake", async () => {
+    it("creates local Ask Planner drafts, updates readiness, and publishes approved drafts to Notion intake", async () => {
       await seedCompanyAndAgent();
       await seedNotionBinding();
       await request(app)
@@ -2376,7 +2489,33 @@ describeEmbeddedPostgres("Orion routes", () => {
           acceptanceCriteria: "Spec is clear enough to run.",
         });
       expect(draft.status, JSON.stringify(draft.body)).toBe(201);
-      expect(draft.body.status).toBe("draft");
+      expect(draft.body.status).toBe("drafting_spec");
+
+      const [createdTask] = await db.select().from(tasks).where(eq(tasks.id, draft.body.taskId)).limit(1);
+      expect(createdTask.originKind).toBe("orion_planner_draft");
+      expect(createdTask.routeMode).toBe("auto_to_pr");
+      expect((createdTask.executionState as Record<string, any>).orionPlannerDraft.status).toBe("drafting_spec");
+
+      const ready = await request(app)
+        .post(`/api/orion/tasks/${draft.body.taskId}/planner-draft/status`)
+        .send({
+          status: "spec_ready",
+          plannerNotes: "Acceptance criteria are clear enough for Req Bundle planning.",
+          impactFlags: { backend: true, testing: true },
+        });
+      expect(ready.status, JSON.stringify(ready.body)).toBe(200);
+      expect(ready.body.status).toBe("spec_ready");
+
+      const notPlannerDraft = await db.insert(tasks).values({
+        companyId,
+        title: "Normal implementation task",
+        status: "todo",
+        priority: "medium",
+      }).returning();
+      const badStatus = await request(app)
+        .post(`/api/orion/tasks/${notPlannerDraft[0]!.id}/planner-draft/status`)
+        .send({ status: "spec_ready" });
+      expect(badStatus.status, JSON.stringify(badStatus.body)).toBe(422);
 
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
         ok: true,
@@ -2399,12 +2538,59 @@ describeEmbeddedPostgres("Orion routes", () => {
       const [task] = await db.select().from(tasks).where(eq(tasks.id, draft.body.taskId)).limit(1);
       expect(task.originKind).toBe("notion_task");
       expect(task.originId).toBe("notion-planner-draft-page");
+      expect((task.executionState as Record<string, any>).orionPlannerDraft.status).toBe("published");
       const [binding] = await db
         .select()
         .from(orionTaskWorkflowBindings)
         .where(eq(orionTaskWorkflowBindings.taskId, draft.body.taskId))
         .limit(1);
       expect(binding.currentNodeKey).toBe("task_intake");
+    });
+
+    it("requires planner draft spec readiness before Req Bundle planning", async () => {
+      await seedCompanyAndAgent();
+      await seedOrionAutoCouncilAgents();
+      const planningApp = createApp(db, { queueCouncilPlanningRun: queueCouncilPlanningRunWithoutStarting });
+      const draft = await request(planningApp)
+        .post(`/api/orion/companies/${companyId}/planner-drafts`)
+        .send({
+          title: "Design lookup table editor",
+          description: "Planner should refine this before Auto.",
+        });
+      expect(draft.status, JSON.stringify(draft.body)).toBe(201);
+
+      const blocked = await request(planningApp)
+        .post(`/api/orion/tasks/${draft.body.taskId}/req-bundle/plan`)
+        .send({
+          autonomyEnvelope: autoEnvelope(),
+          impactFlags: { frontend: true, backend: true, testing: true },
+          plannerNotes: "Trying to bypass spec readiness.",
+          baseBranch: "master",
+        });
+      expect(blocked.status, JSON.stringify(blocked.body)).toBe(422);
+
+      const ready = await request(planningApp)
+        .post(`/api/orion/tasks/${draft.body.taskId}/planner-draft/status`)
+        .send({
+          status: "spec_ready",
+          plannerNotes: "Spec is ready for Round Table.",
+          impactFlags: { frontend: true, backend: true, testing: true },
+        });
+      expect(ready.status, JSON.stringify(ready.body)).toBe(200);
+
+      const start = await request(planningApp)
+        .post(`/api/orion/tasks/${draft.body.taskId}/req-bundle/plan`)
+        .send({
+          autonomyEnvelope: autoEnvelope(),
+          impactFlags: { frontend: true, backend: true, testing: true },
+          plannerNotes: "Spec approved for Req Bundle.",
+          baseBranch: "master",
+        });
+      expect(start.status, JSON.stringify(start.body)).toBe(201);
+      expect(start.body.status).toBe("planning");
+      expect(start.body.artifacts.some((artifact: { kind: string; metadata?: Record<string, unknown> }) =>
+        artifact.kind === "spec_snapshot" && artifact.metadata?.plannerDraftStatus === "spec_ready",
+      )).toBe(true);
     });
 
     it("advances the canonical council path through explicit Round Table node bindings", async () => {

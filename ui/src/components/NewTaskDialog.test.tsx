@@ -432,6 +432,48 @@ describe("NewTaskDialog", () => {
     act(() => root.unmount());
   });
 
+  it("guides Orion Planner assignments into the Ask Planner spec flow", async () => {
+    mockAgentsApi.list.mockResolvedValue([
+      {
+        id: "planner-1",
+        companyId: "company-1",
+        name: "Orion Planner",
+        urlKey: "orion-planner",
+        role: "planner",
+        title: null,
+        icon: null,
+        status: "active",
+        reportsTo: null,
+        capabilities: null,
+        adapterType: "codex_local",
+        adapterConfig: {},
+        runtimeConfig: {},
+        budgetMonthlyCents: 0,
+        spentMonthlyCents: 0,
+        pauseReason: null,
+        pausedAt: null,
+        permissions: {},
+        lastHeartbeatAt: null,
+        metadata: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
+    dialogState.newTaskDefaults = {
+      title: "New Frontend Design",
+      description: "Planner should shape this into a spec.",
+      assigneeAgentId: "planner-1",
+    };
+
+    const { root } = renderDialog(container);
+    await flush();
+
+    expect(container.textContent).toContain("Planner is for spec creation");
+    expect(container.textContent).toContain("Use Ask Planner");
+
+    act(() => root.unmount());
+  });
+
   it("warns when a sub-task stops matching the parent workspace", async () => {
     mockProjectsApi.list.mockResolvedValue([
       {

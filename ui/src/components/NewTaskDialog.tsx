@@ -16,6 +16,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { useProjectOrder } from "../hooks/useProjectOrder";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
 import { getRecentProjectIds, trackRecentProject } from "../lib/recent-projects";
+import { buildAskPlannerPath, storeAskPlannerTransfer } from "../lib/ask-planner-transfer";
 import { buildExecutionPolicy } from "../lib/task-execution-policy";
 import { useToastActions } from "../context/ToastContext";
 import {
@@ -812,6 +813,11 @@ export function NewTaskDialog() {
   const currentAssignee = selectedAssigneeAgentId
     ? (agents ?? []).find((a) => a.id === selectedAssigneeAgentId)
     : null;
+  const currentAssigneeLabel = currentAssignee?.name ?? selectedAssigneeAgentId ?? "";
+  const isPlannerAssignee =
+    currentAssignee?.role === "planner"
+    || /(^|\s)orion\s+planner($|\s)/i.test(currentAssigneeLabel)
+    || currentAssigneeLabel.toLowerCase().includes("planner");
   const currentProject = orderedProjects.find((project) => project.id === projectId);
   const currentProjectExecutionWorkspacePolicy =
     experimentalSettings?.enableIsolatedWorkspaces === true
@@ -855,6 +861,16 @@ export function NewTaskDialog() {
         ? TASK_THINKING_EFFORT_OPTIONS.opencode_local
       : TASK_THINKING_EFFORT_OPTIONS.claude_local;
   const recentAssigneeIds = useMemo(() => getRecentAssigneeIds(), [newTaskOpen]);
+
+  function openAskPlannerFromCurrentDraft() {
+    storeAskPlannerTransfer({
+      title,
+      description,
+      projectId,
+    });
+    closeNewTask();
+    window.location.assign(buildAskPlannerPath(window.location.pathname));
+  }
   const recentAssigneeOptionIds = useMemo(
     () => recentAssigneeIds.map((id) => assigneeValueFromSelection({ assigneeAgentId: id })),
     [recentAssigneeIds],
@@ -1328,6 +1344,17 @@ export function NewTaskDialog() {
               </div>
             )}
           </div>
+
+          {isPlannerAssignee ? (
+            <div className="px-4 pb-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-cyan-300/50 bg-cyan-50 px-3 py-2 text-xs text-cyan-950 dark:border-cyan-800/70 dark:bg-cyan-950/30 dark:text-cyan-100">
+                <span>Planner is for spec creation. Use Ask Planner for new specs; keep this path only for explicit Planner task assignment.</span>
+                <Button type="button" size="sm" variant="outline" onClick={openAskPlannerFromCurrentDraft}>
+                  Use Ask Planner
+                </Button>
+              </div>
+            </div>
+          ) : null}
 
           {isSubTaskMode ? (
             <div className="px-4 pb-2">

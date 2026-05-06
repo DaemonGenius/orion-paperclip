@@ -4,6 +4,7 @@ export type {
   OrionAutonomyEnvelope,
   OrionCouncilRoleId,
   OrionPlannerImpactFlag,
+  OrionPlannerDraftStatus,
   OrionCouncilSessionStatus,
   OrionCouncilDecisionPhase,
   OrionCouncilDecisionValue,
