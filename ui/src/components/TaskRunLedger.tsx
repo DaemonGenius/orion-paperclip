@@ -663,10 +663,10 @@ export function TaskRunLedgerContent({
   const children = childTaskSummary(childTasks);
 
   return (
-    <section className="space-y-3" aria-label="Task run ledger">
+    <section className="space-y-3" aria-label="Task runs and Req Bundle">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="text-sm font-medium text-muted-foreground">Run ledger</h3>
+          <h3 className="text-sm font-medium text-muted-foreground">Runs and Req Bundle</h3>
           <p className="text-xs text-muted-foreground">
             {latestRun
               ? runSummary(latestRun, agentMap)
@@ -1032,7 +1032,7 @@ export function TaskRunLedgerContent({
                 {run.orionLedger?.id ? (
                   <div className="grid gap-1 rounded-md border border-border/70 bg-accent/20 px-2 py-2 text-[11px] text-muted-foreground sm:grid-cols-2">
                     <div>
-                      <span className="font-medium text-foreground">Ledger</span>{" "}
+                      <span className="font-medium text-foreground">Req Bundle</span>{" "}
                       <span className="font-mono">{run.orionLedger.id.slice(0, 8)}</span>
                     </div>
                     <div>

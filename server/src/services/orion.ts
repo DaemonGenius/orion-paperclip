@@ -24,6 +24,7 @@ import {
   orionCouncilReviews,
   orionCouncilSessions,
   orionPrReceipts,
+  orionReqBundleParticipants,
   orionReqLedgerArtifacts,
   orionReqLedgerEvents,
   orionReqLedgers,
@@ -52,6 +53,7 @@ import type {
   ConveneOrionCouncilPlanning,
   CreateOrionCouncilMessage,
   OpenOrionPr,
+  ReqBundle,
   OrionCouncilRoleId,
   OrionCouncilSession,
   OrionPlannerDraftResult,
@@ -80,11 +82,13 @@ import type {
   RecordOrionLedgerEvidence,
   RecordOrionLedgerVerification,
   RecordOrionPr,
+  RecordOrionReqBundlePlanningOutput,
   RunOrionVerification,
   SaveOrionLedgerPlan,
   SaveOrionCouncilPlan,
   StartOrionCodexRun,
   StartOrionCouncilExecution,
+  StartOrionReqBundlePlanning,
   StartOrionLedgerExecution,
   RecordOrionCouncilReview,
   ResetOrionAutoTeam,
@@ -570,6 +574,27 @@ function selectCouncilRoles(
   if (flags.testing) selected.add("qa_tester");
   selected.add("implementer");
   return ORION_COUNCIL_ROLE_IDS.filter((roleId) => selected.has(roleId));
+}
+
+export function resolveReqBundleParticipantRoleIds(
+  impactFlags: Record<string, boolean> | null | undefined,
+  proposedRoleIds: OrionCouncilRoleId[] = [],
+): OrionCouncilRoleId[] {
+  const flags = normalizeCouncilImpactFlags(impactFlags);
+  const selected = new Set<OrionCouncilRoleId>(REQUIRED_BASE_COUNCIL_ROLES);
+  for (const roleId of proposedRoleIds) selected.add(roleId);
+  if (flags.frontend) selected.add("ux_ui_designer");
+  if (flags.infrastructure || flags.data_model) selected.add("infrastructure_engineer");
+  if (flags.security) selected.add("security_expert");
+  selected.add("implementer");
+  return [
+    "architect",
+    "qa_tester",
+    "implementer",
+    "ux_ui_designer",
+    "infrastructure_engineer",
+    "security_expert",
+  ].filter((roleId): roleId is OrionCouncilRoleId => selected.has(roleId as OrionCouncilRoleId));
 }
 
 function readConfigString(config: unknown, key: string): string | null {
@@ -1494,6 +1519,240 @@ export function orionService(db: Db) {
     }
   }
 
+  async function getReqBundleDetail(bundleId: string): Promise<ReqBundle> {
+    const ledger = await db
+      .select()
+      .from(orionReqLedgers)
+      .where(eq(orionReqLedgers.id, bundleId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    if (!ledger) throw notFound("Req Bundle not found");
+    const [participants, events, artifacts, receipt] = await Promise.all([
+      db
+        .select()
+        .from(orionReqBundleParticipants)
+        .where(eq(orionReqBundleParticipants.bundleId, ledger.id))
+        .orderBy(orionReqBundleParticipants.createdAt),
+      db
+        .select()
+        .from(orionReqLedgerEvents)
+        .where(eq(orionReqLedgerEvents.ledgerId, ledger.id))
+        .orderBy(orionReqLedgerEvents.seq),
+      db
+        .select()
+        .from(orionReqLedgerArtifacts)
+        .where(eq(orionReqLedgerArtifacts.ledgerId, ledger.id))
+        .orderBy(orionReqLedgerArtifacts.createdAt),
+      db
+        .select()
+        .from(orionPrReceipts)
+        .where(eq(orionPrReceipts.ledgerId, ledger.id))
+        .limit(1)
+        .then((rows) => rows[0] ?? null),
+    ]);
+    return {
+      ...ledger,
+      participants,
+      events,
+      artifacts,
+      prReceiptRecord: receipt,
+    };
+  }
+
+  async function getReqBundleForTask(taskId: string): Promise<ReqBundle | null> {
+    const ledger = await db
+      .select({ id: orionReqLedgers.id })
+      .from(orionReqLedgers)
+      .where(eq(orionReqLedgers.taskId, taskId))
+      .orderBy(desc(orionReqLedgers.updatedAt))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    return ledger ? getReqBundleDetail(ledger.id) : null;
+  }
+
+  async function upsertReqBundleParticipants(
+    bundle: typeof orionReqLedgers.$inferSelect,
+    roleIds: OrionCouncilRoleId[],
+    implementerAgentId?: string | null,
+  ) {
+    const now = new Date();
+    for (const roleId of ORION_COUNCIL_ROLE_IDS) {
+      const required = roleIds.includes(roleId);
+      const agent = roleId === "implementer" && implementerAgentId
+        ? await db.select().from(agents).where(and(eq(agents.id, implementerAgentId), eq(agents.companyId, bundle.companyId))).limit(1).then((rows) => rows[0] ?? null)
+        : await findCouncilAgent(bundle.companyId, roleId);
+      await db
+        .insert(orionReqBundleParticipants)
+        .values({
+          bundleId: bundle.id,
+          companyId: bundle.companyId,
+          taskId: bundle.taskId,
+          roleId,
+          agentId: agent?.id ?? null,
+          required,
+          planningStatus: required ? "pending" : "not_required",
+          constraintsJson: {},
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [orionReqBundleParticipants.bundleId, orionReqBundleParticipants.roleId],
+          set: {
+            agentId: agent?.id ?? null,
+            required,
+            planningStatus: required ? sql`case when ${orionReqBundleParticipants.planningStatus} = 'posted' then 'posted' else 'pending' end` : "not_required",
+            updatedAt: now,
+          },
+        });
+    }
+  }
+
+  async function ensureReqBundle(taskId: string, input: StartOrionReqBundlePlanning) {
+    const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).then((rows) => rows[0] ?? null);
+    if (!task) throw notFound("Task not found");
+    const now = new Date();
+    await db
+      .insert(orionTaskPolicies)
+      .values({
+        companyId: task.companyId,
+        taskId: task.id,
+        mode: "auto_to_pr",
+        autonomyEnvelope: input.autonomyEnvelope,
+        approvedAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: orionTaskPolicies.taskId,
+        set: {
+          mode: "auto_to_pr",
+          autonomyEnvelope: input.autonomyEnvelope,
+          approvedAt: now,
+          updatedAt: now,
+        },
+      });
+    const existing = await db
+      .select()
+      .from(orionReqLedgers)
+      .where(and(eq(orionReqLedgers.companyId, task.companyId), eq(orionReqLedgers.taskId, task.id)))
+      .orderBy(desc(orionReqLedgers.updatedAt))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    if (existing && !["draft_pr_opened"].includes(existing.status)) return { task, bundle: existing };
+
+    const roleIds = resolveReqBundleParticipantRoleIds(input.impactFlags, input.proposedParticipantRoleIds);
+    const implementerAgent = input.implementerAgentId
+      ? await db.select().from(agents).where(and(eq(agents.id, input.implementerAgentId), eq(agents.companyId, task.companyId))).limit(1).then((rows) => rows[0] ?? null)
+      : await findCouncilAgent(task.companyId, "implementer");
+    if (!implementerAgent) throw unprocessable("Req Bundle Auto requires an Implementer agent");
+    const [run] = await db.insert(heartbeatRuns).values({
+      companyId: task.companyId,
+      agentId: implementerAgent.id,
+      invocationSource: "automation",
+      triggerDetail: "system",
+      status: "queued",
+      contextSnapshot: {
+        source: "orion.req_bundle",
+        taskId: task.id,
+        baseBranch: input.baseBranch,
+      },
+      updatedAt: now,
+    }).returning();
+    const [bundle] = await db.insert(orionReqLedgers).values({
+      companyId: task.companyId,
+      taskId: task.id,
+      runId: run!.id,
+      mode: "auto_to_pr",
+      status: "spec_ready",
+      currentPhase: "spec_ready",
+      summary: input.plannerNotes ?? "Orion Auto Req Bundle created from task specification.",
+      updatedAt: now,
+    }).returning();
+    await db.update(heartbeatRuns).set({
+      contextSnapshot: {
+        source: "orion.req_bundle",
+        taskId: task.id,
+        bundleId: bundle!.id,
+        baseBranch: input.baseBranch,
+      },
+      updatedAt: now,
+    }).where(eq(heartbeatRuns.id, run!.id));
+    return { task, bundle: bundle! };
+  }
+
+  function buildReqBundlePlanningPrompt(input: {
+    task: typeof tasks.$inferSelect;
+    bundleId: string;
+    participantId: string;
+    roleId: OrionCouncilRoleId;
+  }) {
+    return [
+      `You are the ${COUNCIL_ROLE_LABELS[input.roleId]} in Orion Auto's Req Bundle Round Table.`,
+      "",
+      "Review the task specification and produce structured planning output for the req_bundle contract.",
+      "Return constraints, risks, implementation requirements, verification requirements, blockers, and a verdict.",
+      "Record your output against the req_bundle participant before implementation starts.",
+      "",
+      `Bundle ID: ${input.bundleId}`,
+      `Participant ID: ${input.participantId}`,
+      councilTaskContextMarkdown(input.task),
+    ].join("\n");
+  }
+
+  function planningOutputMarkdown(input: {
+    roleId: string;
+    output: RecordOrionReqBundlePlanningOutput;
+  }) {
+    const list = (title: string, values: string[]) => [
+      `## ${title}`,
+      values.length ? values.map((value) => `- ${value}`).join("\n") : "- None.",
+    ].join("\n");
+    return [
+      `# ${COUNCIL_ROLE_LABELS[input.roleId as OrionCouncilRoleId] ?? input.roleId} Req Bundle Planning Output`,
+      "",
+      list("Constraints", input.output.constraints),
+      "",
+      list("Risks", input.output.risks),
+      "",
+      list("Implementation Requirements", input.output.implementationRequirements),
+      "",
+      list("Verification Requirements", input.output.verificationRequirements),
+      "",
+      list("Blockers", input.output.blockers),
+      "",
+      `## Verdict\n${input.output.verdict}`,
+      input.output.notes ? `\n## Notes\n${input.output.notes}` : "",
+    ].filter(Boolean).join("\n");
+  }
+
+  function buildFinalReqBundlePlanMarkdown(input: {
+    task: typeof tasks.$inferSelect;
+    bundle: ReqBundle;
+    participantArtifacts: Array<{ roleId: string; body: string | null; metadata: Record<string, unknown> }>;
+  }) {
+    return [
+      "# Final Req Bundle Implementation Plan",
+      "",
+      councilTaskContextMarkdown(input.task),
+      "",
+      "## Round Table Requirements",
+      ...input.participantArtifacts.flatMap((artifact) => [
+        "",
+        `### ${COUNCIL_ROLE_LABELS[artifact.roleId as OrionCouncilRoleId] ?? artifact.roleId}`,
+        artifact.body ?? "No planning body recorded.",
+      ]),
+      "",
+      "## Execution Contract",
+      "- Implement only the approved plan hash for this req_bundle.",
+      "- Preserve every required participant constraint.",
+      "- Stop on stale plan hash, denied path, missing dependency, or unclear acceptance criteria.",
+      "- Record changed paths, command outputs, failures, and residual risks in the Req Bundle evidence.",
+      "",
+      "## Verification Contract",
+      "- Run the targeted checks required by QA and affected domains.",
+      "- The Round Table review must pass before draft PR creation.",
+      "- Open a draft PR only; Orion must never approve, merge, or auto-merge.",
+    ].join("\n");
+  }
+
   async function getRoundTableSetupReadiness(companyId: string): Promise<OrionRoundTableSetupResult> {
     return computeRoundTableSetupState(companyId, false);
   }
@@ -1925,7 +2184,8 @@ export function orionService(db: Db) {
         if (receipt) return receipt;
       }
     }
-    if (ledger.status !== "verified" || ledger.verificationStatus !== "passed") {
+    const prReadyLedgerStatuses = new Set(["verified", "awaiting_review", "review_passed", "draft_pr_opened"]);
+    if (!prReadyLedgerStatuses.has(ledger.status) || ledger.verificationStatus !== "passed") {
       throw conflict("PR receipt requires passed Orion verification for the approved plan", {
         status: ledger.status,
         verificationStatus: ledger.verificationStatus,
@@ -3428,6 +3688,398 @@ export function orionService(db: Db) {
         throw notFound("Role profile not found");
       }
       return profile;
+    },
+
+    getReqBundleForTask,
+    getReqBundle: getReqBundleDetail,
+
+    startReqBundlePlanning: async (
+      taskId: string,
+      input: StartOrionReqBundlePlanning,
+      createdByUserId?: string | null,
+      opts?: { queueRun?: QueueCouncilPlanningRun },
+    ) => {
+      const roleIds = resolveReqBundleParticipantRoleIds(input.impactFlags, input.proposedParticipantRoleIds);
+      const { task, bundle } = await ensureReqBundle(taskId, input);
+      await upsertReqBundleParticipants(bundle, roleIds, input.implementerAgentId);
+      const now = new Date();
+      await db
+        .update(orionReqLedgers)
+        .set({ status: "planning", currentPhase: "planning", updatedAt: now })
+        .where(eq(orionReqLedgers.id, bundle.id));
+      await appendLedgerEvent({
+        ledgerId: bundle.id,
+        companyId: bundle.companyId,
+        runId: bundle.runId,
+        eventType: "round_table.planning_started",
+        phase: "planning",
+        message: "Req Bundle Round Table planning started.",
+        payload: {
+          impactFlags: normalizeCouncilImpactFlags(input.impactFlags),
+          participantRoleIds: roleIds,
+          createdByUserId: createdByUserId ?? null,
+        },
+        idempotencyKey: input.idempotencyKey ?? null,
+      });
+      const detail = await getReqBundleDetail(bundle.id);
+      const required = detail.participants?.filter((participant) => participant.required) ?? [];
+      for (const participant of required) {
+        if (!participant.agentId || !opts?.queueRun) {
+          await db
+            .update(orionReqBundleParticipants)
+            .set({ planningStatus: participant.agentId ? "pending" : "blocked", updatedAt: now })
+            .where(eq(orionReqBundleParticipants.id, participant.id));
+          continue;
+        }
+        const roleId = participant.roleId as OrionCouncilRoleId;
+        await opts.queueRun(participant.agentId, {
+          source: "automation",
+          triggerDetail: "system",
+          reason: `Req Bundle Round Table planning: ${COUNCIL_ROLE_LABELS[roleId] ?? roleId}`,
+          payload: {
+            type: "orion.req_bundle.planning",
+            bundleId: detail.id,
+            participantId: participant.id,
+            roleId,
+          },
+          requestedByActorType: "user",
+          requestedByActorId: createdByUserId ?? null,
+          idempotencyKey: `req-bundle:${detail.id}:${participant.id}:planning`,
+          contextSnapshot: {
+            source: "orion.req_bundle_planning",
+            taskId: task.id,
+            bundleId: detail.id,
+            participantId: participant.id,
+            roleId,
+            prompt: buildReqBundlePlanningPrompt({
+              task,
+              bundleId: detail.id,
+              participantId: participant.id,
+              roleId,
+            }),
+          },
+        });
+        await db
+          .update(orionReqBundleParticipants)
+          .set({ planningStatus: "queued", updatedAt: now })
+          .where(eq(orionReqBundleParticipants.id, participant.id));
+      }
+      return getReqBundleDetail(bundle.id);
+    },
+
+    recordReqBundlePlanningOutput: async (
+      bundleId: string,
+      participantId: string,
+      input: RecordOrionReqBundlePlanningOutput,
+    ) => {
+      const bundle = await getReqBundleDetail(bundleId);
+      const participant = bundle.participants?.find((entry) => entry.id === participantId) ?? null;
+      if (!participant || !participant.required) throw unprocessable("Planning output must belong to a required Req Bundle participant");
+      const body = planningOutputMarkdown({ roleId: participant.roleId, output: input });
+      const artifactSha = sha256(body);
+      const metadata = {
+        roleId: participant.roleId,
+        participantId: participant.id,
+        constraints: input.constraints,
+        risks: input.risks,
+        implementationRequirements: input.implementationRequirements,
+        verificationRequirements: input.verificationRequirements,
+        blockers: input.blockers,
+        verdict: input.verdict,
+      };
+      const [artifact] = await db
+        .insert(orionReqLedgerArtifacts)
+        .values({
+          ledgerId: bundle.id,
+          companyId: bundle.companyId,
+          phase: "planning",
+          kind: "round_table_planning",
+          title: `${COUNCIL_ROLE_LABELS[participant.roleId as OrionCouncilRoleId] ?? participant.roleId} planning output`,
+          body,
+          sha256: artifactSha,
+          metadata,
+        })
+        .returning();
+      await db
+        .update(orionReqBundleParticipants)
+        .set({
+          planningStatus: input.verdict === "blocked" ? "blocked" : "posted",
+          constraintsJson: metadata,
+          updatedAt: new Date(),
+        })
+        .where(eq(orionReqBundleParticipants.id, participant.id));
+      await appendLedgerEvent({
+        ledgerId: bundle.id,
+        companyId: bundle.companyId,
+        runId: bundle.runId,
+        eventType: "round_table.planning_output_recorded",
+        phase: "planning",
+        message: `${COUNCIL_ROLE_LABELS[participant.roleId as OrionCouncilRoleId] ?? participant.roleId} recorded Req Bundle planning output.`,
+        payload: { participantId: participant.id, roleId: participant.roleId, artifactId: artifact!.id },
+        idempotencyKey: input.idempotencyKey ?? null,
+      });
+      return getReqBundleDetail(bundle.id);
+    },
+
+    compileReqBundlePlan: async (bundleId: string, input: { idempotencyKey?: string | null } = {}) => {
+      const bundle = await getReqBundleDetail(bundleId);
+      const task = await db.select().from(tasks).where(eq(tasks.id, bundle.taskId)).limit(1).then((rows) => rows[0] ?? null);
+      if (!task) throw notFound("Task not found");
+      const required = bundle.participants?.filter((participant) => participant.required) ?? [];
+      const planningArtifacts = (bundle.artifacts ?? []).filter((artifact) => artifact.kind === "round_table_planning");
+      const artifactByRole = new Map<string, typeof planningArtifacts[number]>();
+      for (const artifact of planningArtifacts) {
+        const roleId = readString(readRecord(artifact.metadata).roleId);
+        if (roleId) artifactByRole.set(roleId, artifact);
+      }
+      const missing = required
+        .filter((participant) => !artifactByRole.has(participant.roleId))
+        .map((participant) => participant.roleId);
+      if (missing.length > 0) throw conflict("Req Bundle final plan compile requires all required participant planning outputs", { missing });
+      const blocked = required.filter((participant) => participant.planningStatus === "blocked").map((participant) => participant.roleId);
+      if (blocked.length > 0) throw conflict("Req Bundle final plan compile is blocked by participant verdicts", { blocked });
+      const finalPlanMarkdown = buildFinalReqBundlePlanMarkdown({
+        task,
+        bundle,
+        participantArtifacts: required.map((participant) => {
+          const artifact = artifactByRole.get(participant.roleId)!;
+          return { roleId: participant.roleId, body: artifact.body, metadata: readRecord(artifact.metadata) };
+        }),
+      });
+      const planSha256 = sha256(finalPlanMarkdown);
+      await db.insert(orionReqLedgerArtifacts).values({
+        ledgerId: bundle.id,
+        companyId: bundle.companyId,
+        phase: "planning",
+        kind: "final_plan",
+        title: "Final Req Bundle implementation plan",
+        body: finalPlanMarkdown,
+        sha256: planSha256,
+        metadata: {
+          source: "orion_req_bundle_round_table",
+          participantRoleIds: required.map((participant) => participant.roleId),
+        },
+      });
+      await db
+        .update(orionReqLedgers)
+        .set({
+          status: "awaiting_plan_approval",
+          currentPhase: "awaiting_plan_approval",
+          planSha256,
+          approvedPlanSha256: null,
+          summary: "Final Req Bundle implementation plan compiled from Round Table planning outputs.",
+          updatedAt: new Date(),
+        })
+        .where(eq(orionReqLedgers.id, bundle.id));
+      await db
+        .update(orionReqBundleParticipants)
+        .set({ planApprovedAt: null, updatedAt: new Date() })
+        .where(eq(orionReqBundleParticipants.bundleId, bundle.id));
+      await appendLedgerEvent({
+        ledgerId: bundle.id,
+        companyId: bundle.companyId,
+        runId: bundle.runId,
+        eventType: "round_table.plan_compiled",
+        phase: "awaiting_plan_approval",
+        message: "Final Req Bundle implementation plan compiled.",
+        payload: { planSha256 },
+        idempotencyKey: input.idempotencyKey ?? null,
+      });
+      return getReqBundleDetail(bundle.id);
+    },
+
+    approveReqBundlePlan: async (
+      bundleId: string,
+      participantId: string,
+      input: { planSha256: string; notes?: string | null; idempotencyKey?: string | null },
+      createdByUserId?: string | null,
+    ) => {
+      const bundle = await getReqBundleDetail(bundleId);
+      if (!bundle.planSha256) throw unprocessable("Req Bundle plan approval requires a compiled final plan");
+      if (bundle.planSha256 !== input.planSha256) throw conflict("Req Bundle plan approval is stale", {
+        expectedPlanSha256: bundle.planSha256,
+        receivedPlanSha256: input.planSha256,
+      });
+      const participant = bundle.participants?.find((entry) => entry.id === participantId) ?? null;
+      if (!participant || !participant.required) throw unprocessable("Only required Req Bundle participants can approve this plan");
+      await db
+        .update(orionReqBundleParticipants)
+        .set({ planApprovedAt: new Date(), updatedAt: new Date() })
+        .where(eq(orionReqBundleParticipants.id, participant.id));
+      await appendLedgerEvent({
+        ledgerId: bundle.id,
+        companyId: bundle.companyId,
+        runId: bundle.runId,
+        eventType: "round_table.plan_approved",
+        phase: "awaiting_plan_approval",
+        message: `${COUNCIL_ROLE_LABELS[participant.roleId as OrionCouncilRoleId] ?? participant.roleId} approved the Req Bundle plan.`,
+        payload: {
+          participantId,
+          roleId: participant.roleId,
+          planSha256: input.planSha256,
+          notes: input.notes ?? null,
+          createdByUserId: createdByUserId ?? null,
+        },
+        idempotencyKey: input.idempotencyKey ?? null,
+      });
+      const refreshed = await getReqBundleDetail(bundle.id);
+      const required = refreshed.participants?.filter((entry) => entry.required) ?? [];
+      if (required.length > 0 && required.every((entry) => Boolean(entry.planApprovedAt))) {
+        await db
+          .update(orionReqLedgers)
+          .set({
+            status: "approved",
+            currentPhase: "approved",
+            approvedPlanSha256: refreshed.planSha256,
+            updatedAt: new Date(),
+          })
+          .where(eq(orionReqLedgers.id, bundle.id));
+        await appendLedgerEvent({
+          ledgerId: bundle.id,
+          companyId: bundle.companyId,
+          runId: bundle.runId,
+          eventType: "round_table.plan_fully_approved",
+          phase: "approved",
+          message: "All required Req Bundle participants approved the plan.",
+          payload: { planSha256: refreshed.planSha256 },
+        });
+      }
+      return getReqBundleDetail(bundle.id);
+    },
+
+    startReqBundleExecution: async (bundleId: string, input: StartOrionCouncilExecution) => {
+      const bundle = await getReqBundleDetail(bundleId);
+      if (bundle.status !== "approved" && bundle.status !== "iteration_required") {
+        throw conflict("Req Bundle execution requires an approved final plan");
+      }
+      if (!bundle.planSha256 || bundle.approvedPlanSha256 !== bundle.planSha256) {
+        throw conflict("Req Bundle execution is blocked by a stale or unapproved plan hash");
+      }
+      const required = bundle.participants?.filter((entry) => entry.required) ?? [];
+      if (required.length === 0 || !required.every((entry) => Boolean(entry.planApprovedAt))) {
+        throw conflict("Req Bundle execution requires every required participant approval");
+      }
+      const implementer = required.find((entry) => entry.roleId === "implementer") ?? null;
+      const implementerAgentId = input.implementerAgentId ?? implementer?.agentId ?? null;
+      if (!implementerAgentId) throw unprocessable("Req Bundle execution requires an Implementer agent");
+      if (implementerAgentId !== implementer?.agentId) {
+        await db
+          .update(heartbeatRuns)
+          .set({ agentId: implementerAgentId, updatedAt: new Date() })
+          .where(eq(heartbeatRuns.id, bundle.runId));
+      }
+      const startResult = await orionService(db).startCodexRun(bundle.runId, {
+        planSha256: bundle.approvedPlanSha256,
+        note: input.note ?? "Req Bundle Round Table approved execution.",
+        idempotencyKey: input.idempotencyKey,
+        verification: input.verification ?? null,
+      });
+      await db
+        .update(orionReqLedgers)
+        .set({ status: "executing", currentPhase: "executing", updatedAt: new Date() })
+        .where(eq(orionReqLedgers.id, bundle.id));
+      await appendLedgerEvent({
+        ledgerId: bundle.id,
+        companyId: bundle.companyId,
+        runId: bundle.runId,
+        eventType: "round_table.execution_started",
+        phase: "executing",
+        message: "Req Bundle execution started from the approved plan.",
+        payload: { planSha256: bundle.approvedPlanSha256 },
+        idempotencyKey: input.idempotencyKey ?? null,
+      });
+      return { bundle: await getReqBundleDetail(bundle.id), run: startResult.run, ledger: startResult.ledger };
+    },
+
+    recordReqBundleReview: async (
+      bundleId: string,
+      input: RecordOrionCouncilReview,
+      createdByUserId?: string | null,
+    ) => {
+      const bundle = await getReqBundleDetail(bundleId);
+      const participant = bundle.participants?.find((entry) => entry.roleId === input.roleId) ?? null;
+      if (!participant || !participant.required) throw unprocessable("Only required Req Bundle participants can review this implementation");
+      if (bundle.verificationStatus !== "passed") {
+        throw conflict("Req Bundle review requires passed Orion verification evidence", {
+          verificationStatus: bundle.verificationStatus,
+        });
+      }
+      await db
+        .update(orionReqBundleParticipants)
+        .set({
+          reviewStatus: input.status,
+          reviewNotes: input.notes ?? input.requiredFixSummary ?? null,
+          updatedAt: new Date(),
+        })
+        .where(eq(orionReqBundleParticipants.id, participant.id));
+      await db.insert(orionReqLedgerArtifacts).values({
+        ledgerId: bundle.id,
+        companyId: bundle.companyId,
+        phase: "review",
+        kind: input.status === "passed" ? "round_table_review" : "iteration_required",
+        title: `${COUNCIL_ROLE_LABELS[input.roleId] ?? input.roleId} review ${input.status}`,
+        body: input.notes ?? input.requiredFixSummary ?? null,
+        metadata: {
+          roleId: input.roleId,
+          participantId: participant.id,
+          status: input.status,
+          blockingReason: input.blockingReason ?? null,
+          requiredFixSummary: input.requiredFixSummary ?? null,
+        },
+      });
+      await appendLedgerEvent({
+        ledgerId: bundle.id,
+        companyId: bundle.companyId,
+        runId: bundle.runId,
+        eventType: input.status === "passed" ? "round_table.review_passed" : "round_table.iteration_required",
+        phase: "review",
+        message: `${COUNCIL_ROLE_LABELS[input.roleId] ?? input.roleId} review ${input.status}.`,
+        payload: {
+          roleId: input.roleId,
+          participantId: participant.id,
+          status: input.status,
+          createdByUserId: createdByUserId ?? null,
+        },
+        idempotencyKey: input.idempotencyKey ?? null,
+      });
+      if (input.status !== "passed") {
+        await db
+          .update(orionReqLedgers)
+          .set({ status: "iteration_required", currentPhase: "iteration_required", updatedAt: new Date() })
+          .where(eq(orionReqLedgers.id, bundle.id));
+        return getReqBundleDetail(bundle.id);
+      }
+      const refreshed = await getReqBundleDetail(bundle.id);
+      const required = refreshed.participants?.filter((entry) => entry.required) ?? [];
+      if (required.length > 0 && required.every((entry) => entry.reviewStatus === "passed")) {
+        await db
+          .update(orionReqLedgers)
+          .set({ status: "review_passed", currentPhase: "review_passed", updatedAt: new Date() })
+          .where(eq(orionReqLedgers.id, bundle.id));
+      } else if (refreshed.status === "executing") {
+        await db
+          .update(orionReqLedgers)
+          .set({ status: "awaiting_review", currentPhase: "awaiting_review", updatedAt: new Date() })
+          .where(eq(orionReqLedgers.id, bundle.id));
+      }
+      return getReqBundleDetail(bundle.id);
+    },
+
+    openReqBundlePr: async (bundleId: string, input: OpenOrionPr) => {
+      const bundle = await getReqBundleDetail(bundleId);
+      if (bundle.status !== "review_passed" && bundle.status !== "draft_pr_opened") {
+        throw conflict("Draft PR creation is blocked until Req Bundle review passes", { status: bundle.status });
+      }
+      const receipt = await orionService(db).openPr(bundle.runId, {
+        ...input,
+        draft: input.draft ?? true,
+        planSha256: input.planSha256 ?? bundle.approvedPlanSha256,
+      });
+      await db
+        .update(orionReqLedgers)
+        .set({ status: "draft_pr_opened", currentPhase: "draft_pr_opened", updatedAt: new Date() })
+        .where(eq(orionReqLedgers.id, bundle.id));
+      return receipt;
     },
 
     listSyncConflicts: (companyId: string) =>
@@ -5201,6 +5853,7 @@ export function orionService(db: Db) {
             executionRequested: true,
             worker: "codex_local",
             ledgerId: ledger.id,
+            bundleId: ledger.id,
             mode: ledger.mode,
             taskId: task.id,
             taskIdentifier: task.identifier ?? null,

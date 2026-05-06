@@ -144,6 +144,31 @@ export const orionReqLedgerArtifacts = pgTable(
   }),
 );
 
+export const orionReqBundleParticipants = pgTable(
+  "orion_req_bundle_participants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bundleId: uuid("bundle_id").notNull().references(() => orionReqLedgers.id, { onDelete: "cascade" }),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    taskId: uuid("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+    roleId: text("role_id").notNull(),
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: "set null" }),
+    required: boolean("required").notNull().default(true),
+    planningStatus: text("planning_status").notNull().default("pending"),
+    planApprovedAt: timestamp("plan_approved_at", { withTimezone: true }),
+    reviewStatus: text("review_status"),
+    reviewNotes: text("review_notes"),
+    constraintsJson: jsonb("constraints_json").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    bundleRoleIdx: uniqueIndex("orion_req_bundle_participants_bundle_role_uq").on(table.bundleId, table.roleId),
+    companyTaskIdx: index("orion_req_bundle_participants_task_idx").on(table.companyId, table.taskId),
+    agentIdx: index("orion_req_bundle_participants_agent_idx").on(table.companyId, table.agentId),
+  }),
+);
+
 export const orionDecisions = pgTable(
   "orion_decisions",
   {

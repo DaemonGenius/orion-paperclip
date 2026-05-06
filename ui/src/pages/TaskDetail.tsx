@@ -72,7 +72,7 @@ import { TaskReferenceActivitySummary } from "../components/TaskReferenceActivit
 import { TaskRelatedWorkPanel } from "../components/TaskRelatedWorkPanel";
 import { TaskProperties } from "../components/TaskProperties";
 import { TaskRunLedger } from "../components/TaskRunLedger";
-import { OrionAutoCouncilPanel } from "../components/OrionAutoCouncilPanel";
+import { ReqBundleRoundTablePanel } from "../components/ReqBundleRoundTablePanel";
 import { TaskWorkspaceCard } from "../components/TaskWorkspaceCard";
 import type { MentionOption } from "../components/MarkdownEditor";
 import { ImageGalleryModal } from "../components/ImageGalleryModal";
@@ -1144,12 +1144,11 @@ function TaskDetailActivityTab({
   return (
     <>
       <div className="mb-3">
-        <OrionAutoCouncilPanel
+        <ReqBundleRoundTablePanel
           taskId={taskId}
           companyId={companyId}
           task={task}
           onOpenTaskChat={onOpenTaskChat}
-          onSessionChange={onCouncilSessionChange}
         />
       </div>
       <div className="mb-3">

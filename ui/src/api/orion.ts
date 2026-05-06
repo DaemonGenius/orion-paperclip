@@ -5,6 +5,7 @@ import type {
   OrionCouncilMessage,
   OrionCouncilSession,
   OrionReqLedger,
+  ReqBundle,
   OrionRunReadiness,
   OrionTaskPolicy,
   OrionPrReceipt,
@@ -52,6 +53,50 @@ export const orionApi = {
     api.get<OrionRunReadiness>(`/orion/tasks/${taskId}/run-readiness`),
   councilSession: (taskId: string) =>
     api.get<OrionCouncilSession | null>(`/orion/tasks/${taskId}/council/session`),
+  reqBundle: (taskId: string) =>
+    api.get<ReqBundle | null>(`/orion/tasks/${taskId}/req-bundle`),
+  startReqBundlePlanning: (taskId: string, data: {
+    autonomyEnvelope: OrionAutonomyEnvelope;
+    plannerNotes?: string | null;
+    impactFlags?: Partial<Record<"frontend" | "backend" | "data_model" | "infrastructure" | "security" | "testing", boolean>>;
+    proposedParticipantRoleIds?: OrionCouncilRoleId[];
+    implementerAgentId?: string | null;
+    maxIterations?: number;
+    baseBranch?: string;
+    idempotencyKey?: string | null;
+  }) => api.post<ReqBundle>(`/orion/tasks/${taskId}/req-bundle/plan`, data),
+  compileReqBundlePlan: (bundleId: string, data?: { idempotencyKey?: string | null }) =>
+    api.post<ReqBundle>(`/orion/req-bundles/${bundleId}/plan/compile`, data ?? {}),
+  approveReqBundlePlan: (bundleId: string, participantId: string, data: {
+    planSha256: string;
+    notes?: string | null;
+    idempotencyKey?: string | null;
+  }) => api.post<ReqBundle>(`/orion/req-bundles/${bundleId}/participants/${participantId}/approve-plan`, data),
+  startReqBundleExecution: (bundleId: string, data?: {
+    implementerAgentId?: string | null;
+    note?: string | null;
+    idempotencyKey?: string | null;
+  }) => api.post<{
+    bundle: ReqBundle;
+    run: { id: string; companyId: string; agentId: string; status: string };
+    ledger: OrionReqLedger;
+  }>(`/orion/req-bundles/${bundleId}/execute`, data ?? {}),
+  recordReqBundleReview: (bundleId: string, data: {
+    roleId: OrionCouncilRoleId;
+    status: "passed" | "failed" | "blocked";
+    notes?: string | null;
+    blockingReason?: string | null;
+    requiredFixSummary?: string | null;
+    idempotencyKey?: string | null;
+  }) => api.post<ReqBundle>(`/orion/req-bundles/${bundleId}/reviews`, data),
+  openReqBundlePr: (bundleId: string, data: {
+    planSha256?: string | null;
+    title?: string | null;
+    body?: string | null;
+    baseBranch?: string | null;
+    draft?: boolean;
+    idempotencyKey?: string | null;
+  }) => api.post<OrionPrReceipt>(`/orion/req-bundles/${bundleId}/pr/open`, data),
   councilMessages: (sessionId: string) =>
     api.get<OrionCouncilMessage[]>(`/orion/council/sessions/${sessionId}/messages`),
   addCouncilMessage: (sessionId: string, data: { body: string; messageKind?: "operator_note" | "planning_note"; idempotencyKey?: string | null }) =>

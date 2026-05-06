@@ -7,6 +7,7 @@ export const queryKeys = {
   orion: {
     autoTeam: (companyId: string) => ["orion", "auto-team", companyId] as const,
     councilSession: (taskId: string) => ["orion", "council-session", taskId] as const,
+    reqBundle: (taskId: string) => ["orion", "req-bundle", taskId] as const,
     councilMessages: (sessionId: string) => ["orion", "council-messages", sessionId] as const,
     taskPolicy: (taskId: string) => ["orion", "task-policy", taskId] as const,
     runReadiness: (taskId: string) => ["orion", "run-readiness", taskId] as const,

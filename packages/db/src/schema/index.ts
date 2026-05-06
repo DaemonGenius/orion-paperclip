@@ -85,6 +85,7 @@ export {
   orionReqLedgers,
   orionReqLedgerEvents,
   orionReqLedgerArtifacts,
+  orionReqBundleParticipants,
   orionDecisions,
   orionPrReceipts,
   orionCouncilSessions,

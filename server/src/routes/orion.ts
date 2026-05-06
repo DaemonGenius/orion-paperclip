@@ -14,6 +14,7 @@ import {
   createOrionRunSchema,
   indexObsidianVaultSchema,
   openOrionPrSchema,
+  openOrionReqBundlePrSchema,
   orionBootstrapNotionSchema,
   orionSyncNotionSchema,
   approveOrionLedgerPlanSchema,
@@ -26,6 +27,8 @@ import {
   recordOrionLedgerVerificationSchema,
   approveOrionCouncilPlanSchema,
   recordOrionCouncilReviewSchema,
+  recordOrionReqBundlePlanningOutputSchema,
+  recordOrionReqBundleReviewSchema,
   publishOrionPlannerDraftSchema,
   queueExistingOrionRoundTableIntakeSchema,
   queueOrionRoundTableIntakeSchema,
@@ -38,6 +41,10 @@ import {
   saveOrionCouncilPlanSchema,
   setupOrionRoundTableSchema,
   startOrionCouncilExecutionSchema,
+  startOrionReqBundleExecutionSchema,
+  startOrionReqBundlePlanningSchema,
+  compileOrionReqBundlePlanSchema,
+  approveOrionReqBundlePlanSchema,
   startOrionCouncilSessionSchema,
   startOrionCodexRunSchema,
   startOrionLedgerExecutionSchema,
@@ -441,6 +448,145 @@ export function orionRoutes(db: Db, opts: {
     const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
     if (task) assertCompanyAccess(req, task.companyId);
     res.json(await svc.getCouncilSessionForTask(req.params.taskId as string));
+  });
+
+  router.get("/orion/tasks/:taskId/req-bundle", async (req, res) => {
+    assertBoard(req);
+    const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
+    if (task) assertCompanyAccess(req, task.companyId);
+    res.json(await svc.getReqBundleForTask(req.params.taskId as string));
+  });
+
+  router.post(
+    "/orion/tasks/:taskId/req-bundle/plan",
+    validate(startOrionReqBundlePlanningSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const task = await db.select({ companyId: tasks.companyId }).from(tasks).where(eq(tasks.id, req.params.taskId as string)).limit(1).then((rows) => rows[0] ?? null);
+      if (task) assertCompanyAccess(req, task.companyId);
+      const actor = getActorInfo(req);
+      const bundle = await svc.startReqBundlePlanning(
+        req.params.taskId as string,
+        req.body,
+        req.actor.type === "board" ? req.actor.userId ?? null : null,
+        { queueRun: opts.queueCouncilPlanningRun ?? heartbeat.wakeup },
+      );
+      await logActivity(db, {
+        companyId: bundle.companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        action: "orion.req_bundle_planning_started",
+        entityType: "task",
+        entityId: bundle.taskId,
+        runId: bundle.runId,
+        details: {
+          bundleId: bundle.id,
+          participantRoleIds: bundle.participants?.filter((participant) => participant.required).map((participant) => participant.roleId) ?? [],
+        },
+      });
+      res.status(201).json(bundle);
+    },
+  );
+
+  router.get("/orion/req-bundles/:bundleId", async (req, res) => {
+    assertBoard(req);
+    const bundle = await svc.getReqBundle(req.params.bundleId as string);
+    assertCompanyAccess(req, bundle.companyId);
+    res.json(bundle);
+  });
+
+  router.post("/orion/req-bundles/:bundleId/participants/:participantId/planning-output", validate(recordOrionReqBundlePlanningOutputSchema), async (req, res) => {
+    assertAuthenticated(req);
+    const bundle = await svc.getReqBundle(req.params.bundleId as string);
+    assertCompanyAccess(req, bundle.companyId);
+    const result = await svc.recordReqBundlePlanningOutput(req.params.bundleId as string, req.params.participantId as string, req.body);
+    res.status(201).json(result);
+  });
+
+  router.post("/orion/req-bundles/:bundleId/plan/compile", validate(compileOrionReqBundlePlanSchema), async (req, res) => {
+    assertBoard(req);
+    const bundle = await svc.getReqBundle(req.params.bundleId as string);
+    assertCompanyAccess(req, bundle.companyId);
+    const actor = getActorInfo(req);
+    const result = await svc.compileReqBundlePlan(bundle.id, req.body);
+    await logActivity(db, {
+      companyId: result.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      action: "orion.req_bundle_plan_compiled",
+      entityType: "task",
+      entityId: result.taskId,
+      runId: result.runId,
+      details: { bundleId: result.id, planSha256: result.planSha256 },
+    });
+    res.json(result);
+  });
+
+  router.post("/orion/req-bundles/:bundleId/participants/:participantId/approve-plan", validate(approveOrionReqBundlePlanSchema), async (req, res) => {
+    assertBoard(req);
+    const bundle = await svc.getReqBundle(req.params.bundleId as string);
+    assertCompanyAccess(req, bundle.companyId);
+    const actor = getActorInfo(req);
+    const result = await svc.approveReqBundlePlan(
+      bundle.id,
+      req.params.participantId as string,
+      req.body,
+      req.actor.type === "board" ? req.actor.userId ?? null : null,
+    );
+    await logActivity(db, {
+      companyId: result.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      action: "orion.req_bundle_plan_approved",
+      entityType: "task",
+      entityId: result.taskId,
+      runId: result.runId,
+      details: { bundleId: result.id, participantId: req.params.participantId, status: result.status },
+    });
+    res.json(result);
+  });
+
+  router.post("/orion/req-bundles/:bundleId/execute", validate(startOrionReqBundleExecutionSchema), async (req, res) => {
+    assertBoard(req);
+    const bundle = await svc.getReqBundle(req.params.bundleId as string);
+    assertCompanyAccess(req, bundle.companyId);
+    const result = await svc.startReqBundleExecution(bundle.id, req.body);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: result.bundle.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      action: "orion.req_bundle_execution_started",
+      entityType: "task",
+      entityId: result.bundle.taskId,
+      runId: result.run.id,
+      agentId: result.run.agentId,
+      details: { bundleId: result.bundle.id, approvedPlanSha256: result.bundle.approvedPlanSha256 },
+    });
+    void heartbeat.executeQueuedRun(result.run.id).catch((err) => {
+      console.error("Orion Req Bundle Codex execution failed", err);
+    });
+    res.status(202).json(result);
+  });
+
+  router.post("/orion/req-bundles/:bundleId/reviews", validate(recordOrionReqBundleReviewSchema), async (req, res) => {
+    assertBoard(req);
+    const bundle = await svc.getReqBundle(req.params.bundleId as string);
+    assertCompanyAccess(req, bundle.companyId);
+    const result = await svc.recordReqBundleReview(
+      bundle.id,
+      req.body,
+      req.actor.type === "board" ? req.actor.userId ?? null : null,
+    );
+    res.json(result);
+  });
+
+  router.post("/orion/req-bundles/:bundleId/pr/open", validate(openOrionReqBundlePrSchema), async (req, res) => {
+    assertBoard(req);
+    const bundle = await svc.getReqBundle(req.params.bundleId as string);
+    assertCompanyAccess(req, bundle.companyId);
+    const receipt = await svc.openReqBundlePr(bundle.id, { ...req.body, draft: req.body.draft ?? true });
+    res.status(201).json(receipt);
   });
 
   router.post(

@@ -622,6 +622,46 @@ export interface OrionReqLedger {
   prReceiptRecord?: OrionPrReceipt | null;
 }
 
+export type ReqBundleStatus =
+  | "spec_ready"
+  | "planning"
+  | "awaiting_plan_approval"
+  | "approved"
+  | "executing"
+  | "awaiting_review"
+  | "iteration_required"
+  | "review_passed"
+  | "draft_pr_opened";
+
+export type ReqBundleParticipantPlanningStatus = "pending" | "queued" | "posted" | "blocked" | "not_required";
+export type ReqBundleParticipantReviewStatus = "pending" | "passed" | "failed" | "blocked";
+
+export interface ReqBundleParticipant {
+  id: string;
+  bundleId: string;
+  companyId: string;
+  taskId: string;
+  roleId: OrionCouncilRoleId | string;
+  agentId: string | null;
+  required: boolean;
+  planningStatus: ReqBundleParticipantPlanningStatus | string;
+  planApprovedAt: Date | string | null;
+  reviewStatus: ReqBundleParticipantReviewStatus | string | null;
+  reviewNotes: string | null;
+  constraintsJson: Record<string, unknown>;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+export type ReqBundleArtifact = OrionReqLedgerArtifact;
+export type ReqBundleEvent = OrionReqLedgerEvent;
+
+export interface ReqBundle extends OrionReqLedger {
+  status: ReqBundleStatus | string;
+  currentPhase: ReqBundleStatus | string;
+  participants?: ReqBundleParticipant[];
+}
+
 export interface OrionVerificationCommand {
   name?: string | null;
   command: string;

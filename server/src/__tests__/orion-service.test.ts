@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateChangedPathsAgainstEnvelope } from "../services/orion.js";
+import { resolveReqBundleParticipantRoleIds, validateChangedPathsAgainstEnvelope } from "../services/orion.js";
 import type { OrionAutonomyEnvelope } from "@paperclipai/shared";
 
 const envelope: OrionAutonomyEnvelope = {
@@ -35,5 +35,33 @@ describe("Orion autonomy path policy", () => {
     expect(() =>
       validateChangedPathsAgainstEnvelope(["package.json"], envelope),
     ).toThrow("Changed paths violate the autonomy envelope");
+  });
+});
+
+describe("Orion req bundle participant resolution", () => {
+  it("selects Architect, QA, and Implementer for backend-only work", () => {
+    expect(resolveReqBundleParticipantRoleIds({ backend: true })).toEqual([
+      "architect",
+      "qa_tester",
+      "implementer",
+    ]);
+  });
+
+  it("adds UX/UI for frontend work", () => {
+    expect(resolveReqBundleParticipantRoleIds({ frontend: true })).toEqual([
+      "architect",
+      "qa_tester",
+      "implementer",
+      "ux_ui_designer",
+    ]);
+  });
+
+  it("adds Infrastructure for infra, runtime, migration, CI, or deployment impact", () => {
+    expect(resolveReqBundleParticipantRoleIds({ infrastructure: true })).toContain("infrastructure_engineer");
+    expect(resolveReqBundleParticipantRoleIds({ data_model: true })).toContain("infrastructure_engineer");
+  });
+
+  it("adds Security for auth, secrets, privacy, or public exposure impact", () => {
+    expect(resolveReqBundleParticipantRoleIds({ security: true })).toContain("security_expert");
   });
 });

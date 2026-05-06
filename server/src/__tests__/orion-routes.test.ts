@@ -22,6 +22,7 @@ import {
   orionPrReceipts,
   orionCouncilMessages,
   orionCouncilPlanningNotes,
+  orionReqBundleParticipants,
   orionReqLedgerArtifacts,
   orionReqLedgerEvents,
   orionReqLedgers,
@@ -353,6 +354,87 @@ describeEmbeddedPostgres("Orion routes", () => {
     expect(qaConfig.promptTemplate).toBeUndefined();
 
     await rm(staleRoot, { recursive: true, force: true });
+  });
+
+  it("starts req bundle planning, compiles from participant outputs, and approves by participant", async () => {
+    await seedCompanyAndAgent();
+    await seedOrionAutoCouncilAgents();
+    const planningApp = createApp(db, { queueCouncilPlanningRun: queueCouncilPlanningRunWithoutStarting });
+    const [task] = await db.insert(tasks).values({
+      companyId,
+      title: "Create Animal lookup CRUD",
+      description: "Backend-only lookup table CRUD for animal names.",
+      acceptanceCriteria: "Create API CRUD, persistence, and tests. No UI changes.",
+      status: "todo",
+      priority: "medium",
+      layer: "Application",
+      module: "Lookup",
+      repoPath: "server/src; packages/db/src",
+      riskLevel: "Medium",
+      taskType: "Feature",
+    }).returning();
+
+    const start = await request(planningApp)
+      .post(`/api/orion/tasks/${task.id}/req-bundle/plan`)
+      .send({
+        autonomyEnvelope: autoEnvelope(),
+        impactFlags: { backend: true, testing: true },
+        plannerNotes: "Validated backend-only CRUD specification.",
+        baseBranch: "master",
+      });
+    expect(start.status, JSON.stringify(start.body)).toBe(201);
+    expect(start.body.status).toBe("planning");
+
+    const participants = await db
+      .select()
+      .from(orionReqBundleParticipants)
+      .where(eq(orionReqBundleParticipants.bundleId, start.body.id));
+    const requiredRoles = participants.filter((participant) => participant.required).map((participant) => participant.roleId).sort();
+    expect(requiredRoles).toEqual(["architect", "implementer", "qa_tester"]);
+    expect(participants.find((participant) => participant.roleId === "ux_ui_designer")?.required).toBe(false);
+
+    const compileBeforeOutputs = await request(planningApp)
+      .post(`/api/orion/req-bundles/${start.body.id}/plan/compile`)
+      .send({});
+    expect(compileBeforeOutputs.status, JSON.stringify(compileBeforeOutputs.body)).toBe(409);
+
+    for (const participant of participants.filter((entry) => entry.required)) {
+      const output = await request(planningApp)
+        .post(`/api/orion/req-bundles/${start.body.id}/participants/${participant.id}/planning-output`)
+        .send({
+          constraints: [`${participant.roleId} constraint preserved.`],
+          risks: [],
+          implementationRequirements: [`${participant.roleId} requirement.`],
+          verificationRequirements: ["Run targeted tests."],
+          blockers: [],
+          verdict: "ready",
+        });
+      expect(output.status, JSON.stringify(output.body)).toBe(201);
+    }
+
+    const compiled = await request(planningApp)
+      .post(`/api/orion/req-bundles/${start.body.id}/plan/compile`)
+      .send({});
+    expect(compiled.status, JSON.stringify(compiled.body)).toBe(200);
+    expect(compiled.body.status).toBe("awaiting_plan_approval");
+    expect(compiled.body.planSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(compiled.body.artifacts.some((artifact: { kind: string; body: string }) =>
+      artifact.kind === "final_plan" && artifact.body.includes("Final Req Bundle Implementation Plan"),
+    )).toBe(true);
+
+    for (const participant of compiled.body.participants.filter((entry: { required: boolean }) => entry.required)) {
+      const approved = await request(planningApp)
+        .post(`/api/orion/req-bundles/${start.body.id}/participants/${participant.id}/approve-plan`)
+        .send({ planSha256: compiled.body.planSha256 });
+      expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+    }
+
+    const approvedBundle = await request(planningApp)
+      .get(`/api/orion/req-bundles/${start.body.id}`)
+      .send();
+    expect(approvedBundle.status, JSON.stringify(approvedBundle.body)).toBe(200);
+    expect(approvedBundle.body.status).toBe("approved");
+    expect(approvedBundle.body.approvedPlanSha256).toBe(compiled.body.planSha256);
   });
 
   it("convenes council planning as Planning Chat messages and compiles the final plan", async () => {

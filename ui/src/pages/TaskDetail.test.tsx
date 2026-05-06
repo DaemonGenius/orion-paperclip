@@ -216,6 +216,10 @@ vi.mock("../components/TaskRunLedger", () => ({
   TaskRunLedger: () => <div>Runs</div>,
 }));
 
+vi.mock("../components/ReqBundleRoundTablePanel", () => ({
+  ReqBundleRoundTablePanel: () => <div>Req bundle round table</div>,
+}));
+
 vi.mock("../components/TaskWorkspaceCard", () => ({
   TaskWorkspaceCard: () => <div>Workspace</div>,
 }));

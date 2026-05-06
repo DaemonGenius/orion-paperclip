@@ -782,6 +782,20 @@ export const ORION_PLANNER_IMPACT_FLAGS = [
 
 export const orionCouncilRoleIdSchema = z.enum(ORION_COUNCIL_ROLE_IDS);
 export const orionPlannerImpactFlagSchema = z.enum(ORION_PLANNER_IMPACT_FLAGS);
+export const ORION_REQ_BUNDLE_STATUSES = [
+  "spec_ready",
+  "planning",
+  "awaiting_plan_approval",
+  "approved",
+  "executing",
+  "awaiting_review",
+  "iteration_required",
+  "review_passed",
+  "draft_pr_opened",
+] as const;
+export const orionReqBundleStatusSchema = z.enum(ORION_REQ_BUNDLE_STATUSES);
+export const orionReqBundlePlanningStatusSchema = z.enum(["pending", "queued", "posted", "blocked", "not_required"]);
+export const orionReqBundleReviewStatusSchema = z.enum(["pending", "passed", "failed", "blocked"]);
 export const orionCouncilSessionStatusSchema = z.enum([
   "planning",
   "planning_notes",
@@ -806,6 +820,53 @@ export const orionPlannerImpactFlagsSchema = z.object({
   security: z.boolean().optional(),
   testing: z.boolean().optional(),
 }).default({});
+
+export const startOrionReqBundlePlanningSchema = z.object({
+  autonomyEnvelope: orionAutonomyEnvelopeSchema,
+  plannerNotes: z.string().trim().max(20000).optional().nullable(),
+  impactFlags: orionPlannerImpactFlagsSchema,
+  proposedParticipantRoleIds: z.array(orionCouncilRoleIdSchema).optional().default([]),
+  implementerAgentId: z.string().uuid().optional().nullable(),
+  maxIterations: z.number().int().positive().max(10).optional().default(2),
+  baseBranch: z.string().trim().min(1).max(120).optional().default("master"),
+  idempotencyKey: z.string().trim().min(1).max(120).optional().nullable(),
+}).strict().superRefine((value, ctx) => {
+  if (value.autonomyEnvelope.mode !== "auto_to_pr") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Req Bundle Auto handoff requires Auto execution guardrails",
+      path: ["autonomyEnvelope", "mode"],
+    });
+  }
+  if (value.autonomyEnvelope.autoMerge !== false) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Orion Auto must never auto-merge",
+      path: ["autonomyEnvelope", "autoMerge"],
+    });
+  }
+});
+
+export const recordOrionReqBundlePlanningOutputSchema = z.object({
+  constraints: z.array(z.string().trim().min(1).max(1000)).optional().default([]),
+  risks: z.array(z.string().trim().min(1).max(1000)).optional().default([]),
+  implementationRequirements: z.array(z.string().trim().min(1).max(1000)).optional().default([]),
+  verificationRequirements: z.array(z.string().trim().min(1).max(1000)).optional().default([]),
+  blockers: z.array(z.string().trim().min(1).max(1000)).optional().default([]),
+  verdict: z.enum(["ready", "blocked", "changes_requested"]),
+  notes: z.string().trim().max(20000).optional().nullable(),
+  idempotencyKey: z.string().trim().min(1).max(120).optional().nullable(),
+}).strict();
+
+export const compileOrionReqBundlePlanSchema = z.object({
+  idempotencyKey: z.string().trim().min(1).max(120).optional().nullable(),
+}).strict();
+
+export const approveOrionReqBundlePlanSchema = z.object({
+  planSha256: z.string().trim().length(64),
+  notes: z.string().trim().max(4000).optional().nullable(),
+  idempotencyKey: z.string().trim().min(1).max(120).optional().nullable(),
+}).strict();
 
 export const validateOrionPlannerSpecSchema = z.object({
   autonomyEnvelope: orionAutonomyEnvelopeSchema,
@@ -878,6 +939,8 @@ export const startOrionCouncilExecutionSchema = z.object({
   }).optional().nullable(),
 }).strict();
 
+export const startOrionReqBundleExecutionSchema = startOrionCouncilExecutionSchema;
+
 export const recordOrionCouncilReviewSchema = z.object({
   roleId: orionCouncilRoleIdSchema,
   status: orionCouncilReviewStatusSchema,
@@ -894,6 +957,8 @@ export const recordOrionCouncilReviewSchema = z.object({
     });
   }
 });
+
+export const recordOrionReqBundleReviewSchema = recordOrionCouncilReviewSchema;
 
 export const advanceOrionCouncilIterationSchema = z.object({
   reason: z.string().trim().min(1).max(4000),
@@ -997,10 +1062,22 @@ export const openOrionPrSchema = z.object({
   idempotencyKey: ledgerIdempotencyKeySchema,
 });
 
+export const openOrionReqBundlePrSchema = openOrionPrSchema;
+
 export type OrionAutonomyMode = z.infer<typeof orionAutonomyModeSchema>;
 export type OrionAutonomyEnvelope = z.infer<typeof orionAutonomyEnvelopeSchema>;
 export type OrionCouncilRoleId = z.infer<typeof orionCouncilRoleIdSchema>;
 export type OrionPlannerImpactFlag = z.infer<typeof orionPlannerImpactFlagSchema>;
+export type OrionReqBundleStatus = z.infer<typeof orionReqBundleStatusSchema>;
+export type OrionReqBundlePlanningStatus = z.infer<typeof orionReqBundlePlanningStatusSchema>;
+export type OrionReqBundleReviewStatus = z.infer<typeof orionReqBundleReviewStatusSchema>;
+export type StartOrionReqBundlePlanning = z.infer<typeof startOrionReqBundlePlanningSchema>;
+export type RecordOrionReqBundlePlanningOutput = z.infer<typeof recordOrionReqBundlePlanningOutputSchema>;
+export type CompileOrionReqBundlePlan = z.infer<typeof compileOrionReqBundlePlanSchema>;
+export type ApproveOrionReqBundlePlan = z.infer<typeof approveOrionReqBundlePlanSchema>;
+export type StartOrionReqBundleExecution = z.infer<typeof startOrionReqBundleExecutionSchema>;
+export type RecordOrionReqBundleReview = z.infer<typeof recordOrionReqBundleReviewSchema>;
+export type OpenOrionReqBundlePr = z.infer<typeof openOrionReqBundlePrSchema>;
 export type ValidateOrionPlannerSpec = z.infer<typeof validateOrionPlannerSpecSchema>;
 export type StartOrionCouncilSession = z.infer<typeof startOrionCouncilSessionSchema>;
 export type SaveOrionCouncilPlan = z.infer<typeof saveOrionCouncilPlanSchema>;
